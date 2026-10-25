@@ -1,7 +1,7 @@
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 import React, { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { PlusCircle, List, Pencil, Trash2, AlertTriangle, CheckCircle, Package, X } from "lucide-react";
+import { PlusCircle, List, Pencil, Trash2, AlertTriangle, CheckCircle, Package, X, Wand2, Sparkles, Loader2, Smartphone, Shield, Zap, Eye, CheckCircle2 } from "lucide-react";
 import api from "../../api";
 import ImageUploader from "../../components/ImageUploader.jsx";
 import TablePagination from "../../components/TablePagination.jsx";
@@ -21,6 +21,11 @@ export default function AdminProduits() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
 
+  // États Assistant IA Multi-fournisseurs (Groq, Gemini, Cohere)
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiInstructions, setAiInstructions] = useState("");
+  const [lastAiProvider, setLastAiProvider] = useState(null);
+  const [aiPhotoModal, setAiPhotoModal] = useState(null);
   
   // États de filtre
   const [search, setSearch] = useState("");
@@ -42,25 +47,79 @@ export default function AdminProduits() {
   const initialForm = {
     nom: "",
     categoryId: "",
-    famille: "Cosmétique",
+    famille: "Chargeurs & Blocs Rapides",
     marqueId: "",
-    genre: "femme", // 'femme' | 'homme' | 'mixte'
+    genre: "mixte",
     etat: "neuf",
     description: "",
     prix: "",
     prixPromo: "",
     enPromo: false,
-    isNouveau: false,
+    isNouveau: true,
     noteEtoiles: "5",
-    poids: "1",
-    unite: "Pièce",
+    poids: "0.2",
+    unite: "pièce",
     coutAchat: "",
-    stock: "",
+    stock: "20",
     seuilAlerte: 5,
     imageUrl: "",
     imageUrl2: ""
   };
   const [form, setForm] = useState(initialForm);
+
+  // Fonction de génération automatique IA avec failover
+  async function handleAiGenerate() {
+    if (!form.nom && !form.imageUrl && !aiInstructions) {
+      toast.error("Veuillez renseigner au moins un titre approximatif, une consigne ou uploader une photo pour l'IA.");
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const selectedMarque = marques.find(m => String(m.id) === String(form.marqueId))?.nom || "";
+      const selectedCat = categories.find(c => String(c.id) === String(form.categoryId))?.nom || "";
+
+      const res = await api.post("/admin/ai/enhance-product", {
+        nom: form.nom,
+        marque: selectedMarque,
+        categorie: selectedCat,
+        userInstructions: aiInstructions,
+        photoUrl: form.imageUrl
+      });
+
+      if (res.data && res.data.success) {
+        setLastAiProvider(res.data.provider);
+        setForm(prev => {
+          const next = { ...prev };
+          if (res.data.nom) next.nom = res.data.nom;
+          if (res.data.description) {
+            next.description = `${res.data.description}\n\nSpécifications techniques :\n${res.data.specifications || ""}`;
+          }
+          if (res.data.marque) {
+            const matchedM = marques.find(m => m.nom.toLowerCase().includes(res.data.marque.toLowerCase()));
+            if (matchedM) next.marqueId = matchedM.id;
+          }
+          if (res.data.studioImageUrl) {
+            if (prev.imageUrl && prev.imageUrl !== res.data.studioImageUrl) {
+              // L'utilisateur avait déjà sa photo : lui ouvrir la boîte de comparaison
+              setAiPhotoModal({
+                originalUrl: prev.imageUrl,
+                aiUrl: res.data.studioImageUrl
+              });
+            } else {
+              next.imageUrl = res.data.studioImageUrl;
+            }
+          }
+          return next;
+        });
+        toast.success(`Fiche rédigée avec succès via ${res.data.provider}`);
+      }
+    } catch (err) {
+      console.error("Erreur IA:", err);
+      toast.error("Erreur lors de la génération IA. Le système de secours va être activé.");
+    } finally {
+      setAiLoading(false);
+    }
+  }
 
   function silentSyncProducts() {
     api.get("/admin/products").then((res) => setProducts(res.data)).catch(() => {});
@@ -356,19 +415,7 @@ export default function AdminProduits() {
 
               <select 
                 className="bs-select" 
-                style={{ width: 170 }} 
-                value={filterGenre} 
-                onChange={(e) => setFilterGenre(e.target.value)}
-              >
-                <option value="">Toutes collections</option>
-                <option value="femme">Femme</option>
-                <option value="homme">Homme</option>
-                <option value="mixte">Mixte</option>
-              </select>
-
-              <select 
-                className="bs-select" 
-                style={{ width: 170 }} 
+                style={{ width: 190 }} 
                 value={filterMarque} 
                 onChange={(e) => setFilterMarque(e.target.value)}
               >
@@ -387,8 +434,8 @@ export default function AdminProduits() {
             <thead>
               <tr>
                 <th>Photo</th>
-                <th>Nom & Marque</th>
-                <th>Collection</th>
+                <th>Nom du produit</th>
+                <th>Marque</th>
                 <th>Catégorie / Fournisseur</th>
                 <th>Prix de vente</th>
                 <th>Coût d'achat</th>
@@ -410,7 +457,6 @@ export default function AdminProduits() {
               {!loading && paginatedProducts.map((p) => {
                 const supplierName = p.fournisseur ? (p.fournisseur.nom || p.fournisseur.nomCompany || p.fournisseur.nomContact) : null;
                 const marqueNom = p.marque?.nom || p.Marque?.nom;
-                const g = (p.genre || "femme").toLowerCase();
                 return (
                   <tr key={p.id}>
                     <td style={{ width: 60 }}>
@@ -422,41 +468,22 @@ export default function AdminProduits() {
                     </td>
                     <td style={{ fontWeight: 700, color: "var(--ink)" }}>
                       <div>{p.nom}</div>
-                      {marqueNom && (
-                        <div style={{ fontSize: 11.5, color: "var(--forest)", fontWeight: 700, marginTop: 2 }}>
-                          Marque : {marqueNom}
-                        </div>
-                      )}
                       <div style={{ fontSize: 11.5, color: "#F59E0B", marginTop: 2, display: "flex", alignItems: "center", gap: 3 }}>
                         ⭐ <strong>{(p.avis?.length ? (p.avis.reduce((s, a) => s + a.note, 0) / p.avis.length) : (p.noteEtoiles !== undefined && p.noteEtoiles !== null ? Number(p.noteEtoiles) : 5.0)).toFixed(1)}</strong>
                         <span style={{ color: "var(--muted)", fontWeight: 400 }}>({p.avis?.length || 0} avis)</span>
                       </div>
                     </td>
                     <td>
-                      {g === "homme" ? (
+                      {marqueNom ? (
                         <span style={{ 
                           display: "inline-flex", alignItems: "center", gap: 4,
-                          background: "#EFF6FF", color: "#1E40AF", border: "1.5px solid #BFDBFE",
-                          padding: "3px 9px", borderRadius: 12, fontSize: 11.5, fontWeight: 800 
+                          background: "#EFF6FF", color: "#1D4ED8", border: "1.5px solid #BFDBFE",
+                          padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 800 
                         }}>
-                          Homme
-                        </span>
-                      ) : g === "mixte" ? (
-                        <span style={{ 
-                          display: "inline-flex", alignItems: "center", gap: 4,
-                          background: "#FFFBEB", color: "#B45309", border: "1.5px solid #FDE68A",
-                          padding: "3px 9px", borderRadius: 12, fontSize: 11.5, fontWeight: 800 
-                        }}>
-                          Mixte
+                          {marqueNom}
                         </span>
                       ) : (
-                        <span style={{ 
-                          display: "inline-flex", alignItems: "center", gap: 4,
-                          background: "#FDF2F8", color: "#9D174D", border: "1.5px solid #FBCFE8",
-                          padding: "3px 9px", borderRadius: 12, fontSize: 11.5, fontWeight: 800 
-                        }}>
-                          Femme
-                        </span>
+                        <span style={{ color: "var(--muted)", fontSize: 12 }}>Universel</span>
                       )}
                     </td>
                     <td>
@@ -534,72 +561,18 @@ export default function AdminProduits() {
             </div>
 
             <div className="bs-form-row-2" style={{ marginBottom: 4 }}>
-              {/* CIBLE / COLLECTION (FEMME / HOMME / MIXTE) */}
+              {/* COMPATIBILITÉ SMARTPHONE */}
               <div className="bs-input-group">
-                <label style={{ fontWeight: 800, color: "var(--forest-dark)", display: "flex", alignItems: "center", gap: 6 }}>
-                  Collection / Cible (Genre) *
+                <label style={{ fontWeight: 800, color: "var(--forest-dark)" }}>
+                  Modèles de téléphones compatibles
                 </label>
-                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                  <label style={{
-                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    padding: "11px 12px", borderRadius: 12, cursor: "pointer",
-                    border: form.genre === "femme" ? "2px solid #BE185D" : "1.5px solid var(--line)",
-                    background: form.genre === "femme" ? "#FDF2F8" : "var(--card)",
-                    color: form.genre === "femme" ? "#9D174D" : "var(--ink)",
-                    fontWeight: 800, fontSize: 13.5, transition: "all 0.2s",
-                    boxShadow: form.genre === "femme" ? "0 4px 12px rgba(190, 24, 93, 0.15)" : "none"
-                  }}>
-                    <input 
-                      type="radio" 
-                      name="genre" 
-                      value="femme" 
-                      checked={form.genre === "femme"} 
-                      onChange={() => set("genre", "femme")} 
-                      style={{ display: "none" }}
-                    />
-                    <span>Femme</span>
-                  </label>
-
-                  <label style={{
-                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    padding: "11px 12px", borderRadius: 12, cursor: "pointer",
-                    border: form.genre === "homme" ? "2px solid #1E3A8A" : "1.5px solid var(--line)",
-                    background: form.genre === "homme" ? "#EFF6FF" : "var(--card)",
-                    color: form.genre === "homme" ? "#1E40AF" : "var(--ink)",
-                    fontWeight: 800, fontSize: 13.5, transition: "all 0.2s",
-                    boxShadow: form.genre === "homme" ? "0 4px 12px rgba(30, 58, 138, 0.15)" : "none"
-                  }}>
-                    <input 
-                      type="radio" 
-                      name="genre" 
-                      value="homme" 
-                      checked={form.genre === "homme"} 
-                      onChange={() => set("genre", "homme")} 
-                      style={{ display: "none" }}
-                    />
-                    <span>Homme</span>
-                  </label>
-
-                  <label style={{
-                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    padding: "11px 12px", borderRadius: 12, cursor: "pointer",
-                    border: form.genre === "mixte" ? "2px solid #B45309" : "1.5px solid var(--line)",
-                    background: form.genre === "mixte" ? "#FFFBEB" : "var(--card)",
-                    color: form.genre === "mixte" ? "#B45309" : "var(--ink)",
-                    fontWeight: 800, fontSize: 13.5, transition: "all 0.2s",
-                    boxShadow: form.genre === "mixte" ? "0 4px 12px rgba(180, 83, 9, 0.15)" : "none"
-                  }}>
-                    <input 
-                      type="radio" 
-                      name="genre" 
-                      value="mixte" 
-                      checked={form.genre === "mixte"} 
-                      onChange={() => set("genre", "mixte")} 
-                      style={{ display: "none" }}
-                    />
-                    <span>Mixte</span>
-                  </label>
-                </div>
+                <input
+                  type="text"
+                  placeholder="Ex: iPhone 11 à 15 Pro, Samsung S21-S24, Tecno Camon..."
+                  value={form.compatibilite || ""}
+                  onChange={(e) => set("compatibilite", e.target.value)}
+                  style={{ height: 42 }}
+                />
               </div>
 
               {/* MARQUE DU PRODUIT */}
@@ -826,27 +799,136 @@ export default function AdminProduits() {
               </div>
             </div>
 
+            {/* ── ASSISTANT IA MULTI-FOURNISSEUR (GROQ + GEMINI + COHERE) ── */}
+            <div style={{
+              background: "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)",
+              border: "1px solid #334155",
+              borderRadius: 16,
+              padding: "18px 20px",
+              color: "#fff",
+              boxShadow: "0 10px 25px -5px rgba(0,0,0,0.2)"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ background: "#2563EB", padding: 6, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Sparkles size={18} color="#fff" />
+                  </div>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#fff" }}>
+                      Assistant IA Soilihitech (Groq ⚡ • Gemini 💎 • Cohere 🌐)
+                    </h4>
+                    <span style={{ fontSize: 11.5, color: "#94A3B8" }}>
+                      Génération automatique de photo studio & description vendeuse avec basculement automatique en cas de panne
+                    </span>
+                  </div>
+                </div>
+                {lastAiProvider && (
+                  <span style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background: "rgba(16, 185, 129, 0.2)",
+                    color: "#34D399",
+                    border: "1px solid rgba(16, 185, 129, 0.4)",
+                    padding: "3px 10px",
+                    borderRadius: 12
+                  }}>
+                    Moteur actif : {lastAiProvider}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <input
+                  type="text"
+                  className="bs-input"
+                  style={{
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    color: "#fff",
+                    fontSize: 13
+                  }}
+                  placeholder="Consignes facultatives pour l'IA (ex: Coque antichoc mate avec bords renforcés pour Tecno Spark 20)"
+                  value={aiInstructions}
+                  onChange={(e) => setAiInstructions(e.target.value)}
+                />
+
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={handleAiGenerate}
+                    disabled={aiLoading}
+                    style={{
+                      background: "linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)",
+                      color: "#fff",
+                      border: "none",
+                      padding: "10px 18px",
+                      borderRadius: 12,
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: aiLoading ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      boxShadow: "0 4px 12px rgba(37, 99, 235, 0.35)",
+                      opacity: aiLoading ? 0.8 : 1
+                    }}
+                  >
+                    {aiLoading ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Génération IA en cours (Groq ➔ Gemini ➔ Cohere)...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={16} />
+                        Générer la photo studio & la description
+                      </>
+                    )}
+                  </button>
+
+                  <span style={{ fontSize: 11.5, color: "#64748B" }}>
+                    {form.imageUrl ? "✓ Photo détectée : l'IA va générer une version studio et optimiser la fiche" : "💡 Uploadez d'abord une photo ci-dessous pour un rendu studio encore plus précis"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <div className="bs-input-group">
-              <label>Description du produit</label>
+              <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Description du produit (Courte & Vendeuse)</span>
+                <span style={{ fontSize: 11.5, color: "#2563EB", fontWeight: 700 }}>1 phrase + tirets percutants</span>
+              </label>
               <textarea
                 className="bs-input"
-                style={{ minHeight: 80, resize: "vertical" }}
-                placeholder="Décrivez le produit en quelques mots..."
+                style={{ minHeight: 110, resize: "vertical", lineHeight: 1.6 }}
+                placeholder="Une phrase d'accroche sobre puis 3 ou 4 tirets simples sans émojis..."
                 value={form.description}
                 onChange={(e) => set("description", e.target.value)}
               />
             </div>
 
             <ImageUploader
-              label="Photo Principale"
+              label="Photo Principale (Packshot Officiel)"
               value={form.imageUrl}
               onChange={(url) => set("imageUrl", url)}
+              slot="principale"
+              productContext={{
+                nom: form.nom,
+                marque: marques.find(m => String(m.id) === String(form.marqueId))?.nom || "",
+                categorie: categories.find(c => String(c.id) === String(form.categoryId))?.nom || ""
+              }}
             />
 
             <ImageUploader
-              label="Photo Secondaire (survol & galerie)"
+              label="Photo Secondaire (Angle 45° & Détails)"
               value={form.imageUrl2}
               onChange={(url) => set("imageUrl2", url)}
+              slot="secondaire"
+              productContext={{
+                nom: form.nom,
+                marque: marques.find(m => String(m.id) === String(form.marqueId))?.nom || "",
+                categorie: categories.find(c => String(c.id) === String(form.categoryId))?.nom || ""
+              }}
             />
 
             <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
@@ -978,6 +1060,152 @@ export default function AdminProduits() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL COMPARATEUR PHOTO ORIGINALE vs STUDIO IA */}
+      {aiPhotoModal && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 99999,
+          background: "rgba(15, 23, 42, 0.75)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 16
+        }}>
+          <div style={{
+            background: "#ffffff", borderRadius: 20, width: "100%", maxWidth: 720,
+            overflow: "hidden", boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+            animation: "popIn 0.25s ease-out", border: "1px solid var(--line)"
+          }}>
+            {/* EN-TÊTE MODALE */}
+            <div style={{
+              padding: "16px 20px", background: "linear-gradient(135deg, #1E293B, #0F172A)",
+              color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ background: "#2563EB", padding: 6, borderRadius: 8 }}>
+                  <Eye size={18} color="#fff" />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#fff" }}>
+                    L'IA a généré une photo studio publicitaire
+                  </h4>
+                  <span style={{ fontSize: 11.5, color: "#94A3B8" }}>
+                    Comparez avec votre photo actuelle et décidez quelle photo afficher sur la boutique
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAiPhotoModal(null)}
+                style={{ background: "none", border: "none", color: "#94A3B8", cursor: "pointer", padding: 4 }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* COMPARATEUR DEUX COLONNES */}
+            <div style={{ padding: 20, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              {/* Colonne 1 : Votre photo originale */}
+              <div style={{
+                border: "2px solid #CBD5E1", borderRadius: 14, padding: 14,
+                background: "#F8FAFC", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center"
+              }}>
+                <span style={{
+                  fontSize: 11, fontWeight: 800, textTransform: "uppercase",
+                  color: "#64748B", letterSpacing: "0.5px", marginBottom: 10
+                }}>
+                  1. Votre photo originale
+                </span>
+                <div style={{
+                  width: "100%", height: 180, borderRadius: 10, background: "#fff",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  border: "1px solid #CBD5E1", overflow: "hidden", marginBottom: 14
+                }}>
+                  <img
+                    src={aiPhotoModal.originalUrl}
+                    alt="Photo originale"
+                    style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAiPhotoModal(null);
+                    toast.success("Votre photo d'origine est conservée.");
+                  }}
+                  style={{
+                    width: "100%", padding: "10px 14px", borderRadius: 10,
+                    background: "#F1F5F9", border: "1.5px solid #CBD5E1",
+                    color: "#334155", fontWeight: 700, fontSize: 13,
+                    cursor: "pointer"
+                  }}
+                >
+                  Garder ma photo originale
+                </button>
+              </div>
+
+              {/* Colonne 2 : Proposition Studio IA */}
+              <div style={{
+                border: "2px solid #3B82F6", borderRadius: 14, padding: 14,
+                background: "#EFF6FF", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center",
+                boxShadow: "0 8px 24px rgba(37,99,235,0.12)"
+              }}>
+                <span style={{
+                  fontSize: 11, fontWeight: 800, textTransform: "uppercase",
+                  color: "#1D4ED8", letterSpacing: "0.5px", marginBottom: 10,
+                  display: "flex", alignItems: "center", gap: 4
+                }}>
+                  <Sparkles size={13} color="#2563EB" /> 2. Photo Studio IA (Fond Blanc)
+                </span>
+                <div style={{
+                  width: "100%", height: 180, borderRadius: 10, background: "#ffffff",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  border: "1px solid #93C5FD", overflow: "hidden", marginBottom: 14
+                }}>
+                  <img
+                    src={aiPhotoModal.aiUrl}
+                    alt="Photo Studio IA"
+                    style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+                  />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm(f => ({ ...f, imageUrl: aiPhotoModal.aiUrl, imageUrl2: f.imageUrl || f.imageUrl2 }));
+                      setAiPhotoModal(null);
+                      toast.success("Photo studio IA adoptée en photo principale !");
+                    }}
+                    style={{
+                      width: "100%", padding: "10px 14px", borderRadius: 10,
+                      background: "linear-gradient(135deg, #2563EB, #1D4ED8)", border: "none",
+                      color: "#fff", fontWeight: 800, fontSize: 13,
+                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      boxShadow: "0 4px 14px rgba(37,99,235,0.3)"
+                    }}
+                  >
+                    <CheckCircle2 size={16} /> Adopter la photo de l'IA
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm(f => ({ ...f, imageUrl2: aiPhotoModal.aiUrl }));
+                      setAiPhotoModal(null);
+                      toast.success("Photo IA conservée en photo secondaire !");
+                    }}
+                    style={{
+                      width: "100%", padding: "7px 10px", borderRadius: 8,
+                      background: "transparent", border: "1px solid #BFDBFE",
+                      color: "#1E40AF", fontWeight: 700, fontSize: 11.5,
+                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4
+                    }}
+                  >
+                    Garder ma photo + mettre l'IA en 2ème photo
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -234,57 +234,30 @@ export default function ProductDetail() {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
             <span style={{ color: "var(--sage)", fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              {product.Category?.nom || "Beauté & Soins"}
+              {product.Category?.nom || "Accessoires Téléphonie"}
             </span>
 
             {(product.marque?.nom || product.Marque?.nom) && (
               <span style={{ 
                 display: "inline-flex", alignItems: "center", gap: 6,
-                background: "var(--forest-light)", color: "var(--forest-dark)", 
-                padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 800,
-                border: "1px solid var(--line)"
+                background: "#EFF6FF", color: "#1D4ED8", 
+                padding: "3px 12px", borderRadius: 12, fontSize: 12.5, fontWeight: 800,
+                border: "1px solid #BFDBFE"
               }}>
                 {(product.marque?.logoUrl || product.Marque?.logoUrl) && (
                   <img src={product.marque?.logoUrl || product.Marque?.logoUrl} alt="" style={{ width: 16, height: 16, objectFit: "contain" }} />
                 )}
-                Marque : {product.marque?.nom || product.Marque?.nom}
+                Marque officielle : {product.marque?.nom || product.Marque?.nom}
               </span>
             )}
 
-            {(() => {
-              const g = (product.genre || "femme").toLowerCase();
-              if (g === "homme") {
-                return (
-                  <span style={{ 
-                    display: "inline-flex", alignItems: "center", gap: 5,
-                    background: "#EFF6FF", color: "#1E40AF", border: "1.5px solid #BFDBFE",
-                    padding: "3px 12px", borderRadius: 12, fontSize: 12, fontWeight: 800 
-                  }}>
-                    Collection Homme
-                  </span>
-                );
-              }
-              if (g === "mixte") {
-                return (
-                  <span style={{ 
-                    display: "inline-flex", alignItems: "center", gap: 5,
-                    background: "#FFFBEB", color: "#B45309", border: "1.5px solid #FDE68A",
-                    padding: "3px 12px", borderRadius: 12, fontSize: 12, fontWeight: 800 
-                  }}>
-                    Collection Mixte
-                  </span>
-                );
-              }
-              return (
-                <span style={{ 
-                  display: "inline-flex", alignItems: "center", gap: 5,
-                  background: "#FDF2F8", color: "#9D174D", border: "1.5px solid #FBCFE8",
-                  padding: "3px 12px", borderRadius: 12, fontSize: 12, fontWeight: 800 
-                }}>
-                  Collection Femme
-                </span>
-              );
-            })()}
+            <span style={{ 
+              display: "inline-flex", alignItems: "center", gap: 5,
+              background: "#F0FDF4", color: "#166534", border: "1.5px solid #BBF7D0",
+              padding: "3px 12px", borderRadius: 12, fontSize: 12, fontWeight: 800 
+            }}>
+              ✓ Garantie 100% Neuf & Testé
+            </span>
           </div>
           <h1 style={{ fontSize: 32, margin: "0 0 12px", color: "var(--forest-dark)", display: "flex", alignItems: "center", gap: 12 }}>
             {product.nom}

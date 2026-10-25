@@ -162,7 +162,7 @@ export default function Register() {
                 <UserPlus size={26} color="var(--forest)" />
               </div>
               <h2>Créer un compte client</h2>
-              <p>Rejoignez-nous pour commander vos cosmétiques, soins et accessoires en quelques clics</p>
+              <p>Rejoignez Soilihitech pour commander vos chargeurs, écouteurs, coques et accessoires en quelques clics</p>
             </div>
 
             {erreur && (
@@ -174,7 +174,7 @@ export default function Register() {
 
             <form onSubmit={onSubmitRegister} className="bs-auth-form">
               <div className="bs-input-group">
-                <label>Nom complet</label>
+                <label>Nom complet *</label>
                 <div className="bs-input-wrapper">
                   <User size={18} className="bs-input-icon" />
                   <input
@@ -188,7 +188,7 @@ export default function Register() {
               </div>
 
               <div className="bs-input-group">
-                <label>Téléphone Mobile *</label>
+                <label>Numéro de téléphone mobile *</label>
                 <PhoneInputSelect
                   value={form.telephone}
                   onChange={(val) => setForm((f) => ({ ...f, telephone: val }))}
@@ -197,7 +197,10 @@ export default function Register() {
               </div>
 
               <div className="bs-input-group">
-                <label>Adresse e-mail (Optionnel)</label>
+                <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>Adresse e-mail (Optionnel)</span>
+                  <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>Sans OTP si non renseigné</span>
+                </label>
                 <div className="bs-input-wrapper">
                   <Mail size={18} className="bs-input-icon" />
                   <input

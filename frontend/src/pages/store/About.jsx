@@ -50,7 +50,7 @@ export default function About() {
         return slides[0].imageUrl;
       }
     }
-    return "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1600&q=80";
+    return "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=1600&q=80";
   })();
 
   // Image dynamique de présentation
@@ -65,7 +65,7 @@ export default function About() {
         return slides[1].imageUrl;
       }
     }
-    return boutique?.logoUrl || "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=800&q=80";
+    return boutique?.logoUrl || "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80";
   })();
 
   return (
@@ -123,10 +123,10 @@ export default function About() {
             <Sparkles size={15} color="#F472B6" /> Notre Histoire & Engagement
           </div>
           <h1 style={{ fontSize: "clamp(24px, 5vw, 36px)", fontWeight: 900, margin: 0, letterSpacing: "-0.5px" }}>
-            À propos de {boutique?.nom || "Élégance & Cosmétiques"}
+            À propos de {boutique?.nom || "Soilihitech"}
           </h1>
           <p style={{ fontSize: "clamp(13.5px, 3.5vw, 16px)", marginTop: 10, opacity: 0.95, lineHeight: 1.6 }}>
-            Votre référence exclusive en cosmétiques de luxe, soins visage & corps, parfumerie, peignes et broches bijoux raffinées.
+            Votre référence exclusive en accessoires téléphoniques : chargeurs rapides GaN, glaces 9D, coques antichoc, câbles et écouteurs sans fil.
           </p>
         </div>
       </div>
@@ -139,7 +139,7 @@ export default function About() {
           </h2>
           <p style={{ fontSize: 14.5, lineHeight: 1.75, color: "var(--ink)", marginBottom: 20 }}>
             {boutique?.aProposText || 
-              "Bienvenue chez Élégance & Cosmétiques. Nous sélectionnons avec passion les meilleurs soins de beauté, sérums pour le visage et le corps, parfums d'exception, peignes en bois antistatiques et broches bijoux raffinées. Tous nos articles sont certifiés 100% authentiques et rigoureusement choisis auprès des plus grandes marques pour sublimer votre élégance au quotidien."
+              "Bienvenue chez Soilihitech. Nous sélectionnons avec exigence le meilleur des accessoires pour vos smartphones : blocs de charge rapide de 20W à 65W GaN, câbles certifiés Type-C et Lightning, protections écran 9D et antiespion, pochettes silicone et écouteurs sans fil haute performance. Tous nos articles sont testés, garantis neufs et compatibles avec les marques leaders : Apple, Samsung, Tecno, Infinix, Xiaomi, Oraimo et Anker."
             }
           </p>
           
@@ -147,40 +147,40 @@ export default function About() {
             {/* Card 1 */}
             <div className="modern-service-card" style={{ padding: 24 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--forest-dark)", fontWeight: 800, marginBottom: 8, fontSize: 15 }}>
-                <ShieldCheck size={20} color="var(--forest)" /> 100% Authentique
+                <ShieldCheck size={20} color="var(--forest)" /> 100% Authentique & Testé
               </div>
               <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
-                Tous nos cosmétiques et soins sont originaux et certifiés de qualité supérieure.
+                Tous nos accessoires électroniques sont testés avant expédition pour garantir sécurité et longévité.
               </p>
             </div>
 
             {/* Card 2 */}
             <div className="modern-service-card" style={{ padding: 24 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--forest-dark)", fontWeight: 800, marginBottom: 8, fontSize: 15 }}>
-                <Truck size={20} color="var(--forest)" /> Livraison Rapide
+                <Truck size={20} color="var(--forest)" /> Livraison Express
               </div>
               <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
-                Livraison express soignée directement à domicile ou en point de retrait.
+                Livraison soignée et rapide directement chez vous ou en point relais.
               </p>
             </div>
 
             {/* Card 3 */}
             <div className="modern-service-card" style={{ padding: 24 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--forest-dark)", fontWeight: 800, marginBottom: 8, fontSize: 15 }}>
-                <Package size={20} color="var(--accent)" /> Suivi WhatsApp
+                <Package size={20} color="var(--accent)" /> Suivi & Conseil WhatsApp
               </div>
               <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
-                Notification directe et suivi de votre colis en temps réel jusqu'à réception.
+                Assistance directe pour trouver la compatibilité exacte de votre téléphone.
               </p>
             </div>
 
             {/* Card 4 */}
             <div className="modern-service-card" style={{ padding: 24 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--forest-dark)", fontWeight: 800, marginBottom: 8, fontSize: 15 }}>
-                <Shield size={20} color="#0284C7" /> Emballage Raffiné
+                <Shield size={20} color="#0284C7" /> Protection Renforcée
               </div>
               <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
-                Vos soins et accessoires de beauté sont emballés avec la plus grande délicatesse.
+                Glaces et coques anti-chocs conçues pour protéger votre écran contre les chutes sévères.
               </p>
             </div>
           </div>
@@ -189,7 +189,7 @@ export default function About() {
           <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 16 }}>
             <div className="modern-service-card" style={{ padding: "16px 10px", alignItems: "center", textAlign: "center" }}>
               <div style={{ fontSize: 22, fontWeight: 900, color: "var(--forest)", marginBottom: 4 }}><CountUp end={6759} />+</div>
-              <div style={{ fontSize: 12, color: "var(--forest-dark)", fontWeight: 700, lineHeight: 1.3 }}>Clientes & Clients<br/>Comblés</div>
+              <div style={{ fontSize: 12, color: "var(--forest-dark)", fontWeight: 700, lineHeight: 1.3 }}>Clients<br/>Satisfaits</div>
             </div>
             <div className="modern-service-card" style={{ padding: "16px 10px", alignItems: "center", textAlign: "center" }}>
               <div style={{ fontSize: 22, fontWeight: 900, color: "var(--accent)", marginBottom: 4 }}><CountUp end={35009} />+</div>
@@ -197,11 +197,11 @@ export default function About() {
             </div>
             <div className="modern-service-card" style={{ padding: "16px 10px", alignItems: "center", textAlign: "center" }}>
               <div style={{ fontSize: 22, fontWeight: 900, color: "#0284C7", marginBottom: 4 }}><CountUp end={47995} />+</div>
-              <div style={{ fontSize: 12, color: "var(--forest-dark)", fontWeight: 700, lineHeight: 1.3 }}>Commandes<br/>Livrées</div>
+              <div style={{ fontSize: 12, color: "var(--forest-dark)", fontWeight: 700, lineHeight: 1.3 }}>Accessoires<br/>Livrés</div>
             </div>
             <div className="modern-service-card" style={{ padding: "16px 10px", alignItems: "center", textAlign: "center" }}>
-              <div style={{ fontSize: 22, fontWeight: 900, color: "#BE185D", marginBottom: 4 }}><CountUp end={67595} />+</div>
-              <div style={{ fontSize: 12, color: "var(--forest-dark)", fontWeight: 700, lineHeight: 1.3 }}>Articles<br/>Beauté Expédiés</div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#2563EB", marginBottom: 4 }}><CountUp end={67595} />+</div>
+              <div style={{ fontSize: 12, color: "var(--forest-dark)", fontWeight: 700, lineHeight: 1.3 }}>Recharges &<br/>Glaces Expédiées</div>
             </div>
           </div>
         </div>
@@ -234,8 +234,8 @@ export default function About() {
               <Award size={20} color="var(--forest-dark)" />
             </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 13.5, color: "var(--forest-dark)" }}>Grandes Marques Certifiées</div>
-              <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Cosmétiques, peignes & broches d'exception</div>
+              <div style={{ fontWeight: 800, fontSize: 13.5, color: "var(--forest-dark)" }}>Grandes Marques Officielles</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Apple, Samsung, Tecno, Anker, Baseus...</div>
             </div>
           </div>
         </div>

@@ -30,6 +30,7 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
     } catch (e) { return []; }
   });
   const [results, setResults] = useState([]);
+  const [smartFallback, setSmartFallback] = useState(null);
   const [allProducts, setAllProducts] = useState(() => {
     try {
       const ls = localStorage.getItem(`cached_products_${SLUG}`);
@@ -79,18 +80,67 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
     }).catch(() => { });
   }, [boutiqueContext]);
 
-  // Live search filtering
+  // Live intelligent search filtering for Soilihitech
+  const stripAccents = (str) =>
+    (str || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
   useEffect(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) {
+    const qRaw = query.trim();
+    if (!qRaw) {
       setResults([]);
+      setSmartFallback(null);
       setShowDropdown(false);
       return;
     }
-    const filtered = allProducts
-      .filter(p => p.nom?.toLowerCase().includes(q))
-      .slice(0, 6);
+
+    const q = stripAccents(qRaw);
+
+    const filtered = allProducts.filter(p => {
+      const nom = stripAccents(p.nom);
+      const marque = stripAccents(p.marque?.nom || p.Marque?.nom);
+      const cat = stripAccents(p.Category?.nom);
+      const fam = stripAccents(p.Category?.famille || p.famille);
+      return nom.includes(q) || marque.includes(q) || cat.includes(q) || fam.includes(q);
+    }).slice(0, 6);
+
     setResults(filtered);
+
+    if (filtered.length === 0) {
+      // Analyse intelligente des mots-clés
+      let suggestedTag = null;
+      if (q.includes("charg") || q.includes("bloc") || q.includes("prise")) {
+        suggestedTag = { label: "⚡ Voir nos Chargeurs Rapides (20W à 65W)", url: "/catalogue?famille=Chargeurs" };
+      } else if (q.includes("glac") || q.includes("verr") || q.includes("film") || q.includes("protect")) {
+        suggestedTag = { label: "🛡️ Découvrir nos Glaces Trempées 9D & Antiespion", url: "/catalogue?famille=Protections" };
+      } else if (q.includes("coq") || q.includes("poch") || q.includes("hous") || q.includes("etui")) {
+        suggestedTag = { label: "📱 Voir nos Pochettes & Coques Antichoc", url: "/catalogue?famille=Pochettes" };
+      } else if (q.includes("ecout") || q.includes("airpod") || q.includes("casq") || q.includes("son")) {
+        suggestedTag = { label: "🎵 Explorer les Écouteurs Sans Fil & AirPods", url: "/catalogue?famille=Audio" };
+      } else if (q.includes("cabl") || q.includes("fil")) {
+        suggestedTag = { label: "🔌 Découvrir nos Câbles USB-C & Lightning", url: "/catalogue?famille=Câbles" };
+      } else if (q.includes("power") || q.includes("batt")) {
+        suggestedTag = { label: "🔋 Voir nos Batteries Externes 20 000mAh", url: "/catalogue?famille=Powerbanks" };
+      } else if (q.includes("iph") || q.includes("app")) {
+        suggestedTag = { label: "🍎 Tous les accessoires iPhone / Apple", url: "/catalogue?search=Apple" };
+      } else if (q.includes("sam")) {
+        suggestedTag = { label: "⚡ Tous les accessoires Samsung Galaxy", url: "/catalogue?search=Samsung" };
+      } else if (q.includes("tec")) {
+        suggestedTag = { label: "📱 Tous les accessoires Tecno", url: "/catalogue?search=Tecno" };
+      } else if (q.includes("inf")) {
+        suggestedTag = { label: "📱 Tous les accessoires Infinix", url: "/catalogue?search=Infinix" };
+      } else if (q.includes("xiao") || q.includes("red")) {
+        suggestedTag = { label: "⚡ Tous les accessoires Xiaomi & Redmi", url: "/catalogue?search=Xiaomi" };
+      }
+
+      setSmartFallback({
+        query: qRaw,
+        suggestedTag,
+        recommendations: allProducts.slice(0, 3)
+      });
+    } else {
+      setSmartFallback(null);
+    }
+
     setShowDropdown(true);
   }, [query, allProducts]);
 
@@ -165,10 +215,10 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
                 fontSize: 22, fontWeight: 900, color: "var(--forest-dark)", letterSpacing: "0.6px",
                 textTransform: "uppercase", lineHeight: 1.15
               }}>
-                {boutique?.nom || "Élégance & Cosmétiques"}
+                {boutique?.nom || "Soilihitech"}
               </span>
               <span style={{
-                fontSize: 11, fontWeight: 800, color: "var(--forest, #BE185D)", textTransform: "uppercase",
+                fontSize: 11, fontWeight: 800, color: "var(--forest, #2563EB)", textTransform: "uppercase",
                 letterSpacing: "1.8px", marginTop: 3, display: "flex", alignItems: "center", gap: 6
               }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 8px #10B981" }}></span>
@@ -177,35 +227,35 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
             </div>
           </Link>
 
-          {/* VISIBLE & PROMINENT SEARCH INPUT (DESKTOP) - MAXIMUM LONGUEUR BIEN CADRÉE */}
+          {/* RECHERCHE INTELLIGENTE UNIQUE ET DYNAMIQUE (DESKTOP) */}
           <div ref={searchRef} className="bs-header-search" style={{ 
               flex: 1, maxWidth: 860, margin: "0 24px", height: 48, position: "relative", zIndex: 2100,
               transition: "all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.2)"
           }}>
             {/* Overlay background when search is focused */}
             <div style={{
-              position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(3px)",
+              position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)",
               opacity: isSearchFocused ? 1 : 0, pointerEvents: isSearchFocused ? "auto" : "none",
               transition: "opacity 0.25s ease", zIndex: -1
             }} onClick={() => setIsSearchFocused(false)}></div>
 
             <form onSubmit={onSearch} style={{
               display: "flex", alignItems: "center", background: isSearchFocused ? "#ffffff" : "var(--paper)",
-              border: isSearchFocused ? "2px solid var(--forest)" : "1.5px solid var(--line)", 
+              border: isSearchFocused ? "2px solid #2563EB" : "1.5px solid var(--line)", 
               borderRadius: 30, padding: "0 18px",
               position: "absolute", left: 0, top: 0, bottom: 0, right: 0,
-              boxShadow: isSearchFocused ? "0 10px 36px rgba(190, 24, 93, 0.16)" : "0 2px 8px rgba(0,0,0,0.03)",
+              boxShadow: isSearchFocused ? "0 10px 36px rgba(37, 99, 235, 0.2)" : "0 2px 8px rgba(0,0,0,0.03)",
               transition: "all 0.25s ease",
               zIndex: 20
             }}>
-              <Search size={18} color={isSearchFocused ? "var(--forest)" : "var(--muted)"} style={{ marginRight: 10, flexShrink: 0, transition: "color 0.2s" }} />
+              <Search size={18} color={isSearchFocused ? "#2563EB" : "var(--muted)"} style={{ marginRight: 10, flexShrink: 0, transition: "color 0.2s" }} />
               <input
-                placeholder={isSearchFocused ? "Tapez un nom, soin visage, peigne, parfum, broche..." : "Rechercher un soin, parfum, maquillage, peigne, broche..."}
+                placeholder={isSearchFocused ? "Ex: char, 20w, iphone, tecno spark, airpods, glace, pochette..." : "Rechercher un accessoire, chargeur, glace, pochette, marque (iPhone, Samsung, Tecno...)"}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onFocus={() => { 
                   setIsSearchFocused(true);
-                  if (results.length > 0) setShowDropdown(true); 
+                  if (query.trim()) setShowDropdown(true); 
                 }}
                 onBlur={() => {
                   setTimeout(() => setIsSearchFocused(false), 400);
@@ -227,57 +277,156 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
               )}
             </form>
 
-            {/* LIVE SEARCH DROPDOWN PLEINE LARGEUR */}
-            {showDropdown && isSearchFocused && (
+            {/* LIVE SEARCH DROPDOWN PLEINE LARGEUR & INTELLIGENT */}
+            {showDropdown && isSearchFocused && query.trim() && (
               <div style={{
                 position: "absolute", top: "calc(100% + 10px)", left: 0, width: "100%",
                 background: "#ffffff", borderRadius: 18, border: "1.5px solid var(--line)",
                 boxShadow: "0 18px 50px rgba(0,0,0,0.18)", zIndex: 3000, overflow: "hidden",
-                animation: "popIn 0.2s ease-out"
+                animation: "popIn 0.2s ease-out", maxHeight: "80vh", overflowY: "auto"
               }}>
                 {results.length === 0 ? (
-                  <div style={{ padding: "20px 24px", fontSize: 14, color: "var(--muted)", textAlign: "center" }}>
-                    Aucun produit trouvé pour « <strong>{query}</strong> »
+                  <div style={{ padding: "20px 24px" }}>
+                    <div style={{
+                      background: "#FEF2F2", border: "1px solid #FEE2E2", borderRadius: 12,
+                      padding: "12px 16px", color: "#991B1B", fontSize: 13.5, fontWeight: 600,
+                      marginBottom: 14, display: "flex", alignItems: "center", gap: 10
+                    }}>
+                      <Search size={18} color="#DC2626" />
+                      <span>Aucun accessoire exact trouvé pour « <strong>{query}</strong> ».</span>
+                    </div>
+
+                    {smartFallback?.suggestedTag && (
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", color: "#1E40AF", letterSpacing: "0.8px", marginBottom: 6 }}>
+                          Suggestion intelligente :
+                        </div>
+                        <button
+                          onMouseDown={() => {
+                            setShowDropdown(false);
+                            navigate(smartFallback.suggestedTag.url);
+                          }}
+                          style={{
+                            width: "100%", padding: "10px 16px", borderRadius: 12,
+                            background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
+                            color: "#fff", border: "none", fontWeight: 700, fontSize: 13.5,
+                            cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between",
+                            boxShadow: "0 4px 14px rgba(37,99,235,0.25)"
+                          }}
+                        >
+                          <span>{smartFallback.suggestedTag.label}</span>
+                          <span style={{ fontSize: 15 }}>→</span>
+                        </button>
+                      </div>
+                    )}
+
+                    <div style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.8px", marginBottom: 10 }}>
+                      Accessoires recommandés pour vous :
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {(smartFallback?.recommendations || allProducts.slice(0, 3)).map((p) => {
+                        const marqueNom = p.marque?.nom || p.Marque?.nom;
+                        return (
+                          <div
+                            key={p.id}
+                            onMouseDown={() => goToProduct(p.id)}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 12, padding: "8px 12px",
+                              borderRadius: 10, background: "var(--paper)", cursor: "pointer",
+                              border: "1px solid var(--line)", transition: "all 0.15s"
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.borderColor = "#2563EB"}
+                            onMouseLeave={e => e.currentTarget.style.borderColor = "var(--line)"}
+                          >
+                            <img
+                              src={p.imageUrl || "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=80&q=80"}
+                              alt={p.nom}
+                              style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover", flexShrink: 0 }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {p.nom}
+                              </div>
+                              <div style={{ fontSize: 11.5, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
+                                {marqueNom && <span style={{ fontWeight: 700, color: "#2563EB" }}>{marqueNom}</span>}
+                                <span>• {p.Category?.nom || "Accessoire"}</span>
+                              </div>
+                            </div>
+                            <div style={{ fontWeight: 800, fontSize: 13, color: "#2563EB" }}>
+                              {fcfa(p.prixPromo || p.prix)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--line)", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)" }}>Recherches fréquentes :</span>
+                      {["Chargeurs 20W", "Glaces 9D", "Pochettes Silicone", "AirPods", "Câbles Type-C", "Powerbank"].map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onMouseDown={() => {
+                            setQuery(tag);
+                            setShowDropdown(false);
+                            navigate(`/catalogue?search=${encodeURIComponent(tag)}`);
+                          }}
+                          style={{
+                            background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 12,
+                            padding: "3px 10px", fontSize: 11.5, fontWeight: 600, color: "var(--ink)", cursor: "pointer"
+                          }}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <>
-                    <div style={{ padding: "10px 18px 6px", fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", color: "var(--muted)", borderBottom: "1px solid var(--line)" }}>
-                      Résultats suggérés ({results.length})
+                    <div style={{ padding: "10px 18px 6px", fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", color: "var(--muted)", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between" }}>
+                      <span>Suggestions instantanées ({results.length})</span>
+                      <span style={{ color: "#2563EB", fontWeight: 700 }}>Soilihitech</span>
                     </div>
-                    {results.map(p => (
-                      <div key={p.id} onMouseDown={() => goToProduct(p.id)} style={{
-                        display: "flex", alignItems: "center", gap: 14, padding: "12px 18px",
-                        cursor: "pointer", borderBottom: "1px solid var(--line)", transition: "background 0.15s"
-                      }}
-                        onMouseEnter={e => e.currentTarget.style.background = "var(--paper)"}
-                        onMouseLeave={e => e.currentTarget.style.background = "#fff"}
-                      >
-                        <img
-                          src={p.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80"}
-                          alt={p.nom}
-                          style={{ width: 46, height: 46, borderRadius: 10, objectFit: "cover", flexShrink: 0, border: "1px solid var(--line)" }}
-                        />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {p.nom}
+                    {results.map(p => {
+                      const marqueNom = p.marque?.nom || p.Marque?.nom;
+                      return (
+                        <div key={p.id} onMouseDown={() => goToProduct(p.id)} style={{
+                          display: "flex", alignItems: "center", gap: 14, padding: "12px 18px",
+                          cursor: "pointer", borderBottom: "1px solid var(--line)", transition: "background 0.15s"
+                        }}
+                          onMouseEnter={e => e.currentTarget.style.background = "var(--paper)"}
+                          onMouseLeave={e => e.currentTarget.style.background = "#fff"}
+                        >
+                          <img
+                            src={p.imageUrl || "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=80&q=80"}
+                            alt={p.nom}
+                            style={{ width: 46, height: 46, borderRadius: 10, objectFit: "cover", flexShrink: 0, border: "1px solid var(--line)" }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {p.nom}
+                            </div>
+                            <div style={{ fontSize: 12.5, color: "var(--muted)", display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                              {marqueNom && (
+                                <span style={{
+                                  fontSize: 10.5, fontWeight: 800, padding: "1px 7px", borderRadius: 6,
+                                  background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE"
+                                }}>
+                                  {marqueNom}
+                                </span>
+                              )}
+                              <span>{p.Category?.nom || "Accessoire"}</span>
+                            </div>
                           </div>
-                          <div style={{ fontSize: 12.5, color: "var(--muted)", display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
-                            <span>{p.Category?.nom || "Beauté"}</span>
-                            {p.genre && (
-                              <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", padding: "1px 6px", borderRadius: 6, background: "var(--paper)", border: "1px solid var(--line)" }}>
-                                {p.genre}
-                              </span>
-                            )}
+                          <div style={{ fontWeight: 800, fontSize: 14.5, color: "#1E3A8A", flexShrink: 0 }}>
+                            {fcfa(p.prixPromo || p.prix)}
                           </div>
                         </div>
-                        <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--forest-dark)", flexShrink: 0 }}>
-                          {fcfa(p.prixPromo || p.prix)}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <div
                       onMouseDown={() => { setShowDropdown(false); navigate(`/catalogue?search=${encodeURIComponent(query.trim())}`); }}
-                      style={{ padding: "12px 18px", textAlign: "center", fontSize: 13.5, color: "var(--forest)", fontWeight: 800, cursor: "pointer", background: "var(--forest-light)", transition: "background 0.15s" }}
+                      style={{ padding: "12px 18px", textAlign: "center", fontSize: 13.5, color: "#2563EB", fontWeight: 800, cursor: "pointer", background: "#EFF6FF", transition: "background 0.15s" }}
                     >
                       Voir tous les résultats pour « {query} » →
                     </div>
@@ -904,10 +1053,10 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
         >
           <form onSubmit={onSearch} className="bs-mobile-search-form" onClick={(e) => e.stopPropagation()}>
             <div className="bs-mobile-search-pill">
-              <Search size={18} color="var(--forest)" style={{ flexShrink: 0 }} />
+              <Search size={18} color="#2563EB" style={{ flexShrink: 0 }} />
               <input
                 ref={mobileSearchInputRef}
-                placeholder="Rechercher un produit, fruit..."
+                placeholder="Ex: char, glace, pochette, airpods..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 autoComplete="off"
@@ -928,8 +1077,42 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
           {query.trim() && (
             <div className="bs-mobile-search-results" onClick={(e) => e.stopPropagation()}>
               {results.length === 0 ? (
-                <div style={{ padding: "20px", textAlign: "center", color: "var(--muted)", fontSize: 13.5, fontWeight: 600 }}>
-                  Aucun produit trouvé pour « {query} »
+                <div style={{ padding: "16px" }}>
+                  <div style={{ color: "#DC2626", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
+                    Aucun accessoire trouvé pour « {query} »
+                  </div>
+                  {smartFallback?.suggestedTag && (
+                    <button
+                      onClick={() => {
+                        closeMobileSearch();
+                        navigate(smartFallback.suggestedTag.url);
+                      }}
+                      style={{
+                        width: "100%", padding: "10px 14px", borderRadius: 10,
+                        background: "#2563EB", color: "#fff", border: "none",
+                        fontWeight: 700, fontSize: 13, marginBottom: 14, textAlign: "left"
+                      }}
+                    >
+                      {smartFallback.suggestedTag.label} →
+                    </button>
+                  )}
+                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8 }}>
+                    Suggestions pour vous :
+                  </div>
+                  {(smartFallback?.recommendations || allProducts.slice(0, 3)).map((p) => (
+                    <div
+                      key={p.id}
+                      onClick={() => { closeMobileSearch(); goToProduct(p.id); }}
+                      className="bs-mobile-search-item"
+                    >
+                      <img src={p.imageUrl || "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=60&q=80"} alt={p.nom} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="nom">{p.nom}</div>
+                        <div className="cat">{p.marque?.nom || p.Category?.nom || "Accessoire"}</div>
+                      </div>
+                      <div className="prix">{fcfa(p.prixPromo || p.prix)}</div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <>
@@ -939,10 +1122,13 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
                       onClick={() => { closeMobileSearch(); goToProduct(p.id); }}
                       className="bs-mobile-search-item"
                     >
-                      <img src={p.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=60&q=80"} alt={p.nom} />
+                      <img src={p.imageUrl || "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=60&q=80"} alt={p.nom} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div className="nom">{p.nom}</div>
-                        <div className="cat">{p.Category?.nom}</div>
+                        <div className="cat">
+                          {(p.marque?.nom || p.Marque?.nom) ? `${p.marque?.nom || p.Marque?.nom} • ` : ""}
+                          {p.Category?.nom || "Accessoire"}
+                        </div>
                       </div>
                       <div className="prix">{fcfa(p.prixPromo || p.prix)}</div>
                     </div>

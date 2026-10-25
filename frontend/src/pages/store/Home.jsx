@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, ArrowRight, Star, CheckCircle, MessageCircle, X, ZoomIn, Truck, ShieldCheck, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowRight, Star, CheckCircle, MessageCircle, X, ZoomIn, Truck, ShieldCheck, Sparkles, Leaf, Zap } from "lucide-react";
 import api, { SLUG } from "../../api";
 import ProductCard from "../../components/ProductCard.jsx";
 import { subscribeRealtime } from "../../utils/realtime.js";
@@ -9,35 +9,39 @@ import { useData } from "../../context/DataContext.jsx";
 const DEFAULT_SLIDES = [
   {
     id: 1,
-    tag: "NOUVELLE COLLECTION",
-    title: "Cosmétique, Soins & Beauté d'Exception",
-    subtitle: "Sublimez votre éclat au quotidien avec nos sérums, crèmes et soins pour Femme & Homme.",
-    imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1600&q=80",
-    buttonText: "Découvrir la collection",
-    linkUrl: "/catalogue",
-    editorial: "Éclat & Pureté"
+    tag: "⚡ CHARGE ULTRA RAPIDE GaN",
+    title: "Chargeurs 20W à 65W & Câbles Renforcés",
+    subtitle: "Rechargez votre iPhone, Samsung, Tecno ou Xiaomi en un temps record avec notre sélection haute performance certifiée anti-surchauffe.",
+    imageUrl: "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=1200&q=80",
+    buttonText: "Voir les chargeurs",
+    linkUrl: "/catalogue?famille=Chargeurs",
+    editorial: "Soilihitech Power",
+    objectPosition: "center center"
   },
   {
     id: 2,
-    tag: "ACCESSOIRES & BIJOUX",
-    title: "Broches Élégantes & Accessoires Tendance",
-    subtitle: "Magnifiques broches raffinées, pinces perles et accessoires bijoux pour parfaire vos tenues.",
-    imageUrl: "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=1600&q=80",
-    buttonText: "Voir les broches",
-    linkUrl: "/catalogue?famille=Broches",
-    editorial: "Style Lives Here"
+    tag: "🛡️ PROTECTION TOTALE 9D",
+    title: "Glaces Trempées & Coques Antichocs",
+    subtitle: "Verres antiespion et pochettes antichocs en silicone renforcé pour préserver l'écran et les caméras de votre smartphone.",
+    imageUrl: "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?auto=format&fit=crop&w=1200&q=80",
+    buttonText: "Protéger mon téléphone",
+    linkUrl: "/catalogue?famille=Protections",
+    editorial: "Blindage Soilihitech",
+    objectPosition: "center center"
   },
   {
     id: 3,
-    tag: "SOINS PROFESSIONNELS",
-    title: "Soins Cheveux, Peignes & Brosses",
-    subtitle: "Peignes en bois antistatiques, brosses naturelles et soins capillaires revitalisants.",
-    imageUrl: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1600&q=80",
-    buttonText: "Commander maintenant",
-    linkUrl: "/catalogue?famille=Cheveux",
-    editorial: "Soin Naturel"
+    tag: "🎵 EXPÉRIENCE AUDIO & POWERBANKS",
+    title: "AirPods, Écouteurs & Batteries 20 000mAh",
+    subtitle: "Ne tombez plus jamais à court de batterie et profitez d'une qualité sonore cristalline avec notre sélection Oraimo, Apple et JBL.",
+    imageUrl: "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=1200&q=80",
+    buttonText: "Découvrir l'audio",
+    linkUrl: "/catalogue?famille=Audio",
+    editorial: "Audio & Énergie",
+    objectPosition: "center center"
   }
 ];
+
 
 const parseSlides = (bannerSlides) => {
   if (!bannerSlides) return DEFAULT_SLIDES;
@@ -50,7 +54,15 @@ const parseSlides = (bannerSlides) => {
     }
   }
   if (Array.isArray(parsed) && parsed.length > 0) {
-    return parsed;
+    return parsed.map((s, idx) => {
+      const fallback = DEFAULT_SLIDES[idx % DEFAULT_SLIDES.length];
+      const img = s.imageUrl || fallback.imageUrl;
+      return {
+        ...fallback,
+        ...s,
+        imageUrl: img
+      };
+    });
   }
   return DEFAULT_SLIDES;
 };
@@ -274,10 +286,10 @@ export default function Home() {
   const safeFamilles = Array.isArray(familles) && familles.length > 0
     ? familles
     : [
-        { id: 1, nom: "Cosmétique" },
-        { id: 2, nom: "Cheveux & Accessoires" },
-        { id: 3, nom: "Broches & Bijoux" },
-        { id: 4, nom: "Parfumerie" }
+        { id: 1, nom: "Chargeurs & Blocs Rapides" },
+        { id: 2, nom: "Glaces & Protections Écran" },
+        { id: 3, nom: "Pochettes & Coques Antichoc" },
+        { id: 4, nom: "Écouteurs, Casques & Audio" }
       ];
 
   function getNormalizedFamilleName(str) {
@@ -311,16 +323,8 @@ export default function Home() {
   const uniqueFamilles = Array.from(familleMap.values());
   const promos = safeProducts.filter((p) => p && (p.enPromo || p.prixPromo));
 
-  // Produits filtrés par genre pour les sections de l'accueil
-  const femmeProducts = safeProducts.filter(p => (p.genre || "femme").toLowerCase() === "femme");
-  const hommeProducts = safeProducts.filter(p => (p.genre || "").toLowerCase() === "homme");
-  const mixteProducts = safeProducts.filter(p => (p.genre || "").toLowerCase() === "mixte");
-
-  // Témoignages filtrés
-  const filteredTestimonials = testimonials.filter(t => {
-    if (avisGenre === "tous") return true;
-    return (t.genre || "femme").toLowerCase() === avisGenre;
-  });
+  // Témoignages clients vérifiés
+  const filteredTestimonials = testimonials || [];
 
   // Pour défilement continu infini sans accroc, dupliquer la liste si >= 2 éléments
   const displayTestimonials = filteredTestimonials.length > 0 
@@ -337,67 +341,95 @@ export default function Home() {
     }
   }
 
+  // Système de texte dynamique Soilihitech Accessoires High-Tech
+  const currentSlideDisplay = (() => {
+    const slide = slides[activeSlide] || slides[0] || {};
+    const defaultTitles = [
+      "Chargeurs 20W à 65W & Câbles Renforcés",
+      "Glaces Trempées & Coques Antichocs",
+      "AirPods, Écouteurs & Batteries 20 000mAh"
+    ];
+    const defaultSubs = [
+      "Rechargez votre iPhone, Samsung, Tecno ou Xiaomi en un temps record avec notre sélection haute performance certifiée anti-surchauffe.",
+      "Verres antiespion et pochettes antichocs en silicone renforcé pour préserver l'écran et les caméras de votre smartphone.",
+      "Ne tombez plus jamais à court de batterie et profitez d'une qualité sonore cristalline avec notre sélection Oraimo, Apple et JBL."
+    ];
+    const defaultTags = [
+      "⚡ CHARGE ULTRA RAPIDE GaN",
+      "🛡️ PROTECTION TOTALE 9D",
+      "🎵 EXPÉRIENCE AUDIO & POWERBANKS"
+    ];
+    const defaultCtas = [
+      "Voir les chargeurs",
+      "Protéger mon téléphone",
+      "Découvrir l'audio"
+    ];
+    const defaultEditorials = [
+      "Soilihitech Power",
+      "Blindage Soilihitech",
+      "Audio & Énergie"
+    ];
+
+    const idx = activeSlide % defaultTitles.length;
+    return {
+      tag: slide.tag || defaultTags[idx],
+      title: slide.title || slide.shortTitle || defaultTitles[idx],
+      subtitle: slide.subtitle || slide.shortSubtitle || defaultSubs[idx],
+      buttonText: slide.buttonText || defaultCtas[idx],
+      imageUrl: slide.imageUrl,
+      linkUrl: slide.linkUrl,
+      editorial: slide.editorial || defaultEditorials[idx]
+    };
+  })();
+
   return (
     <>
-      {/* 1. HERO BANNER - VELLORIA SPLIT DESIGN */}
+      {/* 1. HERO BANNER - SOILIHITECH MODERNE */}
       <div className="bs-hero-banner">
-        {/* Colonne Gauche : Texte, Titre, Bouton & Avantages */}
+        {/* Colonne Gauche (37%) : Texte épuré, bouton & badges */}
         <div className="bs-hero-text-col">
           <div key={activeSlide} className="bs-hero-text-animated">
             <div className="bs-hero-collection-tag">
               <span className="bs-hero-tag-dot"></span>
-              {slides[activeSlide]?.tag || (boutique?.nom ? boutique.nom.toUpperCase() : "NOUVELLE COLLECTION")}
+              {currentSlideDisplay.tag}
             </div>
             <h1 className="bs-hero-title">
-              {slides[activeSlide]?.title}
+              {currentSlideDisplay.title}
             </h1>
             <p className="bs-hero-subtitle">
-              {slides[activeSlide]?.subtitle}
+              {currentSlideDisplay.subtitle}
             </p>
             <div className="bs-hero-cta-wrap">
               <button 
                 className="bs-hero-cta-btn" 
-                onClick={() => handleBannerClick(slides[activeSlide])}
+                onClick={() => handleBannerClick(slides[activeSlide] || {})}
               >
-                <span>{slides[activeSlide]?.buttonText || "Découvrir la collection"}</span>
-                <ArrowRight size={17} />
+                <span>{currentSlideDisplay.buttonText}</span>
+                <ArrowRight size={15} />
               </button>
             </div>
           </div>
 
-          {/* Badges de Confiance sous le bouton (Velloria Style) */}
+          {/* Badges de Confiance compacts en ligne */}
           <div className="bs-hero-trust-row">
-            <div className="bs-hero-trust-item">
-              <div className="bs-hero-trust-icon">
-                <Truck size={16} />
-              </div>
-              <div className="bs-hero-trust-label">
-                <span className="bs-hero-trust-title">Livraison Rapide</span>
-                <span className="bs-hero-trust-sub">Dès 25 000 FCFA</span>
-              </div>
+            <div className="bs-hero-trust-item" title="100% Compatible iPhone, Samsung, Tecno">
+              <ShieldCheck size={14} className="bs-hero-trust-icon-inline" />
+              <span>100% Compatible</span>
             </div>
-            <div className="bs-hero-trust-item">
-              <div className="bs-hero-trust-icon">
-                <ShieldCheck size={16} />
-              </div>
-              <div className="bs-hero-trust-label">
-                <span className="bs-hero-trust-title">Paiement Sécurisé</span>
-                <span className="bs-hero-trust-sub">100% Garanti</span>
-              </div>
+            <span className="bs-hero-trust-sep">•</span>
+            <div className="bs-hero-trust-item" title="Norme CE & Charge Sécurisée">
+              <Zap size={14} className="bs-hero-trust-icon-inline" />
+              <span>Normes Anti-surchauffe</span>
             </div>
-            <div className="bs-hero-trust-item">
-              <div className="bs-hero-trust-icon">
-                <Sparkles size={16} />
-              </div>
-              <div className="bs-hero-trust-label">
-                <span className="bs-hero-trust-title">Produits Certifiés</span>
-                <span className="bs-hero-trust-sub">Qualité Premium</span>
-              </div>
+            <span className="bs-hero-trust-sep">•</span>
+            <div className="bs-hero-trust-item" title="Expédition rapide Comores & Régions">
+              <Truck size={14} className="bs-hero-trust-icon-inline" />
+              <span>Livraison Express</span>
             </div>
           </div>
         </div>
 
-        {/* Colonne Droite : Fenêtre Photo qui Défile */}
+        {/* Colonne Droite (63%) : Fenêtre Photo Large qui Défile */}
         <div className="bs-hero-slider-window">
           <div 
             className="bs-hero-slider-track"
@@ -409,31 +441,37 @@ export default function Home() {
               transition: "transform 0.65s cubic-bezier(0.25, 1, 0.5, 1)"
             }}
           >
-            {slides.map((slide, idx) => (
-              <div 
-                key={slide.id || idx} 
-                className="bs-hero-slide-img-wrap"
-                style={{
-                  width: `${100 / slides.length}%`,
-                  height: "100%"
-                }}
-                onClick={() => handleBannerClick(slide)}
-              >
-                <img 
-                  src={slide.imageUrl} 
-                  alt={slide.title} 
-                  className="bs-hero-slide-img" 
-                  onError={(e) => {
-                    e.currentTarget.src = "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1200&q=80";
+            {slides.map((slide, idx) => {
+              const defaultObjPos = idx === 0 ? "center 82%" : idx === 1 ? "center 26%" : "center center";
+              return (
+                <div 
+                  key={slide.id || idx} 
+                  className="bs-hero-slide-img-wrap"
+                  style={{
+                    width: `${100 / slides.length}%`,
+                    height: "100%"
                   }}
-                />
-              </div>
-            ))}
+                  onClick={() => handleBannerClick(slide)}
+                >
+                  <img 
+                    src={slide.imageUrl} 
+                    alt={slide.title} 
+                    className="bs-hero-slide-img"
+                    style={{
+                      objectPosition: slide.objectPosition || defaultObjPos
+                    }}
+                    onError={(e) => {
+                      e.currentTarget.src = "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1200&q=80";
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
 
           {/* Badge Élégant Flottant sur la photo */}
           <div className="bs-hero-floating-badge">
-            <span>{slides[activeSlide]?.editorial || "Style Lives Here"}</span>
+            <span>{currentSlideDisplay.editorial}</span>
           </div>
 
           {/* Boutons flèches de navigation circulaires (style Velloria) */}
@@ -444,14 +482,14 @@ export default function Home() {
                 onClick={(e) => { e.stopPropagation(); setActiveSlide((prev) => (prev - 1 + slides.length) % slides.length); }}
                 aria-label="Diapositive précédente"
               >
-                <ChevronLeft size={20} />
+                <ChevronLeft size={18} />
               </button>
               <button 
                 className="bs-hero-nav-btn next" 
                 onClick={(e) => { e.stopPropagation(); setActiveSlide((prev) => (prev + 1) % slides.length); }}
                 aria-label="Diapositive suivante"
               >
-                <ChevronRight size={20} />
+                <ChevronRight size={18} />
               </button>
 
               {/* Points indicateurs de défilement en bas à droite */}
@@ -472,7 +510,7 @@ export default function Home() {
 
       {/* 2. CATÉGORIES EN HAUT (TOUJOURS IMMÉDIATEMENT APRÈS LE BANNER) */}
       <div className="bs-section-title">
-        <h2>Catégories Beauté & Accessoires</h2>
+        <h2>Catégories Accessoires Téléphonie</h2>
       </div>
       <div className="bs-cats">
         {safeCategories.map((c) => (
@@ -602,33 +640,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 5. COLLECTIONS : SECTION FEMME, SECTION HOMME, SECTION MIXTE (APRÈS) */}
-      {femmeProducts.length > 0 && (
-        <CategoryScrollSection
-          category={{ id: "genre-femme", nom: "Collection Femme" }}
-          products={femmeProducts}
-          badgeColor="#BE185D"
-          onNavigate={() => navigate("/catalogue?genre=femme")}
-        />
-      )}
-
-      {hommeProducts.length > 0 && (
-        <CategoryScrollSection
-          category={{ id: "genre-homme", nom: "Collection Homme" }}
-          products={hommeProducts}
-          badgeColor="#1E3A8A"
-          onNavigate={() => navigate("/catalogue?genre=homme")}
-        />
-      )}
-
-      {mixteProducts.length > 0 && (
-        <CategoryScrollSection
-          category={{ id: "genre-mixte", nom: "Collection Mixte & Unisexe" }}
-          products={mixteProducts}
-          badgeColor="#B45309"
-          onNavigate={() => navigate("/catalogue?genre=mixte")}
-        />
-      )}
 
       {/* 6. SECTIONS PAR FAMILLE / CATÉGORIE (COSMÉTIQUE, CHEVEUX, BROCHES, MAQUILLAGE, ETC.) */}
       {uniqueFamilles.map((famName) => {
@@ -672,40 +683,6 @@ export default function Home() {
                 Messages et captures réelles envoyées par nos clients après réception de leurs commandes.
               </p>
             </div>
-
-            {/* FILTRES AVIS CLIENTS : TOUS / FEMME / HOMME */}
-            <div style={{ display: "flex", gap: 8, background: "var(--paper)", padding: 4, borderRadius: 24, border: "1px solid var(--line)" }}>
-              <button
-                onClick={() => setAvisGenre("tous")}
-                style={{
-                  padding: "6px 14px", borderRadius: 20, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none",
-                  background: avisGenre === "tous" ? "#16A34A" : "transparent",
-                  color: avisGenre === "tous" ? "#fff" : "var(--ink)"
-                }}
-              >
-                Tous les avis
-              </button>
-              <button
-                onClick={() => setAvisGenre("femme")}
-                style={{
-                  padding: "6px 14px", borderRadius: 20, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none",
-                  background: avisGenre === "femme" ? "#BE185D" : "transparent",
-                  color: avisGenre === "femme" ? "#fff" : "var(--ink)"
-                }}
-              >
-                Avis Femmes
-              </button>
-              <button
-                onClick={() => setAvisGenre("homme")}
-                style={{
-                  padding: "6px 14px", borderRadius: 20, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none",
-                  background: avisGenre === "homme" ? "#1E3A8A" : "transparent",
-                  color: avisGenre === "homme" ? "#fff" : "var(--ink)"
-                }}
-              >
-                Avis Hommes
-              </button>
-            </div>
           </div>
 
           {/* DÉFILEMENT CONTINU INFINI EN BOUCLE (PAUSE AU SURVOL) */}
@@ -742,7 +719,7 @@ export default function Home() {
 
                   {/* CONTENU DE L'AVIS */}
                   {t.type === "capture_whatsapp" && t.captureUrl ? (
-                    <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1px solid var(--line)", background: "#F1F5F9", marginBottom: 10 }}>
+                    <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1px solid var(--line)", background: "var(--paper)", marginBottom: 10 }}>
                       <img 
                         src={t.captureUrl} 
                         alt="Capture WhatsApp" 
@@ -760,18 +737,14 @@ export default function Home() {
                   ) : null}
 
                   {t.message && (
-                    <div style={{
-                      fontSize: 13, color: "var(--ink)", lineHeight: 1.5,
-                      background: "#F8FAFC", padding: "10px 14px", borderRadius: 12, border: "1px solid var(--line)",
-                      fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical"
-                    }}>
+                    <div className="bs-testimonial-message">
                       "{t.message}"
                     </div>
                   )}
 
                   <div style={{ marginTop: "auto", paddingTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                      {t.genre === "homme" ? "Avis Client Homme" : "Avis Cliente Femme"}
+                      Avis Client Vérifié
                     </span>
                     <span style={{ fontSize: 11.5, color: "#16A34A", fontWeight: 800 }}>
                       ✓ Reçu sur WhatsApp
@@ -788,6 +761,7 @@ export default function Home() {
       {activeModalTestimonial && (
         <div 
           onClick={() => setActiveModalTestimonial(null)}
+          className="bs-testimonial-modal-backdrop"
           style={{
             position: "fixed", inset: 0, zIndex: 9999,
             background: "rgba(15, 23, 42, 0.85)", backdropFilter: "blur(4px)",
@@ -797,8 +771,9 @@ export default function Home() {
         >
           <div 
             onClick={(e) => e.stopPropagation()}
+            className="bs-testimonial-modal-dialog"
             style={{
-              background: "#fff", borderRadius: 24, maxWidth: 650, width: "100%", maxHeight: "90vh",
+              borderRadius: 24, maxWidth: 650, width: "100%", maxHeight: "90vh",
               overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.35)", position: "relative",
               display: "flex", flexDirection: "column"
             }}
@@ -828,14 +803,13 @@ export default function Home() {
               {/* BOUTON FERMER TRÈS CLAIR */}
               <button
                 onClick={() => setActiveModalTestimonial(null)}
+                className="bs-testimonial-close-btn"
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
-                  background: "#F1F5F9", border: "none", borderRadius: 20,
-                  padding: "8px 16px", fontSize: 13, fontWeight: 800, color: "var(--ink)",
+                  borderRadius: 20,
+                  padding: "8px 16px", fontSize: 13, fontWeight: 800,
                   cursor: "pointer", transition: "all 0.2s"
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "#E2E8F0"}
-                onMouseLeave={(e) => e.currentTarget.style.background = "#F1F5F9"}
               >
                 <X size={18} /> Fermer
               </button>
@@ -854,11 +828,8 @@ export default function Home() {
               ) : null}
 
               {activeModalTestimonial.message && (
-                <div style={{
-                  background: "#F0FDF4", border: "1.5px solid #BBF7D0", borderRadius: 16,
-                  padding: "16px 20px", color: "#166534", fontSize: 15, lineHeight: 1.6
-                }}>
-                  <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#15803D", display: "flex", alignItems: "center", gap: 6 }}>
+                <div className="bs-testimonial-modal-msg">
+                  <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
                     <MessageCircle size={15} /> Message envoyé par {activeModalTestimonial.nom} :
                   </div>
                   "{activeModalTestimonial.message}"

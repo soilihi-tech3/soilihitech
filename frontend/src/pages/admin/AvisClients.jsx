@@ -201,15 +201,9 @@ export default function AdminAvisClients() {
                     </div>
                   </td>
                   <td>
-                    {t.genre === "homme" ? (
-                      <span style={{ background: "#EFF6FF", color: "#1E40AF", border: "1px solid #BFDBFE", padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 800 }}>
-                        Homme
-                      </span>
-                    ) : (
-                      <span style={{ background: "#FDF2F8", color: "#9D174D", border: "1px solid #FBCFE8", padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 800 }}>
-                        Femme
-                      </span>
-                    )}
+                    <span style={{ background: "#F0FDF4", color: "#166534", border: "1px solid #BBF7D0", padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 800 }}>
+                      ✓ Client Vérifié
+                    </span>
                   </td>
                   <td>
                     {t.type === "capture_whatsapp" ? (
@@ -305,30 +299,13 @@ export default function AdminAvisClients() {
               </div>
 
               <div className="bs-input-group">
-                <label style={{ fontWeight: 700 }}>Collection / Genre associé *</label>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <label style={{
-                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    padding: "10px", borderRadius: 10, cursor: "pointer",
-                    border: form.genre === "femme" ? "2px solid #BE185D" : "1.5px solid var(--line)",
-                    background: form.genre === "femme" ? "#FDF2F8" : "var(--card)",
-                    color: form.genre === "femme" ? "#9D174D" : "var(--ink)",
-                    fontWeight: 800, fontSize: 13
-                  }}>
-                    <input type="radio" name="genre" value="femme" checked={form.genre === "femme"} onChange={() => set("genre", "femme")} style={{ display: "none" }} />
-                    Femme
-                  </label>
-                  <label style={{
-                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    padding: "10px", borderRadius: 10, cursor: "pointer",
-                    border: form.genre === "homme" ? "2px solid #1E3A8A" : "1.5px solid var(--line)",
-                    background: form.genre === "homme" ? "#EFF6FF" : "var(--card)",
-                    color: form.genre === "homme" ? "#1E40AF" : "var(--ink)",
-                    fontWeight: 800, fontSize: 13
-                  }}>
-                    <input type="radio" name="genre" value="homme" checked={form.genre === "homme"} onChange={() => set("genre", "homme")} style={{ display: "none" }} />
-                    Homme
-                  </label>
+                <label style={{ fontWeight: 700 }}>Statut de l'avis client *</label>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                  borderRadius: 10, background: "#F0FDF4", border: "1.5px solid #BBF7D0",
+                  color: "#166534", fontWeight: 800, fontSize: 13
+                }}>
+                  <CheckCircle size={18} color="#16A34A" /> Avis Vérifié Soilihitech (Reçu par WhatsApp ou Web)
                 </div>
               </div>
             </div>

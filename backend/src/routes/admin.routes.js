@@ -1177,8 +1177,69 @@ router.delete("/testimonials/:id", requireRole("admin"), async (req, res, next) 
     await testimonial.destroy();
     purgeCache();
     broadcast("boutique_updated", { boutiqueId: req.boutiqueId });
-    res.json({ message: "Avis supprimé avec succès." });
   } catch (err) { next(err); }
 });
 
+/* ── ASSISTANT IA MULTI-FOURNISSEURS (GROQ + GEMINI + COHERE AVEC FAILOVER) ── */
+const { generateProductDetails, generateStudioPhotoUrl } = require("../services/aiService");
+
+router.post("/ai/enhance-product", async (req, res, next) => {
+  try {
+    const { nom, marque, categorie, userInstructions, photoKeywords, photoUrl } = req.body;
+    
+    // 1. Génération intelligente du contenu et de la description (Groq -> Gemini -> Cohere)
+    const aiDetails = await generateProductDetails({
+      nom,
+      marque,
+      categorie,
+      userInstructions,
+      photoKeywords
+    });
+
+    // 2. Génération du visuel studio épuré haute résolution
+    const studioImageUrl = generateStudioPhotoUrl({
+      nom: aiDetails.nom || nom,
+      marque: aiDetails.marque || marque,
+      categorie: aiDetails.famille || categorie,
+      studioImagePrompt: aiDetails.studioImagePrompt
+    });
+
+    res.json({
+      success: true,
+      provider: aiDetails.provider,
+      nom: aiDetails.nom,
+      marque: aiDetails.marque,
+      famille: aiDetails.famille,
+      description: aiDetails.description,
+      specifications: aiDetails.specifications,
+      pointsForts: aiDetails.pointsForts || [],
+      studioImageUrl,
+      originalPhotoUrl: photoUrl || null
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Génération ciblée de photo publicitaire studio pro sur fond blanc pour un champ photo précis
+router.post("/ai/generate-studio-photo", async (req, res, next) => {
+  try {
+    const { nom, marque, categorie, slot, customPrompt } = req.body;
+    const studioImageUrl = generateStudioPhotoUrl({
+      nom: nom || "Accessoire smartphone",
+      marque: marque || "",
+      categorie: categorie || "Accessoire",
+      studioImagePrompt: customPrompt || "",
+      slot: slot || "principale"
+    });
+    res.json({
+      success: true,
+      studioImageUrl
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
+

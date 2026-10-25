@@ -130,26 +130,21 @@ export default function ProductCard({ product, isFavorisPage }) {
           </span>
         ) : null}
 
-        {/* BADGE GENRE: FEMME, HOMME OU MIXTE */}
+        {/* BADGE MARQUE HIGH-TECH VISIBLE EN PERMANENCE */}
         {(() => {
-          const g = (product.genre || "femme").toLowerCase();
-          const config = g === "homme" ? {
-            bg: "#1E3A8A", text: "#FFFFFF", label: "Homme"
-          } : g === "mixte" ? {
-            bg: "#B45309", text: "#FFFFFF", label: "Mixte"
-          } : {
-            bg: "#BE185D", text: "#FFFFFF", label: "Femme"
-          };
+          const m = product.marque?.nom || product.Marque?.nom || "";
+          if (!m) return null;
           return (
             <span style={{
               position: "absolute", top: 12, left: hasPromo || product.isNouveau ? 86 : 12,
-              background: config.bg, color: config.text,
+              background: "#1E293B", color: "#38BDF8",
               padding: "4px 10px", borderRadius: 16,
               fontWeight: 800, fontSize: 11, zIndex: 10,
-              boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
-              letterSpacing: "0.3px"
+              boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+              letterSpacing: "0.4px",
+              border: "1px solid rgba(56,189,248,0.3)"
             }}>
-              {config.label}
+              🏷️ {m}
             </span>
           );
         })()}
@@ -181,16 +176,15 @@ export default function ProductCard({ product, isFavorisPage }) {
 
       <div className="bs-card-body">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 4 }}>
-          <span className="cat-name" style={{ margin: 0 }}>{product.Category?.nom || "Électrique"}</span>
-          {(product.marque?.nom || product.Marque?.nom) && (
-            <span style={{ 
-              fontSize: 11, fontWeight: 700, color: "var(--forest-dark)", 
-              background: "var(--forest-light)", padding: "2px 8px", borderRadius: 10,
-              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "50%"
-            }}>
-              {product.marque?.nom || product.Marque?.nom}
-            </span>
-          )}
+          <span className="cat-name" style={{ margin: 0 }}>{product.Category?.nom || "Accessoire"}</span>
+          <span style={{ 
+            fontSize: 11, fontWeight: 700, color: "#1D4ED8", 
+            background: "#EFF6FF", padding: "2px 8px", borderRadius: 10,
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "60%",
+            border: "1px solid #DBEAFE"
+          }}>
+            {product.marque?.nom || product.Marque?.nom || "Marque Universelle"}
+          </span>
         </div>
         <div className="nom">{product.nom}</div>
 

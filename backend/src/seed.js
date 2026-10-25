@@ -2,10 +2,10 @@ const bcrypt = require("bcryptjs");
 const { Boutique, User, Category, Product, Order, OrderItem, Review, Marque, Testimonial, Famille } = require("./models");
 
 /**
- * Insère les données de démonstration Cosmétique & Beauté dans boutiquesdb
+ * Insère les données de démonstration Soilihitech dans soilihitechdb
  */
 async function runSeed() {
-  console.log("Initialisation des données Cosmétiques, Beauté, Peignes & Broches dans la base de données...");
+  console.log("Initialisation des données Soilihitech (Accessoires Smartphones & Électronique)...");
 
   const hash = (pw) => bcrypt.hashSync(pw, 10);
 
@@ -20,91 +20,109 @@ async function runSeed() {
     }
   });
 
-  // --- 2. Bannières Slider Cosmétiques & Beauté ---
+  // --- 2. Bannières Slider Soilihitech (Accessoires Téléphones & High-Tech) ---
   const bannerSlides = [
     {
       id: 1,
-      title: "Cosmétique, Soins & Beauté d'Exception",
-      subtitle: "Sublimez votre éclat au quotidien avec nos sérums, crèmes et soins pour Femme & Homme.",
-      imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1600&q=80",
-      buttonText: "Découvrir la collection",
-      linkUrl: "/catalogue"
+      tag: "⚡ NOUVELLE COLLECTION ULTRA RAPIDE",
+      title: "Chargeurs GaN & Câbles Renforcés",
+      subtitle: "Rechargez votre iPhone, Samsung ou Tecno à 80% en 30 minutes avec nos blocs de charge intelligents 20W, 33W et 65W.",
+      imageUrl: "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=1200&q=80",
+      buttonText: "Voir les chargeurs",
+      linkUrl: "/catalogue?famille=Chargeurs",
+      editorial: "Soilihitech Power Tech",
+      objectPosition: "center center"
     },
     {
       id: 2,
-      title: "Broches Élégantes & Accessoires Tendance",
-      subtitle: "Magnifiques broches raffinées, pinces perles et accessoires bijoux pour parfaire vos tenues.",
-      imageUrl: "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=1600&q=80",
-      buttonText: "Voir les broches",
-      linkUrl: "/catalogue?famille=Broches"
+      tag: "🛡️ PROTECTION ULTIME 9D",
+      title: "Glaces Trempées & Coques Antichoc",
+      subtitle: "Verres antiespion haute résistance et coques transparentes antichoc renforcées pour iPhone, Samsung, Tecno, Infinix et Xiaomi.",
+      imageUrl: "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?auto=format&fit=crop&w=1200&q=80",
+      buttonText: "Protéger mon téléphone",
+      linkUrl: "/catalogue?famille=Protections",
+      editorial: "Protection Blindée",
+      objectPosition: "center center"
     },
     {
       id: 3,
-      title: "Soins Cheveux, Peignes & Brosses Professionnels",
-      subtitle: "Peignes en bois antistatiques, brosses naturelles et soins capillaires revitalisants.",
-      imageUrl: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1600&q=80",
-      buttonText: "Commander maintenant",
-      linkUrl: "/catalogue?famille=Cheveux"
+      tag: "🎵 EXPÉRIENCE AUDIO SANS FIL",
+      title: "AirPods, Écouteurs & Powerbanks",
+      subtitle: "Son immersif, réduction de bruit active et autonomie longue durée avec notre gamme audio Oraimo, Apple et JBL.",
+      imageUrl: "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=1200&q=80",
+      buttonText: "Découvrir l'audio",
+      linkUrl: "/catalogue?famille=Audio",
+      editorial: "Pure Sound Edition",
+      objectPosition: "center center"
     }
   ];
 
-  // --- 3. Boutique Cosmétique ---
-  let boutique = await Boutique.findOne({ where: { slug: "electro-pro" } });
+  // --- 3. Boutique Soilihitech ---
+  let boutique = await Boutique.findOne({ where: { slug: "soilihitech" } });
+  if (!boutique) {
+    boutique = await Boutique.findOne({ where: { slug: "electro-pro" } });
+  }
+
   if (!boutique) {
     boutique = await Boutique.create({
-      nom: "Élégance & Cosmétiques",
-      slug: "electro-pro",
-      logoUrl: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=200&q=80",
-      couleurPrincipale: "#BE185D",
+      nom: "Soilihitech",
+      slug: "soilihitech",
+      logoUrl: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=200&q=80",
+      couleurPrincipale: "#2563EB",
       devise: "KMF",
       formuleAbonnement: "commission",
-      fraisLivraison: 1500,
-      zonesLivraison: "Moroni, Mitsamiouli, Foumbouni, Grand Comore, Régions",
+      fraisLivraison: 1000,
+      zonesLivraison: "Moroni, Grand Comore, Mitsamiouli, Foumbouni, Expédition îles",
+      telephone: "+269 333 00 00",
+      emailContact: "contact@soilihitech.com",
+      aProposText: "Soilihitech est la boutique de référence pour tous vos accessoires pour smartphones et appareils électroniques. Que vous possédiez un iPhone, un Samsung, un Tecno, un Infinix ou un Xiaomi, nous vous garantissons les meilleurs chargeurs rapides, glaces de protection incassables, coques antichocs, écouteurs et batteries externes aux meilleurs prix.",
       bannerSlides: bannerSlides
     });
   } else {
     await boutique.update({
-      nom: "Élégance & Cosmétiques",
-      logoUrl: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=200&q=80",
-      couleurPrincipale: "#BE185D",
-      bannerSlides: bannerSlides
+      nom: "Soilihitech",
+      slug: "soilihitech",
+      couleurPrincipale: "#2563EB",
+      bannerSlides: bannerSlides,
+      aProposText: "Soilihitech est la boutique de référence pour tous vos accessoires pour smartphones et appareils électroniques : iPhone, Samsung, Tecno, Infinix, Xiaomi, Oraimo, Anker et Baseus."
     });
   }
 
-  // --- 3.b Marques Cosmétiques Référencées ---
+  // --- 4. Marques Référencées ---
   const marquesData = [
-    { nom: "The Ordinary", description: "Formules cliniques d'intégrité et soins visage ciblés." },
-    { nom: "L'Oréal Paris", description: "Expert mondial de la beauté, des soins cheveux et maquillage." },
-    { nom: "CeraVe", description: "Soins dermatologiques enrichis aux céramides essentiels." },
-    { nom: "Yves Rocher", description: "Cosmétique végétale et parfumerie d'exception." },
-    { nom: "Kérastase", description: "Soins capillaires de luxe professionnels." },
-    { nom: "Dior Beauté", description: "Haute parfumerie et accessoires d'élégance." }
+    { nom: "Apple (iPhone)", description: "Accessoires certifiés et compatibles iPhone, AirPods, iPad et chargeurs MagSafe." },
+    { nom: "Samsung", description: "Accessoires haute compatibilité pour Galaxy Séries S, A, Z et chargeurs Super Fast." },
+    { nom: "Tecno", description: "Pochettes antichoc, glaces et chargeurs officiels pour Tecno Spark, Camon et Pova." },
+    { nom: "Infinix", description: "Protections écran, coques et chargeurs rapides pour Infinix Hot, Note et Smart." },
+    { nom: "Xiaomi / Redmi", description: "Accessoires pour smartphones Redmi, Poco et Xiaomi avec charge turbo." },
+    { nom: "Oraimo", description: "Écouteurs sans fil, chargeurs Anifast et câbles ultra-durables numéro 1 en Afrique." },
+    { nom: "Anker", description: "Pionnier mondial de la charge rapide GaN et des batteries externes haute capacité." },
+    { nom: "Baseus", description: "Design premium, supports voiture magnétiques et câbles tressés renforcés." },
+    { nom: "JBL", description: "Expérience sonore légendaire avec casques et écouteurs immersifs." }
   ];
 
   const marquesMap = {};
   for (const m of marquesData) {
-    const [mObj] = await Marque.findOrCreate({
+    let [mObj] = await Marque.findOrCreate({
       where: { nom: m.nom, boutiqueId: boutique.id },
       defaults: { ...m, boutiqueId: boutique.id }
     });
     marquesMap[m.nom] = mObj;
   }
 
-  // --- 4. Comptes Administrateur, Employés & Client ---
+  // --- 5. Comptes Administrateur, Employés & Client ---
   const usersToSeed = [
     { email: "superadmin@boutique-saas.com", nom: "Super Admin", role: "super_admin", pw: "SuperAdmin123!" },
-    { email: "admin@electro-pro.com", nom: "Amina Said (Admin)", role: "admin", boutiqueId: boutique.id, pw: "Admin123!" },
-    { email: "vendeur@electro-pro.com", nom: "Nassor Ali", role: "employe", boutiqueId: boutique.id, pw: "Employe123!", permissions: ["voir_dashboard", "gerer_commandes"] },
-    { email: "client@example.com", nom: "Fatima Mohamed", role: "client", pw: "Client123!" },
+    { email: "admin@soilihitech.com", nom: "Soilihi Abdou (Admin)", role: "admin", boutiqueId: boutique.id, pw: "Admin123!" },
+    { email: "admin@electro-pro.com", nom: "Admin Backup", role: "admin", boutiqueId: boutique.id, pw: "Admin123!" },
+    { email: "vendeur@soilihitech.com", nom: "Agent Vente Soilihitech", role: "employe", boutiqueId: boutique.id, pw: "Employe123!", permissions: ["voir_dashboard", "gerer_commandes"] },
+    { email: "client@example.com", nom: "Client Fidèle", role: "client", pw: "Client123!" },
   ];
-
-  let emp2 = null;
-  let clientUser = null;
 
   for (const u of usersToSeed) {
     let usr = await User.findOne({ where: { email: u.email } });
     if (!usr) {
-      usr = await User.create({
+      await User.create({
         nom: u.nom,
         email: u.email,
         motDePasseHash: hash(u.pw),
@@ -119,17 +137,17 @@ async function runSeed() {
       if (u.permissions) usr.permissions = u.permissions;
       await usr.save();
     }
-    if (u.email === "vendeur@electro-pro.com") emp2 = usr;
-    if (u.email === "client@example.com") clientUser = usr;
   }
 
-  // --- 5. Catégories & Familles Cosmétiques & Beauté ---
+  // --- 6. Familles & Catégories Soilihitech ---
   const familleList = [
-    { nom: "Cosmétique", boutiqueId: boutique.id },
-    { nom: "Cheveux, Peignes & Brosses", boutiqueId: boutique.id },
-    { nom: "Broches & Accessoires Bijoux", boutiqueId: boutique.id },
-    { nom: "Parfums & Fragrances", boutiqueId: boutique.id },
-    { nom: "Maquillage & Teint", boutiqueId: boutique.id }
+    { nom: "Chargeurs & Blocs Rapides", boutiqueId: boutique.id },
+    { nom: "Glaces & Protections Écran", boutiqueId: boutique.id },
+    { nom: "Pochettes & Coques Antichoc", boutiqueId: boutique.id },
+    { nom: "Écouteurs, Casques & Audio", boutiqueId: boutique.id },
+    { nom: "Câbles & Connectique", boutiqueId: boutique.id },
+    { nom: "Powerbanks & Batteries Externes", boutiqueId: boutique.id },
+    { nom: "Supports Téléphone & Auto", boutiqueId: boutique.id }
   ];
   for (const fam of familleList) {
     await Famille.findOrCreate({
@@ -139,11 +157,13 @@ async function runSeed() {
   }
 
   const catList = [
-    { nom: "Soins Visage & Corps", famille: "Cosmétique", imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=400&q=80" },
-    { nom: "Cheveux, Peignes & Brosses", famille: "Cheveux, Peignes & Brosses", imageUrl: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=400&q=80" },
-    { nom: "Broches & Accessoires Bijoux", famille: "Broches & Accessoires Bijoux", imageUrl: "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=400&q=80" },
-    { nom: "Parfums & Fragrances", famille: "Parfums & Fragrances", imageUrl: "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&w=400&q=80" },
-    { nom: "Maquillage & Teint", famille: "Maquillage & Teint", imageUrl: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?auto=format&fit=crop&w=400&q=80" },
+    { nom: "Blocs & Chargeurs Rapides", famille: "Chargeurs & Blocs Rapides", imageUrl: "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=400&q=80" },
+    { nom: "Glaces Trempées & Antiespion", famille: "Glaces & Protections Écran", imageUrl: "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?auto=format&fit=crop&w=400&q=80" },
+    { nom: "Coques & Pochettes Silicone", famille: "Pochettes & Coques Antichoc", imageUrl: "https://images.unsplash.com/photo-1603302576837-37561b2e2302?auto=format&fit=crop&w=400&q=80" },
+    { nom: "Écouteurs Sans Fil & AirPods", famille: "Écouteurs, Casques & Audio", imageUrl: "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=400&q=80" },
+    { nom: "Câbles USB-C & Lightning", famille: "Câbles & Connectique", imageUrl: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=400&q=80" },
+    { nom: "Powerbanks Haute Capacité", famille: "Powerbanks & Batteries Externes", imageUrl: "https://images.unsplash.com/photo-1609592426508-410a4ec89f25?auto=format&fit=crop&w=400&q=80" },
+    { nom: "Supports Voiture & Trépieds", famille: "Supports Téléphone & Auto", imageUrl: "https://images.unsplash.com/photo-1586105251261-72a756497a11?auto=format&fit=crop&w=400&q=80" }
   ];
 
   const cats = {};
@@ -155,292 +175,305 @@ async function runSeed() {
     cats[c.nom] = catObj;
   }
 
-  // --- 6. Produits Cosmétiques, Peignes, Broches (Homme, Femme, Mixte) ---
+  // --- 7. Produits Accessoires High-Tech pour Toutes Marques ---
   const produitsData = [
-    // --- FEMME ---
+    // --- APPLE (iPhone) ---
     {
-      nom: "Sérum Niacinamide 10% + Zinc 1%",
-      cat: "Soins Visage & Corps",
-      marque: "The Ordinary",
-      genre: "femme",
+      nom: "Chargeur Rapide 20W USB-C iPhone (Certifié)",
+      cat: "Blocs & Chargeurs Rapides",
+      marque: "Apple (iPhone)",
+      famille: "Chargeurs & Blocs Rapides",
       prix: 6500,
       prixPromo: 5500,
       enPromo: true,
-      unite: "flacon 30ml",
-      stock: 35,
+      unite: "pièce",
+      stock: 40,
       seuilAlerte: 5,
-      coutAchat: 3200,
-      ventesCount: 48,
+      coutAchat: 2800,
+      ventesCount: 85,
       isNouveau: true,
-      description: "Formule ultra-légère pour réduire l'apparence des imperfections cutanées et réguler le sébum.",
-      imageUrl: "https://images.unsplash.com/photo-1608248597359-59754f923287?auto=format&fit=crop&w=600&q=80",
-      imageUrl2: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=600&q=80"
+      description: "Adaptateur secteur USB-C 20W offrant une recharge rapide et efficace à domicile ou au bureau. Recharge 50% de la batterie de votre iPhone en seulement 30 minutes. Protection anti-surchauffe intégrée.",
+      imageUrl: "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80",
+      imageUrl2: "https://images.unsplash.com/photo-1622445262464-84b14e0745b1?auto=format&fit=crop&w=600&q=80"
     },
     {
-      nom: "Broche Bijou Fleur en Perles & Cristal Doré",
-      cat: "Broches & Accessoires Bijoux",
-      marque: "Dior Beauté",
-      genre: "femme",
-      prix: 8500,
-      prixPromo: 7200,
+      nom: "Coque Transparente Antichoc MagSafe pour iPhone 15 / 16 Pro",
+      cat: "Coques & Pochettes Silicone",
+      marque: "Apple (iPhone)",
+      famille: "Pochettes & Coques Antichoc",
+      prix: 4500,
+      prixPromo: 3800,
+      enPromo: true,
+      unite: "pièce",
+      stock: 50,
+      seuilAlerte: 8,
+      coutAchat: 1800,
+      ventesCount: 65,
+      isNouveau: true,
+      description: "Coque antichoc avec aimants intégrés parfaitement ajustés pour tous les accessoires MagSafe. Bords surélevés pour protéger l'écran et les lentilles photo. Ne jaunit pas dans le temps.",
+      imageUrl: "https://images.unsplash.com/photo-1603302576837-37561b2e2302?auto=format&fit=crop&w=600&q=80",
+      imageUrl2: "https://images.unsplash.com/photo-1541877944-ac82a091518a?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      nom: "Glace Trempée 9D Antiespion iPhone (Tous Modèles)",
+      cat: "Glaces Trempées & Antiespion",
+      marque: "Apple (iPhone)",
+      famille: "Glaces & Protections Écran",
+      prix: 2500,
+      prixPromo: 2000,
+      enPromo: true,
+      unite: "pièce",
+      stock: 75,
+      seuilAlerte: 10,
+      coutAchat: 800,
+      ventesCount: 120,
+      isNouveau: false,
+      description: "Film de protection en verre trempé 9D haute confidentialité. Empêche les regards indiscrets sur les côtés tout en conservant une netteté cristalline et une sensibilité tactile parfaite.",
+      imageUrl: "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?auto=format&fit=crop&w=600&q=80",
+      imageUrl2: "https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=600&q=80"
+    },
+
+    // --- SAMSUNG ---
+    {
+      nom: "Chargeur Super Fast Charging 25W Type-C Samsung",
+      cat: "Blocs & Chargeurs Rapides",
+      marque: "Samsung",
+      famille: "Chargeurs & Blocs Rapides",
+      prix: 6000,
+      prixPromo: 4900,
+      enPromo: true,
+      unite: "pièce",
+      stock: 35,
+      seuilAlerte: 5,
+      coutAchat: 2600,
+      ventesCount: 72,
+      isNouveau: true,
+      description: "Recharge ultra-rapide jusqu'à 25W pour les séries Galaxy S24, S23, A55, A35 et Note. Norme Power Delivery 3.0 avec régulation thermique intelligente.",
+      imageUrl: "https://images.unsplash.com/photo-1622445262464-84b14e0745b1?auto=format&fit=crop&w=600&q=80",
+      imageUrl2: "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      nom: "Pochette Cuir Flip Cover avec Porte-Cartes Samsung Galaxy",
+      cat: "Coques & Pochettes Silicone",
+      marque: "Samsung",
+      famille: "Pochettes & Coques Antichoc",
+      prix: 5000,
+      prixPromo: 4200,
+      enPromo: false,
+      unite: "pièce",
+      stock: 30,
+      seuilAlerte: 5,
+      coutAchat: 2100,
+      ventesCount: 38,
+      isNouveau: false,
+      description: "Housse élégante en cuir synthétique avec fente pour cartes bancaires et fonction support vidéo. Fermeture magnétique sécurisée et protection intégrale à 360°.",
+      imageUrl: "https://images.unsplash.com/photo-1541877944-ac82a091518a?auto=format&fit=crop&w=600&q=80",
+      imageUrl2: "https://images.unsplash.com/photo-1603302576837-37561b2e2302?auto=format&fit=crop&w=600&q=80"
+    },
+
+    // --- TECNO & INFINIX ---
+    {
+      nom: "Chargeur Ultra Rapide 33W Flash Charge Tecno & Infinix",
+      cat: "Blocs & Chargeurs Rapides",
+      marque: "Tecno",
+      famille: "Chargeurs & Blocs Rapides",
+      prix: 5500,
+      prixPromo: 4500,
+      enPromo: true,
+      unite: "pièce",
+      stock: 45,
+      seuilAlerte: 6,
+      coutAchat: 2200,
+      ventesCount: 95,
+      isNouveau: true,
+      description: "Chargeur d'origine 33W Flash Charge spécialement conçu pour Tecno Camon, Spark, Pova et Infinix Note / Hot. Câble Type-C blindé haute intensité inclus.",
+      imageUrl: "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80",
+      imageUrl2: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      nom: "Glace de Protection Céramique Incassable Tecno & Infinix",
+      cat: "Glaces Trempées & Antiespion",
+      marque: "Tecno",
+      famille: "Glaces & Protections Écran",
+      prix: 2000,
+      prixPromo: 1500,
+      enPromo: true,
+      unite: "pièce",
+      stock: 90,
+      seuilAlerte: 15,
+      coutAchat: 600,
+      ventesCount: 150,
+      isNouveau: true,
+      description: "Film céramique incassable flexible nouvelle génération. Ne se fissure jamais lors des chocs quotidiens, résiste aux rayures et s'applique sans bulles.",
+      imageUrl: "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?auto=format&fit=crop&w=600&q=80",
+      imageUrl2: "https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      nom: "Coque Robuste Antichoc Béquille Intégrée pour Infinix",
+      cat: "Coques & Pochettes Silicone",
+      marque: "Infinix",
+      famille: "Pochettes & Coques Antichoc",
+      prix: 3500,
+      prixPromo: 2900,
+      enPromo: false,
+      unite: "pièce",
+      stock: 35,
+      seuilAlerte: 5,
+      coutAchat: 1400,
+      ventesCount: 44,
+      isNouveau: false,
+      description: "Coque militaire renforcée avec anneau rotatif et béquille métallique pour poser votre téléphone à l'horizontale. Coins renforcés 'Air Cushion' contre les chutes.",
+      imageUrl: "https://images.unsplash.com/photo-1603302576837-37561b2e2302?auto=format&fit=crop&w=600&q=80",
+      imageUrl2: "https://images.unsplash.com/photo-1541877944-ac82a091518a?auto=format&fit=crop&w=600&q=80"
+    },
+
+    // --- AUDIO & POWERBANKS (Oraimo, Anker, JBL) ---
+    {
+      nom: "Écouteurs Sans Fil Oraimo FreePods Pro (ANC & BassBoost)",
+      cat: "Écouteurs Sans Fil & AirPods",
+      marque: "Oraimo",
+      famille: "Écouteurs, Casques & Audio",
+      prix: 14000,
+      prixPromo: 11900,
       enPromo: true,
       unite: "pièce",
       stock: 25,
       seuilAlerte: 4,
-      coutAchat: 4000,
-      ventesCount: 30,
-      isNouveau: true,
-      description: "Sublime broche fleurie ornée de perles nacrées et cristaux étincelants pour sublimer foulards, voiles et robes.",
-      imageUrl: "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=600&q=80",
-      imageUrl2: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?auto=format&fit=crop&w=600&q=80"
-    },
-    {
-      nom: "Eau de Parfum Fleurie Sublime 100ml",
-      cat: "Parfums & Fragrances",
-      marque: "Yves Rocher",
-      genre: "femme",
-      prix: 28000,
-      prixPromo: 24500,
-      unite: "flacon",
-      stock: 18,
-      seuilAlerte: 3,
-      coutAchat: 16000,
-      ventesCount: 19,
-      isNouveau: false,
-      description: "Fragrance florale envoûtante aux notes de jasmin, rose damascena et vanille gourmande.",
-      imageUrl: "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&w=600&q=80",
-      imageUrl2: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=600&q=80"
-    },
-    {
-      nom: "Rouge à Lèvres Velours Mat Longue Tenue",
-      cat: "Maquillage & Teint",
-      marque: "L'Oréal Paris",
-      genre: "femme",
-      prix: 4500,
-      unite: "tube",
-      stock: 45,
-      seuilAlerte: 10,
-      coutAchat: 2200,
-      ventesCount: 52,
-      isNouveau: true,
-      description: "Couleur intense et veloutée sans assécher les lèvres. Tenue garantie jusqu'à 16 heures.",
-      imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?auto=format&fit=crop&w=600&q=80",
-      imageUrl2: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?auto=format&fit=crop&w=600&q=80"
-    },
-
-    // --- HOMME ---
-    {
-      nom: "Coffret Soin Barbe & Visage Homme (Huile + Baume)",
-      cat: "Soins Visage & Corps",
-      marque: "L'Oréal Paris",
-      genre: "homme",
-      prix: 14500,
-      prixPromo: 12900,
-      enPromo: true,
-      unite: "coffret",
-      stock: 22,
-      seuilAlerte: 5,
-      coutAchat: 8500,
-      ventesCount: 26,
-      isNouveau: true,
-      description: "Huile nourrissante à l'extrait de bois de cèdre et baume adoucissant pour une barbe soyeuse et une peau apaisée.",
-      imageUrl: "https://images.unsplash.com/photo-1621607512214-68297480165e?auto=format&fit=crop&w=600&q=80",
-      imageUrl2: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80"
-    },
-    {
-      nom: "Peigne à Barbe et Cheveux en Bois de Santal Double Denture",
-      cat: "Cheveux, Peignes & Brosses",
-      marque: "L'Oréal Paris",
-      genre: "homme",
-      prix: 3800,
-      unite: "pièce",
-      stock: 50,
-      seuilAlerte: 10,
-      coutAchat: 1800,
-      ventesCount: 39,
-      isNouveau: true,
-      description: "Peigne sculpté dans du bois de santal naturel antistatique. Démêle en douceur et stimule la pousse.",
-      imageUrl: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80",
-      imageUrl2: "https://images.unsplash.com/photo-1621607512214-68297480165e?auto=format&fit=crop&w=600&q=80"
-    },
-    {
-      nom: "Eau de Parfum Boisée Intense 100ml",
-      cat: "Parfums & Fragrances",
-      marque: "Dior Beauté",
-      genre: "homme",
-      prix: 35000,
-      prixPromo: 31000,
-      enPromo: true,
-      unite: "flacon",
-      stock: 14,
-      seuilAlerte: 3,
-      coutAchat: 22000,
-      ventesCount: 17,
-      isNouveau: false,
-      description: "Signature olfactive virile et élégante aux accents de bergamote, poivre noir et vétiver fumé.",
-      imageUrl: "https://images.unsplash.com/photo-1523293182086-7651a899d37f?auto=format&fit=crop&w=600&q=80",
-      imageUrl2: "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&w=600&q=80"
-    },
-
-    // --- MIXTE ---
-    {
-      nom: "Grand Peigne Démêloir en Bois Naturel Anti-Casse",
-      cat: "Cheveux, Peignes & Brosses",
-      marque: "Kérastase",
-      genre: "mixte",
-      prix: 3500,
-      unite: "pièce",
-      stock: 60,
-      seuilAlerte: 12,
-      coutAchat: 1500,
-      ventesCount: 64,
-      isNouveau: true,
-      description: "Peigne large à dents espacées pour démêler cheveux bouclés, crépus, lisses ou humides sans casser la fibre.",
-      imageUrl: "https://images.unsplash.com/photo-1590159763121-7c9ff3149e0a?auto=format&fit=crop&w=600&q=80",
-      imageUrl2: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80"
-    },
-    {
-      nom: "Crème Hydratante Visage & Corps aux 3 Céramides 454g",
-      cat: "Soins Visage & Corps",
-      marque: "CeraVe",
-      genre: "mixte",
-      prix: 12500,
-      prixPromo: 10900,
-      enPromo: true,
-      unite: "pot 454g",
-      stock: 30,
-      seuilAlerte: 8,
       coutAchat: 7500,
       ventesCount: 58,
       isNouveau: true,
-      description: "Hydratation continue 48h pour peaux sèches à très sèches, formule non grasse sans parfum adaptée à toute la famille.",
-      imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80",
-      imageUrl2: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=600&q=80"
+      description: "Écouteurs sans fil avec réduction active du bruit (ANC) jusqu'à 35dB. Son haute fidélité avec basses profondes, autonomie totale de 32 heures avec boîtier de charge.",
+      imageUrl: "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=600&q=80",
+      imageUrl2: "https://images.unsplash.com/photo-1572536147248-ac59a8abfa4b?auto=format&fit=crop&w=600&q=80"
     },
     {
-      nom: "Huile Capillaire Élixir Ultime Sublimatrice 100ml",
-      cat: "Cheveux, Peignes & Brosses",
-      marque: "Kérastase",
-      genre: "mixte",
-      prix: 19500,
-      unite: "flacon 100ml",
+      nom: "Powerbank Anker 20 000mAh PowerCore Charge Rapide",
+      cat: "Powerbanks Haute Capacité",
+      marque: "Anker",
+      famille: "Powerbanks & Batteries Externes",
+      prix: 18500,
+      prixPromo: 16000,
+      enPromo: true,
+      unite: "pièce",
       stock: 20,
-      seuilAlerte: 4,
-      coutAchat: 13500,
-      ventesCount: 23,
+      seuilAlerte: 3,
+      coutAchat: 11000,
+      ventesCount: 34,
+      isNouveau: true,
+      description: "Batterie externe haute densité de 20 000 mAh permettant de recharger 5 à 6 fois votre smartphone. Double sortie USB-A et USB-C avec affichage LED du niveau d'énergie restant.",
+      imageUrl: "https://images.unsplash.com/photo-1609592426508-410a4ec89f25?auto=format&fit=crop&w=600&q=80",
+      imageUrl2: "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      nom: "Support Téléphone Voiture Magnétique Grille d'Aération Baseus",
+      cat: "Supports Voiture & Trépieds",
+      marque: "Baseus",
+      famille: "Supports Téléphone & Auto",
+      prix: 4500,
+      prixPromo: 3500,
+      enPromo: true,
+      unite: "pièce",
+      stock: 40,
+      seuilAlerte: 5,
+      coutAchat: 1700,
+      ventesCount: 42,
       isNouveau: false,
-      description: "Élixir précieux d'huiles d'argan et de camélia pour une brillance éclatante et une protection anti-frisottis.",
-      imageUrl: "https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?auto=format&fit=crop&w=600&q=80",
-      imageUrl2: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80"
+      description: "Support pour voiture compact avec 6 aimants puissants garantissant une tenue parfaite même sur routes difficiles. Rotation 360° compatible avec tous les smartphones.",
+      imageUrl: "https://images.unsplash.com/photo-1586105251261-72a756497a11?auto=format&fit=crop&w=600&q=80",
+      imageUrl2: "https://images.unsplash.com/photo-1603302576837-37561b2e2302?auto=format&fit=crop&w=600&q=80"
+    },
+    {
+      nom: "Câble USB-C vers USB-C 100W Tressé Renforcé 2M Baseus",
+      cat: "Câbles USB-C & Lightning",
+      marque: "Baseus",
+      famille: "Câbles & Connectique",
+      prix: 3500,
+      prixPromo: 2800,
+      enPromo: true,
+      unite: "pièce",
+      stock: 60,
+      seuilAlerte: 10,
+      coutAchat: 1200,
+      ventesCount: 88,
+      isNouveau: true,
+      description: "Câble de 2 mètres ultra résistant en nylon tressé supportant jusqu'à 100W de puissance (20V/5A). Idéal pour smartphones, tablettes et ordinateurs portables.",
+      imageUrl: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=600&q=80",
+      imageUrl2: "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80"
     }
   ];
 
+  // Insérer ou mettre à jour les produits
   for (const p of produitsData) {
-    const { cat, marque, ...rest } = p;
-    const catObj = cats[cat];
-    const marqueObj = marquesMap[marque];
-    
-    let prodObj = await Product.findOne({ where: { nom: p.nom, boutiqueId: boutique.id } });
-    if (!prodObj) {
+    const cat = cats[p.cat];
+    const catId = cat ? cat.id : 1;
+    const marqueObj = marquesMap[p.marque];
+    const marqueId = marqueObj ? marqueObj.id : null;
+
+    let prod = await Product.findOne({ where: { nom: p.nom, boutiqueId: boutique.id } });
+    if (!prod) {
       await Product.create({
-        ...rest,
         boutiqueId: boutique.id,
-        categoryId: catObj ? catObj.id : null,
-        marqueId: marqueObj ? marqueObj.id : null,
-        famille: catObj ? catObj.nom : "Cosmétique"
+        categoryId: catId,
+        nom: p.nom,
+        marqueId: marqueId,
+        description: p.description,
+        prix: p.prix,
+        prixPromo: p.prixPromo || null,
+        enPromo: p.enPromo || false,
+        famille: p.famille || "Accessoires",
+        poids: "0.2",
+        unite: p.unite || "pièce",
+        stock: p.stock || 20,
+        seuilAlerte: p.seuilAlerte || 5,
+        coutAchat: p.coutAchat || 0,
+        ventesCount: p.ventesCount || 0,
+        isNouveau: p.isNouveau || false,
+        imageUrl: p.imageUrl,
+        imageUrl2: p.imageUrl2 || null
       });
     } else {
-      await prodObj.update({
-        ...rest,
-        genre: p.genre,
-        categoryId: catObj ? catObj.id : prodObj.categoryId,
-        marqueId: marqueObj ? marqueObj.id : prodObj.marqueId,
-        famille: catObj ? catObj.nom : prodObj.famille
+      await prod.update({
+        categoryId: catId,
+        marqueId: marqueId,
+        description: p.description,
+        prix: p.prix,
+        prixPromo: p.prixPromo,
+        enPromo: p.enPromo,
+        famille: p.famille,
+        imageUrl: p.imageUrl,
+        imageUrl2: p.imageUrl2
       });
     }
   }
 
-  // --- 7. Témoignages & Avis Clients WhatsApp (Avec captures & photos de profil) ---
-  const testimonialsData = [
-    {
-      nom: "Fatima Said",
-      photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
-      genre: "femme",
-      type: "capture_whatsapp",
-      message: "Salam ma sœur ! Colis bien reçu ce matin à Moroni. La broche fleur en perles est magnifique et le peigne en bois démêle tellement bien sans casser mes cheveux ! Merci pour la rapidité 🥰✨",
-      captureUrl: "https://images.unsplash.com/photo-1611746872915-64382b5c76da?auto=format&fit=crop&w=800&q=80",
-      note: 5,
-      actif: true,
-      ordre: 1
-    },
-    {
-      nom: "Nassor Bacar",
-      photoUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80",
-      genre: "homme",
-      type: "capture_whatsapp",
-      message: "Bien reçu mon frère ! L'huile à barbe et le peigne en bois de santal sentent super bon. Service sérieux et paiement Wave rapide. Je vais recommander chez vous sans hésiter 👍",
-      captureUrl: "https://images.unsplash.com/photo-1577563908411-5077b6dc7624?auto=format&fit=crop&w=800&q=80",
-      note: 5,
-      actif: true,
-      ordre: 2
-    },
-    {
-      nom: "Amina Mohamed",
-      photoUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=150&q=80",
-      genre: "femme",
-      type: "texte",
-      message: "Le sérum The Ordinary et la crème CeraVe sont 100% originaux ! Ma peau a retrouvé tout son éclat en seulement deux semaines. Équipe très gentille sur WhatsApp.",
-      captureUrl: null,
-      note: 5,
-      actif: true,
-      ordre: 3
-    },
-    {
-      nom: "Ibrahim Ali",
-      photoUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80",
-      genre: "homme",
-      type: "capture_whatsapp",
-      message: "Bonjour, le parfum boisé est incroyable, excellente tenue toute la journée. Livraison respectée à domicile à l'heure convenue. Merci beaucoup.",
-      captureUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-      note: 5,
-      actif: true,
-      ordre: 4
-    },
-    {
-      nom: "Zalika Youssouf",
-      photoUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80",
-      genre: "femme",
-      type: "capture_whatsapp",
-      message: "J'ai reçu ma commande de broches bijoux et de rouge à lèvres. Les finitions des broches sont splendides, exactement comme sur les photos. Merci pour le petit cadeau !",
-      captureUrl: "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=800&q=80",
-      note: 5,
-      actif: true,
-      ordre: 5
-    }
+  // --- 8. Témoignages Clients Soilihitech ---
+  const avisClients = [
+    { nom: "Hakim M.", texte: "J'ai acheté la glace antiespion et le chargeur 20W pour mon iPhone 14 Pro. Livraison rapide à Moroni et produits 100% originaux !", note: 5, photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80", ville: "Moroni" },
+    { nom: "Anissa B.", texte: "La coque antichoc pour mon Tecno Camon est ultra solide. Très bon service client sur WhatsApp !", note: 5, photoUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80", ville: "Mitsamiouli" },
+    { nom: "Fahad S.", texte: "Les écouteurs Oraimo FreePods sont incroyables pour le prix, la réduction de bruit fonctionne super bien.", note: 5, photoUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80", ville: "Foumbouni" }
   ];
 
-  for (const t of testimonialsData) {
-    const [testiObj] = await Testimonial.findOrCreate({
-      where: { nom: t.nom, boutiqueId: boutique.id },
-      defaults: { ...t, boutiqueId: boutique.id }
+  for (const avis of avisClients) {
+    await Testimonial.findOrCreate({
+      where: { nom: avis.nom, boutiqueId: boutique.id },
+      defaults: { ...avis, boutiqueId: boutique.id, actif: true }
     });
-    if (testiObj) {
-      await testiObj.update({ ...t, boutiqueId: boutique.id });
-    }
   }
 
-  const { clearCachePattern } = require("./config/cache");
-  await clearCachePattern("cache:/api/store").catch(() => {});
-
-  console.log("Seed Cosmétiques & Beauté exécuté avec succès dans boutiquesdb !");
+  console.log("✅ Données Soilihitech initialisées avec succès dans la base de données !");
 }
-
-module.exports = runSeed;
 
 if (require.main === module) {
   const sequelize = require("./config/database");
-  sequelize.sync({ alter: true }).then(runSeed).then(() => process.exit(0)).catch(err => {
-    console.error("Erreur de seed:", err);
+  sequelize.sync({ alter: true }).then(() => {
+    return runSeed();
+  }).then(() => {
+    console.log("Seed terminé.");
+    process.exit(0);
+  }).catch((err) => {
+    console.error("Erreur durant le seed:", err);
     process.exit(1);
   });
 }
+
+module.exports = runSeed;

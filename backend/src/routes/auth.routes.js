@@ -66,7 +66,27 @@ router.post("/register", registerLimiter, async (req, res, next) => {
       if (existUser.isEmailVerified) {
         return res.status(409).json({ message: "Un compte vérifié existe déjà avec ce numéro de téléphone ou cet e-mail." });
       }
-      // Compte existant non vérifié : régénération OTP
+      
+      // Si aucun email fourni, valider automatiquement le compte sans exiger d'OTP
+      if (!cleanEmail) {
+        existUser.nom = cleanNom;
+        existUser.telephone = cleanPhone;
+        existUser.motDePasseHash = await bcrypt.hash(motDePasse, 10);
+        existUser.isEmailVerified = true;
+        existUser.otpCode = null;
+        existUser.otpExpiresAt = null;
+        await existUser.save();
+
+        const token = signToken({ id: existUser.id, role: existUser.role });
+        return res.status(200).json({
+          requireOtp: false,
+          token,
+          user: publicUser(existUser),
+          message: "Connexion réussie ! Bienvenue sur Soilihitech."
+        });
+      }
+
+      // Compte existant non vérifié avec email : envoi OTP
       const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
       const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
       const motDePasseHash = await bcrypt.hash(motDePasse, 10);
@@ -79,14 +99,11 @@ router.post("/register", registerLimiter, async (req, res, next) => {
       existUser.otpExpiresAt = otpExpiresAt;
       await existUser.save();
 
-      // Stocker OTP dans Redis (TTL 600 secondes = 10 min)
       const primaryId = cleanEmail || cleanPhone;
       await setCache(`otp:${primaryId}`, otpCode, 600);
       if (cleanEmail && cleanPhone) await setCache(`otp:${cleanPhone}`, otpCode, 600);
 
-      if (cleanEmail) {
-        envoyerOTP(cleanEmail, otpCode, cleanNom).catch(err => console.error("⚠️ OTP email non envoyé:", err.message));
-      }
+      envoyerOTP(cleanEmail, otpCode, cleanNom).catch(err => console.error("⚠️ OTP email non envoyé:", err.message));
 
       const token = signToken({ id: existUser.id, role: existUser.role });
 
@@ -100,9 +117,34 @@ router.post("/register", registerLimiter, async (req, res, next) => {
       });
     }
 
+    const motDePasseHash = await bcrypt.hash(motDePasse, 10);
+
+    // Si pas d'email fourni, le compte est validé immédiatement sans OTP
+    if (!cleanEmail) {
+      const user = await User.create({
+        nom: cleanNom,
+        email: null,
+        telephone: cleanPhone,
+        motDePasseHash,
+        role: "client",
+        otpCode: null,
+        otpExpiresAt: null,
+        isEmailVerified: true
+      });
+
+      const token = signToken({ id: user.id, role: user.role });
+      return res.status(201).json({
+        requireOtp: false,
+        token,
+        user: publicUser(user),
+        telephone: user.telephone,
+        message: "Compte créé avec succès ! Bienvenue sur Soilihitech."
+      });
+    }
+
+    // Si email fourni, envoyer le code OTP classique
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-    const motDePasseHash = await bcrypt.hash(motDePasse, 10);
 
     const user = await User.create({
       nom: cleanNom,
@@ -115,14 +157,11 @@ router.post("/register", registerLimiter, async (req, res, next) => {
       isEmailVerified: false
     });
 
-    // Stocker OTP dans Redis (TTL 600 secondes = 10 min)
     const primaryId = cleanEmail || cleanPhone;
     await setCache(`otp:${primaryId}`, otpCode, 600);
     if (cleanEmail && cleanPhone) await setCache(`otp:${cleanPhone}`, otpCode, 600);
 
-    if (cleanEmail) {
-      envoyerOTP(cleanEmail, otpCode, cleanNom).catch(err => console.error("⚠️ OTP email non envoyé:", err.message));
-    }
+    envoyerOTP(cleanEmail, otpCode, cleanNom).catch(err => console.error("⚠️ OTP email non envoyé:", err.message));
 
     const token = signToken({ id: user.id, role: user.role });
 

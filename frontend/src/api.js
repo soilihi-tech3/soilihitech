@@ -14,7 +14,7 @@ const getBaseUrl = () => {
   return "https://electro-backend-8hfq.onrender.com/api";
 };
 
-export const SLUG = import.meta.env.VITE_BOUTIQUE_SLUG || "electro-pro";
+export const SLUG = import.meta.env.VITE_BOUTIQUE_SLUG || "soilihitech";
 const api = axios.create({ baseURL: getBaseUrl() });
 
 api.interceptors.request.use((config) => {
