@@ -1,9 +1,10 @@
 import api, { SLUG } from "../api";
-import { formatPrice } from "./currency.js";
+import { formatPrice, getActiveCurrency, getProductPrice } from "./currency.js";
 
 export function formatWhatsAppOrderMessage({ boutique, user, cart, subtotal, fraisLivraison, total, orderNumber, form = {} }) {
   const storeName = boutique?.nom || "la boutique";
   const clientName = user?.nom || "Client";
+  const activeCurrency = getActiveCurrency();
   
   const dateStr = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
@@ -40,10 +41,10 @@ export function formatWhatsAppOrderMessage({ boutique, user, cart, subtotal, fra
   text += `*Détail des articles commandés :*\n`;
 
   cart.forEach((l, index) => {
-    const prix = l.product.prixPromo || l.product.prix;
+    const prix = getProductPrice(l.product, activeCurrency);
     const itemTotal = prix * l.quantite;
-    const itemTotalFormatted = formatPrice(itemTotal, boutique?.devise);
-    const unitPriceFormatted = formatPrice(prix, boutique?.devise);
+    const itemTotalFormatted = formatPrice(itemTotal, activeCurrency);
+    const unitPriceFormatted = formatPrice(prix, activeCurrency);
     
     text += `${index + 1}. *${l.product.nom}*\n`;
     text += `   • Quantité : ${l.quantite} ${l.product.unite || "article(s)"}\n`;
@@ -51,13 +52,13 @@ export function formatWhatsAppOrderMessage({ boutique, user, cart, subtotal, fra
     text += `   • Total ligne : ${itemTotalFormatted}\n`;
   });
 
-  const subtotalFormatted = formatPrice(subtotal, boutique?.devise);
-  const totalFormatted = formatPrice(total || subtotal, boutique?.devise);
+  const subtotalFormatted = formatPrice(subtotal, activeCurrency);
+  const totalFormatted = formatPrice(total || subtotal, activeCurrency);
 
   text += `\n*Résumé financier :*\n`;
   text += `- Sous-total : ${subtotalFormatted}\n`;
   if (fraisLivraison !== undefined && fraisLivraison !== 0 && fraisLivraison !== "0") {
-    const fraisFormatted = isNaN(Number(fraisLivraison)) ? fraisLivraison : formatPrice(fraisLivraison, boutique?.devise);
+    const fraisFormatted = isNaN(Number(fraisLivraison)) ? fraisLivraison : formatPrice(fraisLivraison, activeCurrency);
     text += `- Frais de livraison : ${fraisFormatted}\n`;
   }
   text += `- *Total Général : ${totalFormatted}*\n\n`;
@@ -96,7 +97,8 @@ export async function processWhatsAppOrder({ boutique, user, cart, subtotal, fra
           items,
           modeLivraison: form.modeLivraison || "domicile",
           adresseLivraison: form.adresseLivraison || user.adresse || "Commande WhatsApp",
-          moyenPaiement: form.moyenPaiement || "whatsapp"
+          moyenPaiement: form.moyenPaiement || "whatsapp",
+          devise: getActiveCurrency()
         };
         const res = await api.post(`/store/${SLUG}/orders`, orderData);
         createdOrder = res.data;

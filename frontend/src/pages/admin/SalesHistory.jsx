@@ -10,7 +10,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { subscribeRealtime } from "../../utils/realtime.js";
 import ReceiptModal from "../../components/ReceiptModal.jsx";
 
-import { formatPrice as fcfa } from "../../utils/currency.js";
+import { formatPrice, formatPrice as fcfa } from "../../utils/currency.js";
 
 const MONTHS = [
   { value: "01", label: "Janvier" },
@@ -147,8 +147,12 @@ export default function SalesHistory() {
     .filter(o => o.moyenPaiement === "carte")
     .reduce((sum, o) => sum + Number(o.total || 0), 0);
 
-  const totalAchatCredit = filteredOrders
-    .filter(o => o.typeVente === "recharge_mobile" || o.notes?.includes("recharge_mobile") || o.items?.some(it => it.product?.nom?.toLowerCase().includes("recharge")))
+  const totalComores = filteredOrders
+    .filter(o => !o.devise || o.devise === "KMF")
+    .reduce((sum, o) => sum + Number(o.total || 0), 0);
+
+  const totalSenegal = filteredOrders
+    .filter(o => o.devise === "FCFA")
     .reduce((sum, o) => sum + Number(o.total || 0), 0);
 
   const totalGlobal = filteredOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
@@ -325,15 +329,15 @@ export default function SalesHistory() {
         </div>
       </div>
 
-      {/* KPI SUMMARY CARDS (6 CARDS) */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 14, marginBottom: 20 }}>
+      {/* KPI SUMMARY CARDS */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 20 }}>
         {/* TOTAL CASH */}
         <div className="bs-panel" style={{ padding: 16, background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#166534", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
             <DollarSign size={15} /> TOTAL CASH
           </div>
           <div style={{ fontSize: 22, fontWeight: 900, color: "#15803D", marginTop: 6 }}>
-            {fcfa(totalCash)}
+            {formatPrice(totalCash, boutique?.devise || "KMF")}
           </div>
         </div>
 
@@ -343,7 +347,7 @@ export default function SalesHistory() {
             <Smartphone size={15} /> TOTAL MVOLA
           </div>
           <div style={{ fontSize: 22, fontWeight: 900, color: "#059669", marginTop: 6 }}>
-            {fcfa(totalMvola)}
+            {formatPrice(totalMvola, boutique?.devise || "KMF")}
           </div>
         </div>
 
@@ -353,7 +357,7 @@ export default function SalesHistory() {
             <Smartphone size={15} /> TOTAL WERO
           </div>
           <div style={{ fontSize: 22, fontWeight: 900, color: "#CA8A04", marginTop: 6 }}>
-            {fcfa(totalWero)}
+            {formatPrice(totalWero, boutique?.devise || "KMF")}
           </div>
         </div>
 
@@ -363,17 +367,27 @@ export default function SalesHistory() {
             <CreditCard size={15} /> TOTAL CARTE
           </div>
           <div style={{ fontSize: 22, fontWeight: 900, color: "#7C3AED", marginTop: 6 }}>
-            {fcfa(totalCarte)}
+            {formatPrice(totalCarte, boutique?.devise || "KMF")}
           </div>
         </div>
 
-        {/* TOTAL ACHAT CRÉDIT */}
-        <div className="bs-panel" style={{ padding: 16, background: "#E0F2FE", border: "1px solid #BAE6FD", borderRadius: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#0369A1", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
-            <Smartphone size={15} color="#0284C7" /> ACHAT CRÉDIT
+        {/* VENTES COMORES */}
+        <div className="bs-panel" style={{ padding: 16, background: "#EBF7F0", border: "1px solid #A7F3D0", borderRadius: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--forest-dark)", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
+            <span style={{ background: "var(--forest)", color: "#fff", padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 900 }}>KM</span> VENTES COMORES
           </div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#0284C7", marginTop: 6 }}>
-            {fcfa(totalAchatCredit)}
+          <div style={{ fontSize: 22, fontWeight: 900, color: "var(--forest-dark)", marginTop: 6 }}>
+            {formatPrice(totalComores, "KMF")}
+          </div>
+        </div>
+
+        {/* VENTES SÉNÉGAL */}
+        <div className="bs-panel" style={{ padding: 16, background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#92400E", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
+            <span style={{ background: "#D97706", color: "#fff", padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 900 }}>SN</span> VENTES SÉNÉGAL
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: "#92400E", marginTop: 6 }}>
+            {formatPrice(totalSenegal, "FCFA")}
           </div>
         </div>
 
@@ -383,14 +397,15 @@ export default function SalesHistory() {
             <ShoppingBag size={15} /> TOTAL GLOBAL
           </div>
           <div style={{ fontSize: 22, fontWeight: 900, color: "var(--forest-dark)", marginTop: 6 }}>
-            {fcfa(totalGlobal)}
+            {formatPrice(totalGlobal, boutique?.devise || "KMF")}
           </div>
         </div>
       </div>
 
       {/* SALES HISTORY DATA TABLE */}
-      <div className="bs-panel" style={{ padding: 0, overflow: "hidden" }}>
-        <table className="bs-table">
+      <div className="bs-panel" style={{ padding: 0 }}>
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%" }}>
+          <table className="bs-table" style={{ minWidth: 800 }}>
           <thead>
             <tr>
               <th>DATE</th>
@@ -503,6 +518,7 @@ export default function SalesHistory() {
             })}
           </tbody>
         </table>
+        </div>
 
         {/* PAGINATION */}
         <TablePagination

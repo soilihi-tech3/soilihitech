@@ -114,8 +114,9 @@ export default function Fournisseurs() {
       </div>
 
       {/* FOURNISSEURS TABLE */}
-      <div className="bs-panel" style={{ padding: 0, overflow: "hidden" }}>
-        <table className="bs-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div className="bs-panel" style={{ padding: 0 }}>
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%" }}>
+          <table className="bs-table" style={{ width: "100%", minWidth: 700, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "var(--paper)", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
               <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Fournisseur</th>
@@ -179,6 +180,7 @@ export default function Fournisseurs() {
             )}
           </tbody>
         </table>
+        </div>
         <TablePagination
           totalItems={filteredFournisseurs.length}
           currentPage={currentPage}

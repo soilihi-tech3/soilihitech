@@ -8,7 +8,7 @@ import { processWhatsAppOrder, formatWhatsAppOrderMessage } from "../../utils/wh
 
 import { MvolaLogo, WeroLogo, OnlinePaymentBadges, CashLogo } from "../../components/PaymentLogos";
 
-import { formatPrice as fcfa } from "../../utils/currency.js";
+import { formatPrice as fcfa, getActiveCurrency, getProductPrice } from "../../utils/currency.js";
 
 export default function Checkout() {
   const { cart, subtotal, updateQuantite, removeFromCart, clearCart, showToast } = useCart();
@@ -16,6 +16,13 @@ export default function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
   const isWhatsAppFocus = location.search.includes("whatsapp=true");
+
+  const [activeCurrency, setActiveCurrencyState] = useState(() => getActiveCurrency());
+  useEffect(() => {
+    const handleCurr = (e) => setActiveCurrencyState(e.detail);
+    window.addEventListener("currency_changed", handleCurr);
+    return () => window.removeEventListener("currency_changed", handleCurr);
+  }, []);
 
   const [form, setForm] = useState({
     modeLivraison: "domicile",
@@ -90,10 +97,6 @@ export default function Checkout() {
       id: "wero", key: "holam", label: "Wero", sub: "Paiement instantané européen Wero", Icon: Smartphone, available: !!modesPaiement.holam,
       renderLogo: () => <WeroLogo height={28} />
     },
-    { 
-      id: "carte", key: "carte", label: "Paiement en ligne sécurisé", sub: "Visa / MasterCard / PayPal / Virement", Icon: CreditCard, available: !!modesPaiement.carte,
-      renderLogo: () => <OnlinePaymentBadges />
-    },
   ];
 
   useEffect(() => {
@@ -166,7 +169,7 @@ export default function Checkout() {
     setLoading(true);
     try {
       const items = cart.map((l) => ({ productId: l.product.id, quantite: l.quantite }));
-      const res = await api.post(`/store/${SLUG}/orders`, { items, ...form });
+      const res = await api.post(`/store/${SLUG}/orders`, { items, devise: activeCurrency, ...form });
       
       if (form.moyenPaiement === "wero" || form.moyenPaiement === "holam" || form.moyenPaiement === "mvola") {
         setPaymentModalData({
@@ -224,15 +227,7 @@ export default function Checkout() {
         }
       }
 
-      // Paiement via Stripe (Carte) → redirection
-      if (form.moyenPaiement === "carte") {
-        const sessionRes = await api.post(`/store/${SLUG}/create-checkout-session`, { orderId: res.data.id });
-        if (sessionRes.data.url) {
-          clearCart();
-          window.location.href = sessionRes.data.url;
-          return; // Stop here, user is redirected
-        }
-      }
+
 
       clearCart();
       showToast("Commande validée avec succès !", "success", "Félicitations");
@@ -549,7 +544,7 @@ export default function Checkout() {
             {/* Items */}
             <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 24 }}>
               {cart.map(l => {
-                const prix = l.product.prixPromo || l.product.prix;
+                const prix = getProductPrice(l.product, activeCurrency);
                 return (
                   <div key={l.product.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ position: "relative" }}>
@@ -558,9 +553,9 @@ export default function Checkout() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.product.nom}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{fcfa(prix)} / {l.product.unite}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{fcfa(prix, activeCurrency)} / {l.product.unite}</div>
                     </div>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)", flexShrink: 0 }}>{fcfa(prix * l.quantite)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)", flexShrink: 0 }}>{fcfa(prix * l.quantite, activeCurrency)}</div>
                   </div>
                 );
               })}
@@ -570,19 +565,19 @@ export default function Checkout() {
 
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 14 }}>
               <span style={{ color: "var(--muted)" }}>Sous-total</span>
-              <span style={{ fontWeight: 600 }}>{fcfa(subtotal)}</span>
+              <span style={{ fontWeight: 600 }}>{fcfa(subtotal, activeCurrency)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20, fontSize: 14 }}>
               <span style={{ color: "var(--muted)" }}>Livraison</span>
               <span style={{ fontWeight: 600, color: (fraisLivraison === 0 || fraisLivraison === "0") ? "#2D8653" : "var(--ink)" }}>
-                {fraisLivraison === 0 || fraisLivraison === "0" ? "Gratuite" : (isNaN(Number(fraisLivraison)) ? fraisLivraison : fcfa(Number(fraisLivraison)))}
+                {fraisLivraison === 0 || fraisLivraison === "0" ? "Gratuite" : (isNaN(Number(fraisLivraison)) ? fraisLivraison : fcfa(Number(fraisLivraison), activeCurrency))}
               </span>
             </div>
 
             <div style={{ background: "var(--forest-dark)", borderRadius: 14, padding: "18px 20px", marginBottom: 24 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ color: "#DDE8DF", fontSize: 14, fontWeight: 600 }}>Total à payer</span>
-                <span style={{ color: "#fff", fontSize: 24, fontWeight: 900 }}>{fcfa(total)}</span>
+                <span style={{ color: "#fff", fontSize: 24, fontWeight: 900 }}>{fcfa(total, activeCurrency)}</span>
               </div>
             </div>
 

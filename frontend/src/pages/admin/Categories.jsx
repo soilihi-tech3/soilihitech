@@ -296,7 +296,8 @@ export default function AdminCategories() {
             </div>
           </div>
 
-          <table className="bs-table">
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%" }}>
+          <table className="bs-table" style={{ minWidth: 600 }}>
             <thead>
               <tr>
                 <th>Image</th>
@@ -345,6 +346,7 @@ export default function AdminCategories() {
               ))}
             </tbody>
           </table>
+          </div>
 
           <TablePagination
             totalItems={totalItems}
@@ -499,12 +501,13 @@ export default function AdminCategories() {
           </div>
 
           {/* LISTE DES FAMILLES */}
-          <div className="bs-panel" style={{ padding: 0, overflow: "hidden" }}>
+          <div className="bs-panel" style={{ padding: 0 }}>
             <div style={{ background: "var(--paper)", padding: "14px 18px", borderBottom: "1px solid var(--line)", fontWeight: 800, color: "var(--forest-dark)", fontSize: 16 }}>
               Liste des familles créées ({familles.length})
             </div>
 
-            <table className="bs-table">
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%" }}>
+            <table className="bs-table" style={{ minWidth: 500 }}>
               <thead>
                 <tr>
                   <th>Famille</th>
@@ -533,6 +536,7 @@ export default function AdminCategories() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}

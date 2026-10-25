@@ -213,8 +213,8 @@ html, body {
   padding: 0;
   width: 100%;
   max-width: 100vw;
-  overflow-x: clip !important;
   box-sizing: border-box;
+  overflow-x: hidden;
   font-family: var(--font-main);
   color: var(--ink);
   background: var(--paper);
@@ -228,7 +228,8 @@ html, body {
   flex-direction: column;
   width: 100%;
   max-width: 100vw;
-  overflow-x: clip !important;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 h1, h2, h3, .brand-font {
@@ -1458,9 +1459,11 @@ html[data-theme="dark"] .bs-testimonial-card span[style*="color: var(--ink)"] {
 .bs-admin {
   min-height: 100vh;
   width: 100%;
-  max-width: 100vw;
+  max-width: 100%;
+  min-width: 0;
   box-sizing: border-box;
   position: relative;
+  overflow-x: hidden;
 }
 
 .bs-sidebar {
@@ -1578,6 +1581,7 @@ html[data-theme="dark"] .bs-side-btn.active .bs-side-label {
   margin-left: 240px;
   padding: 24px 32px;
   width: calc(100% - 240px);
+  max-width: calc(100% - 240px);
   min-width: 0;
   box-sizing: border-box;
   transition: margin-left 0.25s ease, width 0.25s ease;
@@ -1587,12 +1591,49 @@ html[data-theme="dark"] .bs-side-btn.active .bs-side-label {
 .bs-admin.is-collapsed .bs-main {
   margin-left: 74px;
   width: calc(100% - 74px);
+  max-width: calc(100% - 74px);
+}
+
+.bs-table-container, .bs-table-wrapper, div[style*="overflow-x: auto"], div[style*="overflowX: auto"] {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: thin;
+  scrollbar-color: #94A3B8 #F1F5F9;
+}
+
+.bs-table-container::-webkit-scrollbar,
+.bs-table-wrapper::-webkit-scrollbar,
+div[style*="overflow-x: auto"]::-webkit-scrollbar,
+div[style*="overflowX: auto"]::-webkit-scrollbar {
+  height: 8px;
+}
+
+.bs-table-container::-webkit-scrollbar-track,
+.bs-table-wrapper::-webkit-scrollbar-track,
+div[style*="overflow-x: auto"]::-webkit-scrollbar-track,
+div[style*="overflowX: auto"]::-webkit-scrollbar-track {
+  background: #F1F5F9;
+  border-radius: 4px;
+}
+
+.bs-table-container::-webkit-scrollbar-thumb,
+.bs-table-wrapper::-webkit-scrollbar-thumb,
+div[style*="overflow-x: auto"]::-webkit-scrollbar-thumb,
+div[style*="overflowX: auto"]::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+
+.bs-table-container::-webkit-scrollbar-thumb:hover,
+.bs-table-wrapper::-webkit-scrollbar-thumb:hover,
+div[style*="overflow-x: auto"]::-webkit-scrollbar-thumb:hover,
+div[style*="overflowX: auto"]::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
 }
 
 .bs-table-container, .bs-table-wrapper {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   border-radius: var(--radius-md);
   border: 1px solid var(--line);
   background: var(--card);
@@ -2428,15 +2469,25 @@ html[data-theme="dark"] .bs-side-btn.active .bs-side-label {
 /* Default Desktop POS Grid */
 .bs-pos-grid {
   display: grid;
-  grid-template-columns: 1.6fr 1fr;
+  grid-template-columns: minmax(0, 1fr) 350px;
   gap: 20px;
   align-items: start;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .bs-pos-products-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 1140px) {
+  .bs-pos-grid {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 14px;
+  }
 }
 
 .bs-pos-mobile-tabs {
@@ -3328,4 +3379,26 @@ html[data-theme="dark"] .bs-wa-label strong {
     padding: 4px;
   }
 }
+
+/* Print styles for invoices and quotes */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  header, footer, .bs-header-wrapper, .bs-wa-float-widget, .no-print, button, .bs-bottom-nav {
+    display: none !important;
+  }
+  #printable-invoice {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+}
+
+
+
+
 

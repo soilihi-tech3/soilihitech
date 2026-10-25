@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { ShoppingCart, Search, User, LogOut, Store, X, Home, Grid, Package, Shield, Menu, ChevronDown, Info, Heart, Sun, Moon, Smartphone, MoreHorizontal, Zap } from "lucide-react";
+import { ShoppingCart, Search, User, LogOut, Store, X, Home, Grid, Package, Shield, Menu, ChevronDown, Info, Heart, Sun, Moon, Smartphone, MoreHorizontal, Zap, ClipboardList } from "lucide-react";
 
 import { useCart } from "../context/CartContext.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -9,7 +9,7 @@ import CartDrawer from "./CartDrawer.jsx";
 import NotificationMenu from "./NotificationMenu.jsx";
 import ProfileModal from "./ProfileModal.jsx";
 
-import { formatPrice as fcfa } from "../utils/currency.js";
+import { formatPrice as fcfa, CURRENCIES, getActiveCurrency, setActiveCurrency } from "../utils/currency.js";
 
 export default function Header({ setCartOpen: setCartOpenProp }) {
   const { user, boutique: boutiqueContext, logout, theme, toggleTheme } = useAuth();
@@ -17,6 +17,14 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
   const [cartOpen, setCartOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [currentCurrency, setCurrentCurrency] = useState(() => getActiveCurrency());
+
+  useEffect(() => {
+    const handleCurr = (e) => setCurrentCurrency(e.detail);
+    window.addEventListener("currency_changed", handleCurr);
+    return () => window.removeEventListener("currency_changed", handleCurr);
+  }, []);
+
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
@@ -556,6 +564,38 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
               </div>
             )}
 
+            {/* SÉLECTEUR DE DEVISE & PAYS : COMORES (KMF) OU SÉNÉGAL (FCFA) */}
+            <div style={{ display: "flex", alignItems: "center", background: "var(--paper)", border: "1.5px solid var(--line)", borderRadius: 24, padding: "3px 4px", gap: 3 }}>
+              {CURRENCIES.map(c => {
+                const isActive = currentCurrency === c.code;
+                return (
+                  <button
+                    key={c.code}
+                    type="button"
+                    onClick={() => setActiveCurrency(c.code)}
+                    style={{
+                      border: "none",
+                      background: isActive ? "var(--forest-dark)" : "transparent",
+                      color: isActive ? "#ffffff" : "var(--ink)",
+                      borderRadius: 18,
+                      padding: "6px 10px",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      transition: "all 0.15s ease",
+                      boxShadow: isActive ? "0 2px 8px rgba(0,0,0,0.15)" : "none"
+                    }}
+                    title={`Afficher les prix en ${c.label}`}
+                  >
+                    <span style={{ letterSpacing: "0.03em" }}>{c.code}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             {/* BOUTON CHANGER LE THÈME */}
             <button
               onClick={toggleTheme}
@@ -718,32 +758,32 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
               <Home size={18} /> <span>Accueil</span>
             </Link>
 
-            {/* A PROPOS */}
+            {/* DEMANDE SUR-MESURE */}
             <Link
-              to="/a-propos"
+              to="/demande-sur-mesure"
               style={{
                 fontSize: 15, fontWeight: 700, textDecoration: "none",
                 display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap",
                 padding: "9px 20px", borderRadius: 30, transition: "all 0.2s ease",
-                background: location.pathname === "/a-propos" ? "var(--forest-light)" : "transparent",
-                color: location.pathname === "/a-propos" ? "var(--forest)" : "var(--ink)",
-                border: location.pathname === "/a-propos" ? "1.5px solid var(--forest)" : "1.5px solid transparent",
-                boxShadow: location.pathname === "/a-propos" ? "0 2px 10px rgba(190, 24, 93, 0.12)" : "none"
+                background: location.pathname === "/demande-sur-mesure" ? "var(--forest-light)" : "transparent",
+                color: location.pathname === "/demande-sur-mesure" ? "var(--forest)" : "var(--ink)",
+                border: location.pathname === "/demande-sur-mesure" ? "1.5px solid var(--forest)" : "1.5px solid transparent",
+                boxShadow: location.pathname === "/demande-sur-mesure" ? "0 2px 10px rgba(37, 99, 235, 0.12)" : "none"
               }}
               onMouseEnter={(e) => {
-                if (location.pathname !== "/a-propos") {
+                if (location.pathname !== "/demande-sur-mesure") {
                   e.currentTarget.style.background = "var(--paper)";
                   e.currentTarget.style.borderColor = "var(--line)";
                 }
               }}
               onMouseLeave={(e) => {
-                if (location.pathname !== "/a-propos") {
+                if (location.pathname !== "/demande-sur-mesure") {
                   e.currentTarget.style.background = "transparent";
                   e.currentTarget.style.borderColor = "transparent";
                 }
               }}
             >
-              <Info size={18} /> <span>À propos</span>
+              <ClipboardList size={18} /> <span>Faire une demande</span>
             </Link>
 
             {/* CATALOGUE */}
@@ -994,7 +1034,7 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
               </Link>
 
               <Link 
-                to="/a-propos" 
+                to="/demande-sur-mesure" 
                 onClick={() => setMobileMoreOpen(false)} 
                 style={{ 
                   display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", 
@@ -1003,8 +1043,8 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
                   transition: "background 0.15s"
                 }}
               >
-                <Info size={18} color="#0284C7" />
-                <span style={{ flex: 1 }}>À propos</span>
+                <ClipboardList size={18} color="#2563EB" />
+                <span style={{ flex: 1 }}>Faire une demande sur-mesure</span>
               </Link>
 
               {user && (

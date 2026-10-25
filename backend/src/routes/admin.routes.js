@@ -109,10 +109,35 @@ router.get("/dashboard", async (req, res, next) => {
       include: [{ model: OrderItem, as: "items", include: [{ model: Product, as: "product" }] }],
     });
 
+    // Calcul des dépenses totales d'achats enregistrées
+    const totalAchatsRows = await Achat.findAll({ where: { boutiqueId } });
+    const totalDepensesAchats = totalAchatsRows.reduce((sum, a) => sum + Number(a.totalAchat || 0), 0);
+
     const chiffreAffaires = orders.reduce((s, o) => s + Number(o.total), 0);
     const beneficeNet = orders.reduce((s, o) => {
       return s + o.items.reduce((ss, it) => ss + (Number(it.prixUnitaire) - (it.product ? Number(it.product.coutAchat) : 0)) * it.quantite, 0);
     }, 0);
+
+    // Calculs de bénéfices ventilés Comores (KMF) et Sénégal (FCFA)
+    const beneficeComores = orders
+      .filter((o) => !o.devise || o.devise === "KMF")
+      .reduce((s, o) => {
+        return s + o.items.reduce((ss, it) => {
+          const cout = it.product ? Number(it.product.coutAchat || 0) : 0;
+          const prix = Number(it.prixUnitaire || it.product?.prix || 0);
+          return ss + ((prix - cout) * it.quantite);
+        }, 0);
+      }, 0);
+
+    const beneficeSenegal = orders
+      .filter((o) => o.devise === "FCFA" || o.devise === "XOF")
+      .reduce((s, o) => {
+        return s + o.items.reduce((ss, it) => {
+          const cout = it.product ? Number(it.product.coutAchat || 0) : 0;
+          const prix = Number(it.prixUnitaire || it.product?.prixSenegal || 0);
+          return ss + ((prix - cout) * it.quantite);
+        }, 0);
+      }, 0);
 
     const nbCommandes = await Order.count({ where: { boutiqueId } });
     const totalClients = await User.count({ 
@@ -196,6 +221,9 @@ router.get("/dashboard", async (req, res, next) => {
       isEmploye: false,
       chiffreAffaires,
       beneficeNet,
+      totalDepensesAchats,
+      beneficeComores,
+      beneficeSenegal,
       valeurStockVente,
       valeurStockAchat,
       totalVentesCount,
@@ -352,6 +380,34 @@ router.put("/products/:id", async (req, res, next) => {
     if (!product) return res.status(404).json({ message: "Produit introuvable." });
 
     await product.update(req.body);
+
+    // Synchronisation automatique de la ligne d'Achat associée
+    const existingAchat = await Achat.findOne({
+      where: { productId: product.id, boutiqueId: req.boutiqueId },
+      order: [["createdAt", "ASC"]]
+    });
+
+    const qty = product.stock > 0 ? product.stock : 1;
+    const unitCost = Number(product.coutAchat) || 0;
+
+    if (existingAchat) {
+      await existingAchat.update({
+        fournisseurId: product.fournisseurId || existingAchat.fournisseurId,
+        quantite: qty,
+        prixAchatUnitaire: unitCost,
+        totalAchat: qty * unitCost
+      }).catch(() => {});
+    } else if (qty > 0 || unitCost > 0) {
+      await Achat.create({
+        boutiqueId: req.boutiqueId,
+        productId: product.id,
+        fournisseurId: product.fournisseurId || null,
+        quantite: qty,
+        prixAchatUnitaire: unitCost,
+        totalAchat: qty * unitCost,
+        notes: "Mise à jour fiche produit"
+      }).catch(() => {});
+    }
 
     const fullProduct = await Product.findByPk(product.id, {
       include: [Category, { model: Fournisseur, as: "fournisseur" }, { model: Marque, as: "marque" }]
@@ -1015,15 +1071,58 @@ router.delete("/unites/:id", requireRole("admin"), async (req, res, next) => {
 
 router.get("/achats", async (req, res, next) => {
   try {
+    const where = { boutiqueId: req.boutiqueId };
+    const { startDate, endDate } = req.query;
+
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) {
+        where.createdAt[Op.gte] = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        where.createdAt[Op.lte] = end;
+      }
+    }
+
     const list = await Achat.findAll({
-      where: { boutiqueId: req.boutiqueId },
+      where,
       include: [
         { model: Product, as: "product" },
         { model: Fournisseur, as: "fournisseur" }
       ],
       order: [["createdAt", "DESC"]]
     });
-    res.json(list);
+
+    // Calculs de rentabilité et bénéfices
+    const totalDepenses = list.reduce((sum, a) => sum + Number(a.totalAchat || 0), 0);
+
+    // Calcul potentiel / prévisionnel sur le stock et sur les ventes
+    let potentielVenteKMF = 0;
+    let potentielVenteFCFA = 0;
+
+    for (const item of list) {
+      if (item.product) {
+        const pKmf = Number(item.product.prixPromo || item.product.prix || 0);
+        const pFcfa = Number(item.product.prixPromoSenegal || item.product.prixSenegal || 0);
+        const q = Number(item.quantite || 0);
+        potentielVenteKMF += (pKmf * q);
+        potentielVenteFCFA += (pFcfa * q);
+      }
+    }
+
+    const beneficePrevisionnelKMF = Math.max(0, potentielVenteKMF - totalDepenses);
+    const beneficePrevisionnelFCFA = Math.max(0, potentielVenteFCFA - totalDepenses);
+
+    res.json({
+      achats: list,
+      totalDepenses,
+      beneficePrevisionnelKMF,
+      beneficePrevisionnelFCFA,
+      potentielVenteKMF,
+      potentielVenteFCFA
+    });
   } catch (err) { next(err); }
 });
 
@@ -1193,7 +1292,8 @@ router.post("/ai/enhance-product", async (req, res, next) => {
       marque,
       categorie,
       userInstructions,
-      photoKeywords
+      photoKeywords,
+      photoUrl
     });
 
     // 2. Génération du visuel studio épuré haute résolution
@@ -1240,6 +1340,15 @@ router.post("/ai/generate-studio-photo", async (req, res, next) => {
     next(err);
   }
 });
+
+// --- ROUTES DEMANDES SUR-MESURE & DEVIS ---
+const {
+  listAdminCustomRequests,
+  quoteCustomRequest
+} = require("../controllers/customOrder.controller");
+
+router.get("/custom-requests", listAdminCustomRequests);
+router.put("/custom-requests/:id/quote", quoteCustomRequest);
 
 module.exports = router;
 

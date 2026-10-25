@@ -5,12 +5,19 @@ import { useCart } from "../context/CartContext.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { processWhatsAppOrder } from "../utils/whatsappOrder.js";
 
-import { formatPrice as fcfa } from "../utils/currency.js";
+import { formatPrice as fcfa, getActiveCurrency, getProductPrice } from "../utils/currency.js";
 
 export default function CartDrawer({ onClose }) {
   const { cart, updateQuantite, setExactQuantite, removeFromCart, subtotal, clearCart, showToast } = useCart();
   const { user, boutique } = useAuth();
   const navigate = useNavigate();
+
+  const [activeCurrency, setActiveCurrencyState] = React.useState(() => getActiveCurrency());
+  React.useEffect(() => {
+    const handleCurr = (e) => setActiveCurrencyState(e.detail);
+    window.addEventListener("currency_changed", handleCurr);
+    return () => window.removeEventListener("currency_changed", handleCurr);
+  }, []);
 
   const isWhatsAppEnabled = boutique?.modulesActifs?.commanderWhatsapp !== false;
 
@@ -116,8 +123,15 @@ export default function CartDrawer({ onClose }) {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {cart.map((l) => {
-                const prix = l.product.prixPromo || l.product.prix;
-                const lineTotal = prix * l.quantite;
+                const isSenegal = activeCurrency === "FCFA";
+                const prix = getProductPrice(l.product, activeCurrency);
+                const regularPrice = isSenegal && l.product.prixSenegal && Number(l.product.prixSenegal) > 0
+                  ? Number(l.product.prixSenegal)
+                  : Number(l.product.prix);
+                const hasPromo = isSenegal 
+                  ? (l.product.prixPromoSenegal && Number(l.product.prixPromoSenegal) > 0)
+                  : (l.product.prixPromo && Number(l.product.prixPromo) > 0);
+
                 return (
                   <div key={l.product.id} style={{
                     display: "flex", gap: 14, padding: "14px",
@@ -146,11 +160,11 @@ export default function CartDrawer({ onClose }) {
                         {l.product.nom}
                       </div>
                       <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                        {fcfa(prix)} / {l.product.unite}
+                        {fcfa(prix, activeCurrency)} / {l.product.unite}
                       </div>
-                      {l.product.prixPromo && (
+                      {hasPromo && (
                         <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600, marginTop: 2 }}>
-                          PROMO · <span style={{ textDecoration: "line-through", color: "var(--muted)" }}>{fcfa(l.product.prix)}</span>
+                          PROMO · <span style={{ textDecoration: "line-through", color: "var(--muted)" }}>{fcfa(regularPrice, activeCurrency)}</span>
                         </div>
                       )}
 
@@ -230,7 +244,7 @@ export default function CartDrawer({ onClose }) {
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Sous-total</span>
-              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{fcfa(subtotal)}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{fcfa(subtotal, activeCurrency)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Livraison</span>
@@ -241,7 +255,7 @@ export default function CartDrawer({ onClose }) {
               paddingTop: 14, borderTop: "1.5px solid var(--line)", marginBottom: 18
             }}>
               <span style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>Total estimé</span>
-              <span style={{ fontSize: 20, fontWeight: 800, color: "var(--forest-dark)" }}>{fcfa(subtotal)}</span>
+              <span style={{ fontSize: 20, fontWeight: 800, color: "var(--forest-dark)" }}>{fcfa(subtotal, activeCurrency)}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button 

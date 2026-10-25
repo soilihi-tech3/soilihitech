@@ -10,7 +10,7 @@ import { subscribeRealtime } from "../../utils/realtime.js";
 import { Skel } from "../../components/Skeleton.jsx";
 import { readCache, writeCache } from "../../utils/swrCache.js";
 
-import { formatPrice as fcfa } from "../../utils/currency.js";
+import { formatPrice as fcfa, getActiveCurrency } from "../../utils/currency.js";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -19,6 +19,14 @@ export default function ProductDetail() {
   const { cart, addToCart, showToast } = useCart();
   const { user } = useAuth();
   
+  // Currency state
+  const [activeCurrency, setActiveCurrencyState] = useState(() => getActiveCurrency());
+  useEffect(() => {
+    const handleCurr = (e) => setActiveCurrencyState(e.detail);
+    window.addEventListener("currency_changed", handleCurr);
+    return () => window.removeEventListener("currency_changed", handleCurr);
+  }, []);
+
   // Instant render using passed state from ProductCard, fallback to null
   const [product, setProduct] = useState(() => location.state?.product || readCache(`product:${id}`) || null);
   const [selectedImgIndex, setSelectedImgIndex] = useState(0);
@@ -287,19 +295,38 @@ export default function ProductDetail() {
             </div>
           )}
 
-          <div className="bs-price-row" style={{ fontSize: 24, marginBottom: 20 }}>
-            {product.prixPromo ? (
-              <>
-                <span className="bs-price barre" style={{ fontSize: 20, color: "var(--muted)", textDecoration: "line-through" }}>{fcfa(product.prix)}</span>
-                <span className="bs-price" style={{ fontSize: 32, color: "#B4483A", fontWeight: 900 }}>{fcfa(product.prixPromo)}</span>
-              </>
-            ) : (
-              <span className="bs-price" style={{ fontSize: 32, fontWeight: 900 }}>{fcfa(product.prix)}</span>
-            )}
-            <span style={{ color: "var(--muted)", fontSize: 15, fontWeight: 600 }}>
-              / {product.poids && product.poids !== "1" ? `${product.poids} ` : ""}{product.unite}
-            </span>
-          </div>
+          {(() => {
+            const isSenegal = activeCurrency === "FCFA";
+            const regularPrice = isSenegal && product.prixSenegal && Number(product.prixSenegal) > 0
+              ? Number(product.prixSenegal)
+              : Number(product.prix);
+
+            const promoPrice = isSenegal && product.prixPromoSenegal && Number(product.prixPromoSenegal) > 0
+              ? Number(product.prixPromoSenegal)
+              : (!isSenegal && product.prixPromo ? Number(product.prixPromo) : null);
+
+            return (
+              <div className="bs-price-row" style={{ fontSize: 24, marginBottom: 20 }}>
+                {promoPrice ? (
+                  <>
+                    <span className="bs-price barre" style={{ fontSize: 20, color: "var(--muted)", textDecoration: "line-through" }}>
+                      {fcfa(regularPrice, activeCurrency)}
+                    </span>
+                    <span className="bs-price" style={{ fontSize: 32, color: "#B4483A", fontWeight: 900 }}>
+                      {fcfa(promoPrice, activeCurrency)}
+                    </span>
+                  </>
+                ) : (
+                  <span className="bs-price" style={{ fontSize: 32, fontWeight: 900 }}>
+                    {fcfa(regularPrice, activeCurrency)}
+                  </span>
+                )}
+                <span style={{ color: "var(--muted)", fontSize: 15, fontWeight: 600 }}>
+                  / {product.poids && product.poids !== "1" ? `${product.poids} ` : ""}{product.unite}
+                </span>
+              </div>
+            );
+          })()}
 
           <p style={{ color: "var(--muted)", fontSize: 15, maxWidth: 520, lineHeight: 1.6, marginBottom: 24 }}>
             {product.description || (product.stock > 0 ? `Produit de qualité supérieure disponible en stock (${product.stock} ${product.unite}).` : "Rupture de stock temporaire.")}

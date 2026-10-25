@@ -88,9 +88,15 @@ RechargePlan.belongsTo(Boutique, { foreignKey: "boutiqueId" });
 Boutique.hasMany(Testimonial, { foreignKey: "boutiqueId", as: "testimonials" });
 Testimonial.belongsTo(Boutique, { foreignKey: "boutiqueId" });
 
+const CustomOrderRequest = require("./CustomOrderRequest");
+Boutique.hasMany(CustomOrderRequest, { foreignKey: "boutiqueId", as: "customOrders" });
+CustomOrderRequest.belongsTo(Boutique, { foreignKey: "boutiqueId", as: "boutique" });
+User.hasMany(CustomOrderRequest, { foreignKey: "clientId", as: "customOrders" });
+CustomOrderRequest.belongsTo(User, { foreignKey: "clientId", as: "client" });
+
 module.exports = { 
   sequelize, Boutique, User, Category, Product, Order, OrderItem, 
   Review, Notification, Famille, Fournisseur, UniteVente, Achat, Marque, EmailLog, RechargePlan,
-  Testimonial
+  Testimonial, CustomOrderRequest
 };
 

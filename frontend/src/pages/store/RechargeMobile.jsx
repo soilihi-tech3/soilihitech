@@ -749,43 +749,7 @@ export default function RechargeMobile() {
                 </div>
               </div>
 
-              {/* CARTE BANCAIRE — Stripe */}
-              <div
-                onClick={() => {
-                  if (!carteAvailable) {
-                    showToast("Le paiement par Carte bancaire est temporairement indisponible sur cette boutique.", "info");
-                    return;
-                  }
-                  setMoyenPaiement("carte");
-                }}
-                style={{
-                  background: !carteAvailable ? "var(--paper)" : moyenPaiement === "carte" ? "#F0FDF4" : "var(--card)",
-                  border: `1.5px solid ${!carteAvailable ? "var(--line)" : moyenPaiement === "carte" ? "var(--forest)" : "var(--line)"}`,
-                  opacity: carteAvailable ? 1 : 0.6,
-                  borderRadius: 12, padding: "16px 20px", display: "flex", alignItems: "center", gap: 16,
-                  cursor: carteAvailable ? "pointer" : "not-allowed", transition: "all 0.15s ease"
-                }}
-              >
-                <div style={{ flexShrink: 0, width: 22, height: 22, borderRadius: "50%", border: `2px solid ${carteAvailable && moyenPaiement === "carte" ? "var(--forest)" : "var(--muted)"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {carteAvailable && moyenPaiement === "carte" && <div style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--forest)" }} />}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-                    <div>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: "var(--forest-dark)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span>Carte bancaire (€)</span>
-                        {!carteAvailable && (
-                          <span style={{ fontSize: 10, background: "var(--line)", color: "var(--muted)", padding: "2px 8px", borderRadius: 8, fontWeight: 700 }}>
-                            Bientôt disponible
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>Paiement sécurisé en ligne (Stripe) — en Euros</div>
-                    </div>
-                    <OnlinePaymentBadges />
-                  </div>
-                </div>
-              </div>
+
 
               {/* WERO */}
               <div

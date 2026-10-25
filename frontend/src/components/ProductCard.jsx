@@ -5,7 +5,7 @@ import Stars from "./Stars.jsx";
 import { useCart } from "../context/CartContext.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
-import { formatPrice as fcfa } from "../utils/currency.js";
+import { formatPrice as fcfa, getActiveCurrency, getProductPrice } from "../utils/currency.js";
 
 export default function ProductCard({ product, isFavorisPage }) {
   const navigate = useNavigate();
@@ -47,9 +47,26 @@ export default function ProductCard({ product, isFavorisPage }) {
     window.dispatchEvent(new Event("favorites_updated"));
   }
 
-  // Calculate discount percentage
-  const hasPromo = product.enPromo || (product.prixPromo && Number(product.prixPromo) < Number(product.prix));
-  const promoPercent = hasPromo && product.prixPromo ? Math.round(((Number(product.prix) - Number(product.prixPromo)) / Number(product.prix)) * 100) : 0;
+  const [activeCurrency, setActiveCurrencyState] = useState(() => getActiveCurrency());
+
+  useEffect(() => {
+    const handleCurr = (e) => setActiveCurrencyState(e.detail);
+    window.addEventListener("currency_changed", handleCurr);
+    return () => window.removeEventListener("currency_changed", handleCurr);
+  }, []);
+
+  // Détermination dynamique des prix selon la devise choisie
+  const isSenegal = activeCurrency === "FCFA";
+  const regularPrice = isSenegal && product.prixSenegal && Number(product.prixSenegal) > 0
+    ? Number(product.prixSenegal)
+    : Number(product.prix || 0);
+
+  const promoPrice = isSenegal && product.prixPromoSenegal && Number(product.prixPromoSenegal) > 0
+    ? Number(product.prixPromoSenegal)
+    : (product.enPromo && product.prixPromo ? Number(product.prixPromo) : null);
+
+  const hasPromo = Boolean(promoPrice && promoPrice < regularPrice);
+  const promoPercent = hasPromo && promoPrice ? Math.round(((regularPrice - promoPrice) / regularPrice) * 100) : 0;
 
   // Check stock out status (expiration retirée pour matériel électrique & outillage)
   const isOutOfStock = product.stock <= 0;
@@ -189,13 +206,13 @@ export default function ProductCard({ product, isFavorisPage }) {
         <div className="nom">{product.nom}</div>
 
         <div className="bs-price-row">
-          {hasPromo && product.prixPromo ? (
+          {hasPromo && promoPrice ? (
             <>
-              <span className="bs-price" style={{ color: "var(--accent)", fontWeight: 800 }}>{fcfa(product.prixPromo)}</span>
-              <span className="bs-price barre">{fcfa(product.prix)}</span>
+              <span className="bs-price" style={{ color: "var(--accent)", fontWeight: 800 }}>{fcfa(promoPrice, activeCurrency)}</span>
+              <span className="bs-price barre">{fcfa(regularPrice, activeCurrency)}</span>
             </>
           ) : (
-            <span className="bs-price">{fcfa(product.prix)}</span>
+            <span className="bs-price">{fcfa(regularPrice, activeCurrency)}</span>
           )}
           {weightUnitText && (
             <span style={{ color: "var(--muted)", fontSize: 12.5, fontWeight: 600 }}>

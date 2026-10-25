@@ -1,31 +1,71 @@
 import React, { useEffect, useState } from "react";
-import { PlusCircle, ShoppingBag, Building, DollarSign, Calendar, Package, X, CheckCircle, AlertCircle, Search } from "lucide-react";
+import { ShoppingBag, DollarSign, Calendar, Search, Printer, RotateCcw, TrendingUp } from "lucide-react";
 import api from "../../api";
 import TablePagination from "../../components/TablePagination";
-
-import { formatPrice as fcfa } from "../../utils/currency.js";
+import { formatPrice } from "../../utils/currency.js";
 
 export default function Achats() {
   const [achats, setAchats] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [fournisseurs, setFournisseurs] = useState([]);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [form, setForm] = useState({
-    productId: "", fournisseurId: "", quantite: 1, prixAchatUnitaire: "", notes: ""
+  const [kpis, setKpis] = useState({
+    totalDepenses: 0,
+    beneficePrevisionnelKMF: 0,
+    beneficePrevisionnelFCFA: 0,
+    potentielVenteKMF: 0,
+    potentielVenteFCFA: 0
   });
-  const [erreur, setErreur] = useState("");
-  const [succes, setSucces] = useState("");
+  const [search, setSearch] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [loading, setLoading] = useState(false);
 
-  function load() {
-    api.get("/admin/achats").then(res => setAchats(res.data || []));
-    api.get("/admin/products").then(res => setProducts(res.data || []));
-    api.get("/admin/fournisseurs").then(res => setFournisseurs(res.data || []));
+  function load(start = startDate, end = endDate) {
+    setLoading(true);
+    const params = {};
+    if (start) params.startDate = start;
+    if (end) params.endDate = end;
+
+    api.get("/admin/achats", { params })
+      .then(res => {
+        if (res.data) {
+          const list = Array.isArray(res.data) ? res.data : (res.data.achats || []);
+          setAchats(list);
+          if (res.data.totalDepenses !== undefined) {
+            setKpis({
+              totalDepenses: Number(res.data.totalDepenses || 0),
+              beneficePrevisionnelKMF: Number(res.data.beneficePrevisionnelKMF || 0),
+              beneficePrevisionnelFCFA: Number(res.data.beneficePrevisionnelFCFA || 0),
+              potentielVenteKMF: Number(res.data.potentielVenteKMF || 0),
+              potentielVenteFCFA: Number(res.data.potentielVenteFCFA || 0)
+            });
+          }
+        }
+      })
+      .catch(err => {
+        console.error("Erreur lors du chargement des achats:", err);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }
 
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
+
+  const handleFilterDate = (e) => {
+    e.preventDefault();
+    setCurrentPage(1);
+    load(startDate, endDate);
+  };
+
+  const handleResetFilter = () => {
+    setStartDate("");
+    setEndDate("");
+    setCurrentPage(1);
+    load("", "");
+  };
 
   const filteredAchats = achats.filter(a => {
     const q = search.trim().toLowerCase();
@@ -34,86 +74,267 @@ export default function Achats() {
     return !q || prodName.includes(q) || fournName.includes(q);
   });
 
-  const totalDepensesAchats = filteredAchats.reduce((sum, a) => sum + Number(a.totalAchat || 0), 0);
+  const totalDepensesFiltrees = filteredAchats.reduce((sum, a) => sum + Number(a.totalAchat || 0), 0);
 
-  function openModal() {
-    setForm({ productId: products[0]?.id || "", fournisseurId: "", quantite: 1, prixAchatUnitaire: "", notes: "" });
-    setErreur("");
-    setSucces("");
-    setModalOpen(true);
-  }
-
-  async function handleCreate(e) {
-    e.preventDefault();
-    if (!form.productId) {
-      setErreur("Veuillez sélectionner un produit.");
+  // Fonction pour générer et télécharger le PDF des achats
+  const handleDownloadPDF = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("Veuillez autoriser les fenêtres pop-up pour télécharger le PDF.");
       return;
     }
-    setErreur("");
-    setSucces("");
-    try {
-      await api.post("/admin/achats", form);
-      setSucces("Approvisionnement enregistré et stock mis à jour avec succès !");
-      setTimeout(() => { setModalOpen(false); load(); }, 900);
-    } catch (err) {
-      setErreur(err.response?.data?.message || "Erreur lors de l'enregistrement de l'achat.");
-    }
-  }
+
+    const dateStr = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const periodeStr = (startDate || endDate) 
+      ? `Période du ${startDate || "Début"} au ${endDate || "Aujourd'hui"}`
+      : "Toutes les dates";
+
+    const rowsHtml = filteredAchats.map(a => {
+      const dateFormatted = new Date(a.createdAt || a.dateAchat).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      const prodNom = a.product?.nom || "Produit";
+      const fournNom = a.fournisseur?.nom || "Achat Direct";
+      const qte = a.quantite || 1;
+      const pu = formatPrice(a.prixAchatUnitaire || 0, "KMF");
+      const tot = formatPrice(a.totalAchat || 0, "KMF");
+
+      return `
+        <tr>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 13px;">${dateFormatted}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 13px; font-weight: bold;">${prodNom}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 13px;">${fournNom}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 13px; text-align: center;">${qte}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 13px; text-align: right;">${pu}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 13px; text-align: right; font-weight: bold; color: #163424;">${tot}</td>
+        </tr>
+      `;
+    }).join("");
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Rapport des Achats & Approvisionnements</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 30px; color: #1e293b; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #163424; padding-bottom: 20px; margin-bottom: 24px; }
+          .header h1 { margin: 0; color: #163424; font-size: 24px; }
+          .header p { margin: 4px 0 0; color: #64748b; font-size: 13px; }
+          .kpi-container { display: flex; gap: 16px; margin-bottom: 24px; }
+          .kpi-box { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; }
+          .kpi-title { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: bold; }
+          .kpi-value { font-size: 20px; font-weight: bold; color: #163424; margin-top: 4px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th { background: #f1f5f9; padding: 10px; font-size: 11px; text-transform: uppercase; color: #475569; text-align: left; border-bottom: 2px solid #cbd5e1; }
+          th.right { text-align: right; }
+          th.center { text-align: center; }
+          .footer { margin-top: 40px; font-size: 12px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 16px; }
+          @media print {
+            body { margin: 0; }
+            button { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1>Rapport des Achats & Dépenses</h1>
+            <p>Boutique E-commerce &bull; ${periodeStr}</p>
+          </div>
+          <div style="text-align: right;">
+            <p style="font-weight: bold; color: #163424;">Généré le ${dateStr}</p>
+            <p>${filteredAchats.length} achat(s) enregistré(s)</p>
+          </div>
+        </div>
+
+        <div class="kpi-container">
+          <div class="kpi-box">
+            <div class="kpi-title">Total Dépenses d'Achats</div>
+            <div class="kpi-value" style="color: #dc2626;">${formatPrice(kpis.totalDepenses || totalDepensesFiltrees, "KMF")}</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">Bénéfice Prévisionnel Comores</div>
+            <div class="kpi-value" style="color: #163424;">${formatPrice(kpis.beneficePrevisionnelKMF, "KMF")}</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">Bénéfice Prévisionnel Sénégal</div>
+            <div class="kpi-value" style="color: #b45309;">${formatPrice(kpis.beneficePrevisionnelFCFA, "FCFA")}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Produit</th>
+              <th>Fournisseur</th>
+              <th class="center">Quantité</th>
+              <th class="right">Prix Achat Unitaire</th>
+              <th class="right">Coût Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || `<tr><td colspan="6" style="text-align: center; padding: 20px;">Aucun achat trouvé pour cette période.</td></tr>`}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          Document généré automatiquement par la plateforme e-commerce &bull; Tous droits réservés
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
 
   return (
     <>
-      <div className="bs-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+      {/* TOOLBAR */}
+      <div className="bs-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 14 }}>
         <div>
           <h1 style={{ fontSize: 26, margin: 0, color: "var(--forest-dark)" }}>Achats & Approvisionnements</h1>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 14 }}>
-            Enregistrez les achats auprès des fournisseurs, suivez les prix d'achat et mettez à jour les stocks.
+            Synchronisation automatique avec les produits. Suivez vos dépenses réelles et vos prévisions de bénéfices Comores et Sénégal.
           </p>
         </div>
-        <button className="bs-btn-primary" style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 12 }} onClick={openModal}>
-          <PlusCircle size={18} /> Nouvel Achat / Restock
+
+        {/* BOUTON TÉLÉCHARGER LE PDF */}
+        <button 
+          onClick={handleDownloadPDF} 
+          className="bs-btn-primary" 
+          style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 12, cursor: "pointer" }}
+        >
+          <Printer size={18} /> Télécharger PDF / Imprimer
         </button>
       </div>
 
       {/* KPI SUMMARY CARDS */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}>
+        {/* 1. DÉPENSES TOTALES */}
         <div className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ background: "var(--forest-light)", color: "var(--forest)", borderRadius: 12, padding: 12 }}>
-            <ShoppingBag size={22} />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase" }}>Total Achats</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)" }}>{filteredAchats.length}</div>
-          </div>
-        </div>
-
-        <div className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ background: "#FEF3C7", color: "#D97706", borderRadius: 12, padding: 12 }}>
+          <div style={{ background: "#FEE2E2", color: "#DC2626", borderRadius: 12, padding: 12 }}>
             <DollarSign size={22} />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: "#B45309", fontWeight: 600, textTransform: "uppercase" }}>Dépenses Totales d'Achat</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#92400E" }}>{fcfa(totalDepensesAchats)}</div>
+            <div style={{ fontSize: 12, color: "#DC2626", fontWeight: 700, textTransform: "uppercase" }}>Dépenses Totales d'Achats</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#991B1B" }}>
+              {formatPrice(kpis.totalDepenses || totalDepensesFiltrees, "KMF")}
+            </div>
+          </div>
+        </div>
+
+        {/* 2. BÉNÉFICE PRÉVISIONNEL COMORES */}
+        <div className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ background: "var(--forest-light)", color: "var(--forest)", borderRadius: 12, padding: "10px 12px", fontSize: 12, fontWeight: 900 }}>
+            KM
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: "var(--forest)", fontWeight: 700, textTransform: "uppercase" }}>Bénéfice Prévisionnel Comores</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--forest-dark)" }}>
+              {formatPrice(kpis.beneficePrevisionnelKMF, "KMF")}
+            </div>
+          </div>
+        </div>
+
+        {/* 3. BÉNÉFICE PRÉVISIONNEL SÉNÉGAL */}
+        <div className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ background: "#FEF3C7", color: "#D97706", borderRadius: 12, padding: "10px 12px", fontSize: 12, fontWeight: 900 }}>
+            SN
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: "#B45309", fontWeight: 700, textTransform: "uppercase" }}>Bénéfice Prévisionnel Sénégal</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#92400E" }}>
+              {formatPrice(kpis.beneficePrevisionnelFCFA, "FCFA")}
+            </div>
+          </div>
+        </div>
+
+        {/* 4. TOTAL ACHATS */}
+        <div className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ background: "var(--paper)", color: "var(--ink)", borderRadius: 12, padding: 12 }}>
+            <ShoppingBag size={22} />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase" }}>Total Lignes d'Achats</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)" }}>{filteredAchats.length}</div>
           </div>
         </div>
       </div>
 
-      {/* SEARCH BAR */}
+      {/* FILTER BAR: DATES & SEARCH */}
       <div className="bs-panel" style={{ padding: 16, marginBottom: 20 }}>
-        <div style={{ position: "relative", maxWidth: 400 }}>
-          <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
-          <input
-            className="bs-input"
-            placeholder="Rechercher par produit ou fournisseur..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ paddingLeft: 38, borderRadius: 10, fontSize: 13.5, height: 38 }}
-          />
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
+          
+          {/* SEARCH */}
+          <div style={{ position: "relative", minWidth: 260, flex: "1 1 260px" }}>
+            <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
+            <input
+              className="bs-input"
+              placeholder="Rechercher par produit ou fournisseur..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ paddingLeft: 38, borderRadius: 10, fontSize: 13.5, height: 38 }}
+            />
+          </div>
+
+          {/* DATE RANGE FILTER */}
+          <form onSubmit={handleFilterDate} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--muted)" }}>Du:</span>
+              <input
+                type="date"
+                className="bs-input"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                style={{ height: 38, borderRadius: 8, fontSize: 13, padding: "4px 8px" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--muted)" }}>Au:</span>
+              <input
+                type="date"
+                className="bs-input"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                style={{ height: 38, borderRadius: 8, fontSize: 13, padding: "4px 8px" }}
+              />
+            </div>
+
+            <button type="submit" className="bs-btn-primary" style={{ padding: "8px 14px", height: 38, borderRadius: 8, fontSize: 13 }}>
+              Filtrer
+            </button>
+
+            {(startDate || endDate) && (
+              <button 
+                type="button" 
+                onClick={handleResetFilter} 
+                style={{ display: "flex", alignItems: "center", gap: 4, height: 38, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", cursor: "pointer", fontSize: 13 }}
+                title="Réinitialiser le filtre"
+              >
+                <RotateCcw size={14} /> Effacer
+              </button>
+            )}
+          </form>
+
         </div>
       </div>
 
       {/* ACHATS TABLE */}
-      <div className="bs-panel" style={{ padding: 0, overflow: "hidden" }}>
-        <table className="bs-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div className="bs-panel" style={{ padding: 0 }}>
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%" }}>
+          <table className="bs-table" style={{ width: "100%", minWidth: 700, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "var(--paper)", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
               <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Date</th>
@@ -128,7 +349,7 @@ export default function Achats() {
             {filteredAchats.length === 0 ? (
               <tr>
                 <td colSpan={6} style={{ padding: 36, textAlign: "center", color: "var(--muted)", fontSize: 14 }}>
-                  Aucun achat / réapprovisionnement enregistré.
+                  {loading ? "Chargement des achats..." : "Aucun achat / approvisionnement trouvé pour cette période."}
                 </td>
               </tr>
             ) : (
@@ -143,17 +364,21 @@ export default function Achats() {
 
                     <td style={{ padding: "14px 18px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <img src={a.product?.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=60&q=80"} alt={a.product?.nom} style={{ width: 34, height: 34, borderRadius: 6, objectFit: "cover" }} />
+                        <img 
+                          src={a.product?.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=60&q=80"} 
+                          alt={a.product?.nom} 
+                          style={{ width: 34, height: 34, borderRadius: 6, objectFit: "cover" }} 
+                        />
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)" }}>{a.product?.nom || "Produit supprimé"}</div>
-                          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Nouveau Stock: {a.product?.stock}</div>
+                          <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)" }}>{a.product?.nom || "Produit sans nom"}</div>
+                          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Stock actuel: {a.product?.stock ?? "-"}</div>
                         </div>
                       </div>
                     </td>
 
                     <td style={{ padding: "14px 18px" }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: a.fournisseur ? "var(--forest-dark)" : "var(--muted)" }}>
-                        {a.fournisseur?.nom || "Non spécifié (Achat direct)"}
+                        {a.fournisseur?.nom || "Achat direct"}
                       </div>
                     </td>
 
@@ -165,13 +390,13 @@ export default function Achats() {
 
                     <td style={{ padding: "14px 18px" }}>
                       <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>
-                        {fcfa(a.prixAchatUnitaire)}
+                        {formatPrice(a.prixAchatUnitaire, "KMF")}
                       </div>
                     </td>
 
                     <td style={{ padding: "14px 18px", textAlign: "right" }}>
                       <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--forest-dark)" }}>
-                        {fcfa(a.totalAchat)}
+                        {formatPrice(a.totalAchat, "KMF")}
                       </div>
                     </td>
                   </tr>
@@ -180,6 +405,7 @@ export default function Achats() {
             )}
           </tbody>
         </table>
+        </div>
         <TablePagination
           totalItems={filteredAchats.length}
           currentPage={currentPage}
@@ -188,107 +414,6 @@ export default function Achats() {
           onPageSizeChange={(sz) => { setPageSize(sz); setCurrentPage(1); }}
         />
       </div>
-
-      {/* MODAL NOUVEL ACHAT */}
-      {modalOpen && (
-        <div className="bs-modal-bg" onClick={() => setModalOpen(false)}>
-          <div className="bs-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520, width: "90%" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h2 style={{ margin: 0, fontSize: 18, color: "var(--forest-dark)" }}>
-                Enregistrer un Achat / Restock
-              </h2>
-              <button onClick={() => setModalOpen(false)} style={{ background: "none", border: "none", cursor: "pointer" }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            {erreur && (
-              <div style={{ background: "#FDF2F0", color: "#B4483A", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600, marginBottom: 14 }}>
-                <AlertCircle size={16} /> {erreur}
-              </div>
-            )}
-            {succes && (
-              <div style={{ background: "#EBF7F0", color: "#1F4D3A", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600, marginBottom: 14 }}>
-                <CheckCircle size={16} /> {succes}
-              </div>
-            )}
-
-            <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div className="bs-field">
-                <label style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 4 }}>Sélectionner le Produit *</label>
-                <select
-                  className="bs-select"
-                  value={form.productId}
-                  onChange={(e) => {
-                    const selectedProd = products.find(p => p.id === Number(e.target.value));
-                    setForm({
-                      ...form,
-                      productId: e.target.value,
-                      prixAchatUnitaire: selectedProd?.coutAchat || form.prixAchatUnitaire
-                    });
-                  }}
-                  required
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8 }}
-                >
-                  <option value="">Sélectionnez un produit</option>
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>{p.nom} (Stock actuel: {p.stock})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div className="bs-field">
-                  <label style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 4 }}>Quantité achetée (+ stock) *</label>
-                  <input className="bs-input" type="number" min="1" value={form.quantite} onChange={(e) => setForm({ ...form, quantite: Math.max(1, Number(e.target.value)) })} required />
-                </div>
-
-                <div className="bs-field">
-                  <label style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 4 }}>Prix d'Achat Unitaire (€) *</label>
-                  <input className="bs-input" type="number" step="0.01" min="0" value={form.prixAchatUnitaire} onChange={(e) => setForm({ ...form, prixAchatUnitaire: e.target.value })} placeholder="ex: 12.50" required />
-                </div>
-              </div>
-
-              <div className="bs-field">
-                <label style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 4 }}>Fournisseur (Facultatif)</label>
-                <select
-                  className="bs-select"
-                  value={form.fournisseurId}
-                  onChange={(e) => setForm({ ...form, fournisseurId: e.target.value })}
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8 }}
-                >
-                  <option value="">Aucun (Fournisseur non spécifié)</option>
-                  {fournisseurs.map(f => (
-                    <option key={f.id} value={f.id}>{f.nom}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="bs-field">
-                <label style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 4 }}>Notes & Numéro de facture / Bon d'achat</label>
-                <textarea className="bs-input" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="ex: Bon de livraison #BL-9921" />
-              </div>
-
-              {/* CALCUATED TOTAL PREVIEW */}
-              <div style={{ background: "var(--paper)", padding: 12, borderRadius: 10, border: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--muted)" }}>Coût Total de l'Achat :</span>
-                <span style={{ fontSize: 16, fontWeight: 800, color: "var(--forest-dark)" }}>
-                  {fcfa((Number(form.quantite) || 0) * (Number(form.prixAchatUnitaire) || 0))}
-                </span>
-              </div>
-
-              <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
-                <button type="button" onClick={() => setModalOpen(false)} style={{ flex: 1, padding: "12px", borderRadius: 10, border: "1px solid var(--line)", background: "#fff", fontWeight: 600, cursor: "pointer" }}>
-                  Annuler
-                </button>
-                <button type="submit" className="bs-btn-primary" style={{ flex: 1, borderRadius: 10 }}>
-                  Enregistrer l'Achat
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 }

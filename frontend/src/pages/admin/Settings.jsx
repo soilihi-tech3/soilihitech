@@ -5,6 +5,7 @@ import api from "../../api";
 import ImageUploader from "../../components/ImageUploader.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useCart } from "../../context/CartContext.jsx";
+import { setActiveCurrency } from "../../utils/currency.js";
 
 export default function AdminSettings({ defaultTab = "general" }) {
   const { refreshBoutique } = useAuth();
@@ -66,6 +67,9 @@ export default function AdminSettings({ defaultTab = "general" }) {
   async function save() {
     try {
       await api.put("/admin/boutique", boutique);
+      if (boutique.devise) {
+        setActiveCurrency(boutique.devise);
+      }
       refreshBoutique();
       setSaved(true);
       showToast("Configurations enregistrées avec succès !", "success");
@@ -221,7 +225,7 @@ export default function AdminSettings({ defaultTab = "general" }) {
             marginBottom: -2, display: "flex", alignItems: "center", gap: 8
           }}
         >
-          <CreditCard size={17} /> Paiement, Stripe & UnitechPay
+          <CreditCard size={17} /> Modes de Paiement
         </button>
 
         <button
@@ -254,12 +258,16 @@ export default function AdminSettings({ defaultTab = "general" }) {
               <select 
                 className="bs-input" 
                 value={boutique.devise || "KMF"} 
-                onChange={(e) => set("devise", e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  set("devise", val);
+                  setActiveCurrency(val);
+                }}
                 style={{ fontWeight: 700, color: "var(--forest-dark)" }}
               >
                 <option value="KMF">Franc Comorien (KMF)</option>
-                <option value="EUR">Euro (€)</option>
                 <option value="FCFA">Franc CFA (FCFA)</option>
+                <option value="EUR">Euro (€)</option>
                 <option value="USD">Dollar US ($)</option>
               </select>
             </div>
@@ -643,7 +651,6 @@ export default function AdminSettings({ defaultTab = "general" }) {
               { key: "especes", label: "Espèces (Cash)", sub: "Paiement à la livraison / réception au comptoir", Icon: Banknote },
               { key: "mvola", label: "Mvola", sub: "Paiement mobile Money Mvola", Icon: Smartphone },
               { key: "holam", label: "Wero", sub: "Paiement instantané européen Wero", Icon: Smartphone },
-              { key: "carte", label: "Carte Bancaire (Stripe)", sub: "Paiement en ligne Visa / Mastercard", Icon: CreditCard },
               { key: "wave", label: "Wave", sub: "Paiement mobile Wave via UnitechPay — Sénégal & Afrique", Icon: Smartphone },
               { key: "orange", label: "Orange Money", sub: "Paiement mobile Orange via UnitechPay — Sénégal & Afrique", Icon: Smartphone },
             ].map((item) => {
@@ -694,57 +701,7 @@ export default function AdminSettings({ defaultTab = "general" }) {
             })}
           </div>
 
-          {/* STRIPE CREDENTIALS SECTION */}
-          {modesPaiement.carte && (
-            <div style={{ background: "var(--paper)", border: "1.5px solid var(--forest)", borderRadius: 16, padding: 22, marginTop: 20 }}>
-              <h4 style={{ margin: "0 0 8px", fontSize: 16, color: "var(--ink)", display: "flex", alignItems: "center", gap: 8 }}>
-                <Key size={18} color="var(--forest)" /> Clés API & Compte Stripe de la Boutique
-              </h4>
-              <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--muted)" }}>
-                Renseignez vos clés d'API Stripe pour recevoir directement les paiements en carte bancaire sur votre propre compte Stripe d'entreprise.
-              </p>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <div className="bs-field">
-                  <label style={{ color: "var(--ink)", fontWeight: 600 }}>Clé Publique Stripe (Publishable Key)</label>
-                  <input
-                    className="bs-input"
-                    style={{ fontFamily: "monospace", fontSize: 13.5 }}
-                    value={boutique.stripePublishableKey || ""}
-                    onChange={(e) => set("stripePublishableKey", e.target.value)}
-                    placeholder="pk_live_..."
-                  />
-                </div>
-
-                <div className="bs-field">
-                  <label style={{ color: "var(--ink)", fontWeight: 600 }}>Clé Secrète Stripe (Secret Key)</label>
-                  <input
-                    className="bs-input"
-                    type="password"
-                    style={{ fontFamily: "monospace", fontSize: 13.5 }}
-                    value={boutique.stripeSecretKey || ""}
-                    onChange={(e) => set("stripeSecretKey", e.target.value)}
-                    placeholder="sk_live_..."
-                  />
-                </div>
-              </div>
-
-              <div className="bs-field" style={{ marginTop: 14 }}>
-                <label style={{ color: "var(--ink)", fontWeight: 600 }}>ID de compte Stripe Connect (Facultatif - ex: acct_1N...)</label>
-                <input
-                  className="bs-input"
-                  style={{ fontFamily: "monospace", fontSize: 13.5 }}
-                  value={boutique.stripeAccountId || ""}
-                  onChange={(e) => set("stripeAccountId", e.target.value)}
-                  placeholder="acct_..."
-                />
-              </div>
-
-              <div style={{ background: "var(--accent-light)", color: "var(--accent)", padding: "12px 16px", borderRadius: 10, fontSize: 13, border: "1px solid var(--accent)", marginTop: 16 }}>
-                <span style={{ fontWeight: 700 }}>Note d'éligibilité Stripe :</span> Stripe requiert que le compte d'entreprise soit enregistré dans un pays pris en charge (ex: États-Unis via une LLC US, France, Émirats Arabes Unis). Les paiements seront directement versés sur votre compte bancaire rattaché.
-              </div>
-            </div>
-          )}
 
           {/* UNITECHPAY CREDENTIALS SECTION (Wave & Orange Money) */}
           {(modesPaiement.wave || modesPaiement.orange) && (
@@ -859,34 +816,7 @@ export default function AdminSettings({ defaultTab = "general" }) {
             </div>
           </div>
 
-          {/* Configuration DingConnect API */}
-          <div style={{ background: "#FDF4FF", border: "1.5px solid #C026D3", borderRadius: 16, padding: 22, marginTop: 20 }}>
-            <h4 style={{ margin: "0 0 8px", fontSize: 16, color: "#86198F", display: "flex", alignItems: "center", gap: 8 }}>
-              Distribution Télécom Alternative (DingConnect API / Ding)
-            </h4>
-            <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--muted)" }}>
-              Vous utilisez déjà un compte <strong>Ding</strong> (<a href="https://www.ding.com" target="_blank" rel="noopener noreferrer" style={{ color: "#C026D3", fontWeight: 700 }}>www.ding.com</a>) ? Vous pouvez connecter votre compte pour l&apos;envoi automatique de crédit.
-            </p>
 
-            <div style={{ background: "#FAE8FF", border: "1px solid #F0ABFC", borderRadius: 10, padding: "12px 16px", fontSize: 13, marginBottom: 16, color: "#86198F", lineHeight: 1.6 }}>
-              <strong>Comment obtenir votre Clé API DingConnect :</strong><br />
-              1. Connectez-vous sur le portail partenaire : <a href="https://www.dingconnect.com" target="_blank" rel="noopener noreferrer" style={{ color: "#A21CAF", fontWeight: 700, textDecoration: "underline" }}>www.dingconnect.com</a><br />
-              2. Allez dans <strong>Account Settings → Developer</strong> (ou API Keys)<br />
-              3. Générez ou copiez votre <strong>API Key</strong> et collez-la ci-dessous :
-            </div>
-
-            <div className="bs-field">
-              <label style={{ color: "var(--ink)", fontWeight: 600 }}>DingConnect API Key</label>
-              <input
-                type="password"
-                className="bs-input"
-                style={{ fontFamily: "monospace", fontSize: 13.5, background: "#fff" }}
-                value={boutique.dingApiKey || ""}
-                onChange={(e) => set("dingApiKey", e.target.value)}
-                placeholder="Ex: ding_api_key_xxxxxxxxxxxxxxxx"
-              />
-            </div>
-          </div>
 
           <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
             <button className="bs-btn-primary" onClick={save} style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 24px", fontSize: 15 }}>

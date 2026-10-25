@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
+import { getProductPrice } from "../utils/currency.js";
 
 const CartContext = createContext(null);
 
@@ -188,8 +189,18 @@ export function CartProvider({ children }) {
     }
   }
 
+  const [activeCurrency, setActiveCurrency] = useState(() => {
+    try { return localStorage.getItem("soilihi_active_currency") || "KMF"; } catch (e) { return "KMF"; }
+  });
+
+  useEffect(() => {
+    const handleCurr = (e) => setActiveCurrency(e.detail);
+    window.addEventListener("currency_changed", handleCurr);
+    return () => window.removeEventListener("currency_changed", handleCurr);
+  }, []);
+
   const subtotal = cart.reduce(
-    (s, l) => s + Number(l.product.prixPromo || l.product.prix) * l.quantite,
+    (s, l) => s + (l.product ? getProductPrice(l.product, activeCurrency) : 0) * l.quantite,
     0
   );
   const count = cart.reduce((s, l) => s + l.quantite, 0);

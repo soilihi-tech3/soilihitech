@@ -369,6 +369,10 @@ router.post("/login", async (req, res, next) => {
 
     const phoneOr = [{ telephone: inputVal }];
     if (cleanDigits) {
+      phoneOr.push({ telephone: { [Op.like]: `%${cleanDigits}` } });
+      if (cleanDigits.length >= 7) {
+        phoneOr.push({ telephone: { [Op.like]: `%${cleanDigits.slice(-7)}` } });
+      }
       phoneOr.push(Sequelize.where(
         Sequelize.fn("REPLACE", Sequelize.fn("REPLACE", Sequelize.col("telephone"), " ", ""), "+", ""),
         cleanDigits

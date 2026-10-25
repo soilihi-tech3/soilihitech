@@ -3,7 +3,7 @@ import { NavLink, Link, Outlet, useLocation, useNavigate } from "react-router-do
 import { 
   LayoutDashboard, Package, ShoppingCart, Users, Store, LogOut, Layers, 
   PanelLeftClose, PanelLeftOpen, User, Image, LayoutGrid, CreditCard, 
-  ShoppingBag, Truck, Scale, History, Menu, X, ExternalLink, ArrowLeft, Clock, Lock, UserCheck, Sun, Moon, PhoneCall, Award, MessageCircle
+  ShoppingBag, Truck, Scale, History, Menu, X, ExternalLink, ArrowLeft, Clock, Lock, UserCheck, Sun, Moon, PhoneCall, Award, MessageCircle, ClipboardList
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useCart } from "../../context/CartContext.jsx";
@@ -24,6 +24,7 @@ const ROUTE_MODULE_MAP = {
   "/admin/categories": { key: "categories", label: "Catégories" },
   "/admin/produits": { key: "produits", label: "Produits" },
   "/admin/commandes": { key: "commandes", label: "Commandes" },
+  "/admin/demandes": { key: "demandes", label: "Demandes & Devis" },
   "/admin/clients": { key: "clients", label: "Clients" },
   "/admin/employes": { key: "employes", label: "Équipe & Rôles" },
   "/admin/parametres": { key: "parametres", label: "Paramètres Boutique" },
@@ -53,6 +54,7 @@ export default function AdminLayout() {
     { to: "/admin/produits", label: "Produits", icon: Package, permKey: ["ajouter_produit", "modifier_produit", "supprimer_produit", "gerer_produits"], moduleKey: "produits" },
     { to: "/admin/avis", label: "Avis Clients WhatsApp", icon: MessageCircle, permKey: ["gerer_produits", "voir_dashboard"] },
     { to: "/admin/commandes", label: "Commandes", icon: ShoppingCart, permKey: ["valider_commande", "changer_statut_commande", "assigner_commande", "gerer_commandes"], moduleKey: "commandes" },
+    { to: "/admin/demandes", label: "Demandes & Devis", icon: ClipboardList, permKey: ["gerer_commandes", "voir_dashboard"] },
     { to: "/admin/clients", label: "Clients", icon: UserCheck, permKey: ["gerer_commandes", "gerer_utilisateurs", "voir_dashboard"] },
     { to: "/admin/employes", label: "Équipe & Rôles", icon: Users, adminOnly: true, moduleKey: "employes" },
     { to: "/admin/parametres", label: "Paramètres Boutique", icon: Store, permKey: "gerer_parametres", moduleKey: "parametres" },

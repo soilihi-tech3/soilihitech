@@ -1,4 +1,6 @@
 const sharp = require("sharp");
+const fs = require("fs");
+const path = require("path");
 
 // Clés API
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "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";
@@ -8,7 +10,7 @@ const COHERE_API_KEY = process.env.COHERE_API_KEY || "cohere_YmSaRKT2vHne7045fNR
 /**
  * Timeout fetch helper
  */
-async function fetchWithTimeout(url, options = {}, timeoutMs = 7000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -27,11 +29,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 7000) {
 function cleanAndParseJson(rawText) {
   if (!rawText) return null;
   let text = rawText.trim();
-  // Retirer les blocs markdown ```json ... ```
   if (text.startsWith("```")) {
     text = text.replace(/^```(json)?\n?/, "").replace(/\n?```$/, "").trim();
   }
-  // Trouver le premier { et dernier }
   const firstBrace = text.indexOf("{");
   const lastBrace = text.lastIndexOf("}");
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -41,41 +41,76 @@ function cleanAndParseJson(rawText) {
 }
 
 /**
+ * Extraction des données binaires d'image (base64 / uploads / url) pour Gemini Vision
+ */
+async function parseImageData(photoUrl) {
+  if (!photoUrl) return null;
+  try {
+    if (photoUrl.startsWith("data:image/")) {
+      const match = photoUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        return { mimeType: match[1], base64: match[2] };
+      }
+    }
+    if (photoUrl.includes("/uploads/")) {
+      const filename = photoUrl.split("/uploads/").pop().split("?")[0];
+      const localPath = path.join(__dirname, "../../uploads", filename);
+      if (fs.existsSync(localPath)) {
+        const buffer = fs.readFileSync(localPath);
+        const ext = path.extname(filename).toLowerCase();
+        const mimeType = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+        return { mimeType, base64: buffer.toString("base64") };
+      }
+    }
+    if (photoUrl.startsWith("http://") || photoUrl.startsWith("https://")) {
+      const res = await fetchWithTimeout(photoUrl, {}, 5000);
+      if (res.ok) {
+        const arrayBuf = await res.arrayBuffer();
+        const buffer = Buffer.from(arrayBuf);
+        const mimeType = res.headers.get("content-type") || "image/jpeg";
+        return { mimeType, base64: buffer.toString("base64") };
+      }
+    }
+  } catch (err) {
+    console.warn("[AI Service] Impossible d'extraire les données de l'image:", err.message);
+  }
+  return null;
+}
+
+/**
  * Prompt système standardisé pour Soilihitech
+ * EXIGENCE UTILISATEUR : NOM D'ARTICLE BREF ET PRÉCIS (PAS DE LONGUE PHRASE EN TITRE)
  */
 function buildSystemPrompt() {
-  return `Tu es l'assistant IA expert e-commerce pour la boutique high-tech "Soilihitech", spécialisée dans les accessoires pour smartphones et appareils électroniques (iPhone, Samsung, Tecno, Infinix, Xiaomi, AirPods, chargeurs rapides GaN, câbles renforcés, glaces de protection 9D, pochettes et coques antichoc, écouteurs, batteries externes).
-Génère une fiche produit professionnelle en français.
+  return `Tu es l'assistant IA expert e-commerce pour la boutique high-tech "Soilihitech", spécialisée dans les accessoires pour smartphones et appareils électroniques (chargeurs rapides, coques, glaces 9D, câbles, écouteurs, batteries, etc.).
 
-CONSIGNE STRICTE ET OBLIGATOIRE :
-- N'UTILISE AUCUN ÉMOJI DANS LE TEXTE (AUCUN SYMBOLE, AUCUN ÉMOJI).
-- LA DESCRIPTION DOIT ÊTRE TRÈS BRÈVE, COURTE, PRÉCISE ET EN TEXTE PUR.
-Format exact de la description (4 à 5 lignes maximum) :
-1. Une seule phrase d'accroche claire et percutante.
-2. Un saut de ligne.
-3. Exactement 3 à 4 tirets standards simples (-) résumant les spécifications clés en texte sobre :
-   - Puissance et vitesse de charge
-   - Sécurité et puce de protection
-   - Compatibilité smartphone garantie
-   - Finition, format et robustesse
+RÈGLE D'OR ABSOLUE POUR LE NOM D'ARTICLE ("nom") :
+- LE NOM DOIT ÊTRE TRÈS BREF, COURT ET PRÉCIS : 3 À 5 MOTS MAXIMUM.
+- INTERDICTION FORMELLE DE METTRE UNE PHRASE, UN PARAGRAPHE OU DES SOUS-TITRES DANS LE NOM.
+- VA DIRECTEMENT AU BUT AVEC LE NOM COMMERCIAL EXACT DE L'ACCESSOIRE.
+- Exemples parfaits de noms courts attendus :
+  * "Chargeur Rapide 20W Type-C"
+  * "Coque Silicone iPhone 15"
+  * "Écouteurs Sans Fil TWS"
+  * "Glace de Protection 9D"
+  * "Câble Tressé USB-C 100W"
+  * "Batterie Externe 10000mAh"
+  * "Support Téléphone Voiture"
+- Si une photo est fournie ou si l'utilisateur ne donne que la photo, identifie directement l'accessoire sur la photo et donne un nom court de ce type.
 
-Exemple type conforme :
-"Chargeur rapide 20W certifié conçu pour recharger votre smartphone rapidement et en toute sécurité.
+RÈGLES POUR LE RESTE DE LA FICHE :
+- N'UTILISE STRICTEMENT AUCUN ÉMOJI DANS LE TEXTE (AUCUN SYMBOLE, AUCUN ÉMOJI).
+- La description doit être très courte : 1 seule phrase d'accroche sobre suivie de 3 ou 4 tirets simples (-).
 
-- Charge rapide Power Delivery atteignant 50% en 30 minutes
-- Protection intelligente contre les surchauffes et variations de tension
-- Compatibilité garantie avec iPhone, Samsung, Tecno et tous smartphones USB-C
-- Boîtier compact et connecteurs renforcés pour une longue durabilité"
-
-Tu DOIS répondre STRICTEMENT avec un objet JSON valide, sans aucun texte autour, au format :
+Tu DOIS répondre STRICTEMENT avec un objet JSON valide :
 {
-  "nom": "Titre commercial court et sobre (max 60 caractères)",
-  "marque": "Nom de la marque (ex: Apple, Samsung, Tecno, Infinix, Xiaomi, Oraimo, Anker, Baseus ou Neutre)",
+  "nom": "Nom ultra court et précis (3 à 5 mots max)",
+  "marque": "Nom de la marque ou Neutre",
   "famille": "Une famille parmi: Chargeurs & Blocs, Câbles & Connectique, Pochettes & Coques, Glaces & Protections, Écouteurs & Audio, Powerbanks & Batteries, Supports & Auto",
-  "description": "La description courte en texte pur avec 1 phrase et 3 ou 4 tirets simples sans aucun emoji",
-  "specifications": "- Puissance : ...\n- Compatibilité : ...\n- Norme : ...",
-  "pointsForts": ["Point fort 1", "Point fort 2", "Point fort 3", "Point fort 4"],
-  "studioImagePrompt": "Detailed commercial product photography prompt in english of this accessory isolated on pure white background"
+  "description": "Phrase d'accroche courte et claire.\\n\\n- Spécification clé 1\\n- Spécification clé 2\\n- Spécification clé 3",
+  "specifications": "- Spécification 1\\n- Spécification 2",
+  "pointsForts": ["Point fort 1", "Point fort 2", "Point fort 3"],
+  "studioImagePrompt": "Short english prompt of this accessory isolated on seamless pure white studio background"
 }`;
 }
 
@@ -89,13 +124,30 @@ function stripEmojis(str) {
 }
 
 /**
- * Nettoyage et formatage final du résultat IA
+ * Nettoyage et formatage final du résultat IA avec validation stricte du nom
  */
 function sanitizeAiResult(res) {
   if (!res) return res;
+  let cleanName = stripEmojis(res.nom || "").trim();
+  
+  // Couper les sous-titres verbeux
+  if (cleanName.includes(" - ")) cleanName = cleanName.split(" - ")[0].trim();
+  if (cleanName.includes(" | ")) cleanName = cleanName.split(" | ")[0].trim();
+  if (cleanName.includes(" : ")) cleanName = cleanName.split(" : ")[0].trim();
+  if (cleanName.includes(" – ")) cleanName = cleanName.split(" – ")[0].trim();
+
+  // Limiter à maximum 5 à 6 mots pour garantir la brièveté demandée
+  const words = cleanName.split(/\s+/);
+  if (words.length > 5) {
+    cleanName = words.slice(0, 5).join(" ");
+  }
+  if (cleanName.length > 45) {
+    cleanName = cleanName.slice(0, 45).trim();
+  }
+
   return {
     ...res,
-    nom: stripEmojis(res.nom),
+    nom: cleanName,
     description: stripEmojis(res.description),
     specifications: stripEmojis(res.specifications)
   };
@@ -124,10 +176,11 @@ async function callGroq(userPrompt) {
             { role: "system", content: buildSystemPrompt() },
             { role: "user", content: userPrompt }
           ],
-          temperature: 0.6,
-          max_tokens: 1000
+          temperature: 0.5,
+          max_tokens: 800,
+          response_format: { type: "json_object" }
         })
-      }, 8000);
+      }, 7000);
 
       if (!res.ok) {
         const errBody = await res.text();
@@ -149,9 +202,9 @@ async function callGroq(userPrompt) {
 }
 
 /**
- * 2. Génération via Gemini
+ * 2. Génération via Gemini (avec vision multimodale si image fournie)
  */
-async function callGemini(userPrompt) {
+async function callGemini(userPrompt, imageData = null) {
   if (!GEMINI_API_KEY) throw new Error("Gemini API key non configurée");
 
   const models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-flash-latest"];
@@ -160,23 +213,32 @@ async function callGemini(userPrompt) {
   for (const model of models) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      
+      const parts = [
+        { text: buildSystemPrompt() + "\n\nDemande utilisateur:\n" + userPrompt }
+      ];
+
+      // Si image disponible, l'injecter directement pour l'analyse visuelle par l'IA
+      if (imageData && imageData.base64 && imageData.mimeType) {
+        parts.push({
+          inlineData: {
+            mimeType: imageData.mimeType,
+            data: imageData.base64
+          }
+        });
+      }
+
       const res = await fetchWithTimeout(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: buildSystemPrompt() + "\n\nDemande utilisateur:\n" + userPrompt }
-              ]
-            }
-          ],
+          contents: [{ parts }],
           generationConfig: {
-            temperature: 0.6,
-            maxOutputTokens: 1000
+            temperature: 0.4,
+            maxOutputTokens: 800
           }
         })
-      }, 7000);
+      }, 8000);
 
       if (!res.ok) {
         const errBody = await res.text();
@@ -187,7 +249,8 @@ async function callGemini(userPrompt) {
       const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
       const parsed = cleanAndParseJson(content);
       if (parsed && parsed.nom) {
-        return sanitizeAiResult({ ...parsed, provider: "Gemini (" + model + ")" });
+        const providerName = imageData ? `Gemini Vision (${model})` : `Gemini (${model})`;
+        return sanitizeAiResult({ ...parsed, provider: providerName });
       }
     } catch (err) {
       lastErr = err;
@@ -220,7 +283,7 @@ async function callCohere(userPrompt) {
             { role: "system", content: buildSystemPrompt() },
             { role: "user", content: userPrompt }
           ],
-          temperature: 0.6
+          temperature: 0.5
         })
       }, 8000);
 
@@ -247,20 +310,22 @@ async function callCohere(userPrompt) {
  * Fallback de secours programmatique garanti
  */
 function programmaticFallback(nom, marque, categorie) {
-  const brand = marque || "Universel";
+  const brand = marque && marque !== "Neutre" ? marque : "Universel";
   const cat = categorie || "Accessoire Smartphone";
-  const title = nom ? `${nom} pour ${brand}` : `${cat} Haute Performance pour ${brand}`;
+  let title = nom ? nom.trim() : `${cat} ${brand}`.trim();
+  const words = title.split(/\s+/);
+  if (words.length > 5) title = words.slice(0, 5).join(" ");
+
   return {
     nom: title,
     marque: brand,
     famille: cat,
-    description: `Accessoire haute performance pour vos smartphones ${brand}.\n\n- Finition soignée et durabilité maximale au quotidien\n- Puce de protection certifiée et ajustement parfait\n- 100% compatible avec les appareils de la marque ${brand}\n- Pratique, robuste et facile à transporter`,
-    specifications: `- Marque : ${brand}\n- Type : ${cat}\n- Qualité : Norme CE, testé en atelier`,
+    description: `Accessoire fiable et performant adapté à vos smartphones ${brand}.\n\n- Finition de haute qualité et ajustement précis\n- Puce de protection certifiée contre les surtensions\n- 100% compatible avec votre appareil ${brand}\n- Robuste, durable et pratique au quotidien`,
+    specifications: `- Marque : ${brand}\n- Type : ${cat}\n- Qualité : Conforme aux normes CE`,
     pointsForts: [
       "Compatibilité certifiée",
       "Matériaux résistants et durables",
-      "Sécurité et protection optimales",
-      "Garantie qualité Soilihitech"
+      "Protection et sécurité intégrées"
     ],
     studioImagePrompt: `Clean professional studio product photo of ${title}, white background, soft studio lighting, sharp focus`,
     provider: "Soilihitech Engine (Fallback)"
@@ -269,21 +334,36 @@ function programmaticFallback(nom, marque, categorie) {
 
 /**
  * Orchestrateur Multi-IA avec Failover automatique :
- * 1. Groq (Prioritaire car ultra-rapide)
- * 2. Si panne Groq -> Gemini prend le relais
- * 3. Si panne Gemini -> Cohere prend le relais
- * 4. Si tout échoue -> Fallback déterministe garanti
+ * 1. Si image fournie -> Gemini Vision prioritaire pour voir la photo directement
+ * 2. Groq (Prioritaire en mode texte pour sa rapidité)
+ * 3. Gemini Flash
+ * 4. Cohere
+ * 5. Fallback déterministe garanti
  */
-async function generateProductDetails({ nom, marque, categorie, userInstructions, photoKeywords }) {
-  const userPrompt = `Détails de l'article à créer pour Soilihitech :
-- Nom approximatif / saisie : ${nom || "Non précisé"}
-- Marque ciblée : ${marque || "Tous téléphones (iPhone / Samsung / Tecno / etc.)"}
-- Catégorie d'accessoire : ${categorie || "Accessoire électronique"}
-- Mots-clés visuels de la photo : ${photoKeywords || "Non spécifié"}
-- Consigne : Très court, sobre, aucun emoji, une phrase d'accroche et 3-4 tirets simples`;
+async function generateProductDetails({ nom, marque, categorie, userInstructions, photoKeywords, photoUrl }) {
+  const imageData = await parseImageData(photoUrl);
 
-  console.log("[AI Service] Début de la génération avec failover...");
+  const userPrompt = `Détails de l'article pour Soilihitech :
+- Nom saisi / indication : ${nom || "Non précisé, analyse attentivement la photo"}
+- Marque ciblée : ${marque || "Détermine la marque sur la photo ou mets Neutre"}
+- Catégorie : ${categorie || "Détermine la catégorie sur la photo"}
+${photoKeywords ? `- Mots-clés visuels : ${photoKeywords}` : ""}
+${userInstructions ? `- Consigne utilisateur : ${userInstructions}` : ""}
+- CONSIGNE IMPORTANTE : LE NOM DE L'ARTICLE DOIT ÊTRE TRÈS BREF ET COURT (3 À 5 MOTS MAX). AUCUNE PHRASE EN TITRE.`;
 
+  console.log("[AI Service] Début de la génération. Image fournie ?", !!imageData);
+
+  // 1. Si une image réelle est transmise, utiliser Gemini Vision en premier
+  if (imageData) {
+    try {
+      const resGeminiVision = await callGemini(userPrompt, imageData);
+      if (resGeminiVision) return resGeminiVision;
+    } catch (errVision) {
+      console.warn("[AI Service] Gemini Vision a échoué, passage aux autres moteurs :", errVision.message);
+    }
+  }
+
+  // 2. Groq
   try {
     const resGroq = await callGroq(userPrompt);
     return resGroq;
@@ -291,6 +371,7 @@ async function generateProductDetails({ nom, marque, categorie, userInstructions
     console.warn("[AI Service] Groq indisponible :", errGroq.message);
   }
 
+  // 3. Gemini Texte
   try {
     const resGemini = await callGemini(userPrompt);
     return resGemini;
@@ -298,6 +379,7 @@ async function generateProductDetails({ nom, marque, categorie, userInstructions
     console.warn("[AI Service] Gemini indisponible :", errGemini.message);
   }
 
+  // 4. Cohere
   try {
     const resCohere = await callCohere(userPrompt);
     return resCohere;
@@ -314,7 +396,6 @@ async function generateProductDetails({ nom, marque, categorie, userInstructions
 function generateStudioPhotoUrl({ nom, marque, categorie, studioImagePrompt, slot = "principale" }) {
   let subject = "";
   const n = (nom || "").toLowerCase();
-  const m = (marque || "").toLowerCase();
 
   if (n.includes("charg") || n.includes("bloc") || n.includes("adapt") || n.includes("20w") || n.includes("65w") || n.includes("prise")) {
     const brandLabel = marque && marque !== "Neutre" ? marque : "Apple style";
@@ -345,7 +426,6 @@ function generateStudioPhotoUrl({ nom, marque, categorie, studioImagePrompt, slo
 
   const cleanPrompt = encodeURIComponent(fullPrompt.replace(/[^a-zA-Z0-9 ,.-]/g, "").slice(0, 300));
   const seed = Math.floor(Math.random() * 900000) + 1000;
-  // Utiliser model=turbo pour une génération instantanée sans le rate limit de 45 secondes
   return `https://image.pollinations.ai/prompt/${cleanPrompt}?width=800&height=800&nologo=true&model=turbo&seed=${seed}`;
 }
 

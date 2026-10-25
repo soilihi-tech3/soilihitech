@@ -156,7 +156,8 @@ export default function AdminAvisClients() {
             </span>
           </div>
 
-          <table className="bs-table">
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%" }}>
+          <table className="bs-table" style={{ minWidth: 700 }}>
             <thead>
               <tr>
                 <th>Profil Client</th>
@@ -276,6 +277,7 @@ export default function AdminAvisClients() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       ) : (
         /* FORMULAIRE D'AJOUT / ÉDITION */

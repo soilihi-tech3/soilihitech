@@ -1,25 +1,39 @@
 /**
- * Gestionnaire dynamique de devises pour le SaaS.
- * Supporte : KMF (Comores), EUR (€), FCFA (XOF), USD ($).
+ * Gestionnaire dynamique de devises pour le SaaS Soilihitech.
+ * Supporte : KMF (Comores) et FCFA (Sénégal), ainsi que EUR (€) et USD ($).
  */
 
 export const CURRENCIES = [
-  { code: "KMF", label: "Franc Comorien (KMF)", symbol: "KMF" },
-  { code: "EUR", label: "Euro (€)", symbol: "€" },
-  { code: "FCFA", label: "Franc CFA (FCFA)", symbol: "FCFA" },
-  { code: "USD", label: "Dollar US ($)", symbol: "$" },
+  { code: "KMF", label: "Comores (KMF)", symbol: "KMF", flag: "🇰🇲", country: "Comores" },
+  { code: "FCFA", label: "Sénégal (FCFA)", symbol: "FCFA", flag: "🇸🇳", country: "Sénégal" }
 ];
 
-export const getCurrencySymbol = (devise) => {
-  let d = devise;
-  if (!d) {
-    try {
-      const cached = JSON.parse(localStorage.getItem("cached_boutique") || "{}");
-      d = cached.devise;
-    } catch (e) {}
-  }
-  if (!d) d = "KMF";
+export const getActiveCurrency = () => {
+  try {
+    const saved = localStorage.getItem("soilihi_active_currency");
+    if (saved) return saved;
+    const cached = localStorage.getItem("cached_boutique");
+    if (cached) {
+      const b = JSON.parse(cached);
+      if (b && b.devise) return b.devise;
+    }
+  } catch (e) {}
+  return "KMF";
+};
 
+export const setActiveCurrency = (cur) => {
+  try {
+    const clean = String(cur || "KMF").trim().toUpperCase();
+    localStorage.setItem("soilihi_active_currency", clean);
+    window.dispatchEvent(new CustomEvent("currency_changed", { detail: clean }));
+    return clean;
+  } catch (e) {
+    return "KMF";
+  }
+};
+
+export const getCurrencySymbol = (devise) => {
+  let d = devise || getActiveCurrency();
   const clean = String(d).trim().toUpperCase();
   if (clean === "EUR" || clean === "€") return "€";
   if (clean === "USD" || clean === "$") return "$";
@@ -43,5 +57,27 @@ export const formatPrice = (amount, devise) => {
   return `${formatted} ${symbol}`;
 };
 
+/**
+ * Retourne le prix effectif du produit selon la devise active (KMF ou FCFA Sénégal)
+ */
+export const getProductPrice = (product, activeCurrency = getActiveCurrency()) => {
+  if (!product) return 0;
+  if (activeCurrency === "FCFA") {
+    // Si prix Sénégal défini
+    if (product.prixPromoSenegal && Number(product.prixPromoSenegal) > 0) {
+      return Number(product.prixPromoSenegal);
+    }
+    if (product.prixSenegal && Number(product.prixSenegal) > 0) {
+      return Number(product.prixSenegal);
+    }
+  }
+  // Par défaut ou Comores (KMF)
+  if (product.enPromo && product.prixPromo && Number(product.prixPromo) > 0) {
+    return Number(product.prixPromo);
+  }
+  return Number(product.prix || 0);
+};
+
 // Alias de compatibilité
 export const fcfa = (amount, devise) => formatPrice(amount, devise);
+

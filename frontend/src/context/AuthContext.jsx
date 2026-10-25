@@ -75,7 +75,13 @@ export function AuthProvider({ children }) {
         if (res.data) {
           const b = sanitizeBoutique(res.data);
           setBoutique(b);
-          try { localStorage.setItem("cached_boutique", JSON.stringify(b)); } catch (e) {}
+          try { 
+            localStorage.setItem("cached_boutique", JSON.stringify(b));
+            if (b.devise) {
+              localStorage.setItem("soilihi_active_currency", b.devise);
+              window.dispatchEvent(new CustomEvent("currency_changed", { detail: b.devise }));
+            }
+          } catch (e) {}
         }
       })
       .catch(() => {
@@ -83,7 +89,13 @@ export function AuthProvider({ children }) {
           if (res.data) {
             const b = sanitizeBoutique(res.data);
             setBoutique(b);
-            try { localStorage.setItem("cached_boutique", JSON.stringify(b)); } catch (e) {}
+            try { 
+              localStorage.setItem("cached_boutique", JSON.stringify(b));
+              if (b.devise) {
+                localStorage.setItem("soilihi_active_currency", b.devise);
+                window.dispatchEvent(new CustomEvent("currency_changed", { detail: b.devise }));
+              }
+            } catch (e) {}
           }
         }).catch(() => {});
       });

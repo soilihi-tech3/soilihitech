@@ -1,16 +1,17 @@
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 import React, { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { PlusCircle, List, Pencil, Trash2, AlertTriangle, CheckCircle, Package, X, Wand2, Sparkles, Loader2, Smartphone, Shield, Zap, Eye, CheckCircle2 } from "lucide-react";
+import { PlusCircle, List, Pencil, Trash2, AlertTriangle, CheckCircle, Package, X, Wand2, Sparkles, Loader2, Smartphone, Shield, Zap, Eye, CheckCircle2, Printer } from "lucide-react";
 import api from "../../api";
 import ImageUploader from "../../components/ImageUploader.jsx";
 import TablePagination from "../../components/TablePagination.jsx";
-
+import { useAuth } from "../../context/AuthContext.jsx";
 import { subscribeRealtime } from "../../utils/realtime.js";
 
-import { formatPrice as fcfa } from "../../utils/currency.js";
+import { formatPrice, formatPrice as fcfa } from "../../utils/currency.js";
 
 export default function AdminProduits() {
+  const { boutique } = useAuth();
   const [activeTab, setActiveTab] = useState("liste"); // "liste" | "ajout"
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -54,6 +55,8 @@ export default function AdminProduits() {
     description: "",
     prix: "",
     prixPromo: "",
+    prixSenegal: "",
+    prixPromoSenegal: "",
     enPromo: false,
     isNouveau: true,
     noteEtoiles: "5",
@@ -172,11 +175,13 @@ export default function AdminProduits() {
       description: product.description || "",
       prix: product.prix ?? "",
       prixPromo: product.prixPromo ?? "",
+      prixSenegal: product.prixSenegal ?? "",
+      prixPromoSenegal: product.prixPromoSenegal ?? "",
       enPromo: Boolean(product.enPromo || product.prixPromo),
       isNouveau: Boolean(product.isNouveau),
       noteEtoiles: product.noteEtoiles !== undefined && product.noteEtoiles !== null ? String(product.noteEtoiles) : "5",
-      poids: product.poids || "1",
-      unite: product.unite || "Pièce",
+      poids: product.poids || "0.2",
+      unite: product.unite || "pièce",
       coutAchat: product.coutAchat ?? "",
       stock: product.stock ?? "",
       seuilAlerte: product.seuilAlerte ?? 5,
@@ -201,6 +206,8 @@ export default function AdminProduits() {
       ...form,
       prix: form.prix !== "" ? Number(form.prix) : 0,
       prixPromo: form.enPromo && form.prixPromo !== "" && form.prixPromo !== null ? Number(form.prixPromo) : null,
+      prixSenegal: form.prixSenegal !== "" && form.prixSenegal !== null ? Number(form.prixSenegal) : null,
+      prixPromoSenegal: form.enPromo && form.prixPromoSenegal !== "" && form.prixPromoSenegal !== null ? Number(form.prixPromoSenegal) : null,
       enPromo: Boolean(form.enPromo),
       isNouveau: Boolean(form.isNouveau),
       noteEtoiles: form.noteEtoiles !== "" ? Number(form.noteEtoiles) : 5.0,
@@ -210,8 +217,8 @@ export default function AdminProduits() {
       categoryId: Number(form.categoryId),
       marqueId: form.marqueId ? Number(form.marqueId) : null,
       etat: form.etat || "neuf",
-      poids: form.poids || "1",
-      famille: form.famille || "Électronique"
+      poids: form.poids || "0.2",
+      famille: form.famille || "Accessoires"
     };
 
     try {
@@ -326,9 +333,129 @@ export default function AdminProduits() {
     currentPage * pageSize
   );
 
+  // Exporter la liste des produits au format PDF imprimable
+  const handleDownloadPDF = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("Veuillez autoriser les fenêtres pop-up pour exporter le PDF.");
+      return;
+    }
+
+    const totalStock = filteredProducts.reduce((sum, p) => sum + Number(p.stock || 0), 0);
+    const valeurStock = filteredProducts.reduce((sum, p) => sum + (Number(p.stock || 0) * Number(p.coutAchat || 0)), 0);
+
+    const rowsHtml = filteredProducts.map((p, idx) => {
+      const marqueNom = p.marque?.nom || p.Marque?.nom || "Universel";
+      const catNom = p.Category?.nom || "Non classé";
+      const prixKMF = p.prixPromo ? `${formatPrice(p.prixPromo, "KMF")} (Promo)` : formatPrice(p.prix, "KMF");
+      const prixFCFA = p.prixPromoSenegal ? `${formatPrice(p.prixPromoSenegal, "FCFA")} (Promo)` : (p.prixSenegal ? formatPrice(p.prixSenegal, "FCFA") : "—");
+      const coutKMF = formatPrice(p.coutAchat || 0, "KMF");
+
+      return `
+        <tr style="border-bottom: 1px solid #e2e8f0; ${idx % 2 === 0 ? "background: #f8fafc;" : ""}">
+          <td style="padding: 9px 12px; font-weight: 700; color: #1e293b;">${p.nom}</td>
+          <td style="padding: 9px 12px; color: #1d4ed8; font-weight: 600;">${marqueNom}</td>
+          <td style="padding: 9px 12px; color: #475569;">${catNom}</td>
+          <td style="padding: 9px 12px; font-weight: 700; color: #059669;">${prixKMF}</td>
+          <td style="padding: 9px 12px; font-weight: 700; color: #d97706;">${prixFCFA}</td>
+          <td style="padding: 9px 12px; color: #64748b;">${coutKMF}</td>
+          <td style="padding: 9px 12px; font-weight: 800; text-align: center; color: ${p.stock <= p.seuilAlerte ? "#dc2626" : "#1e293b"};">
+            ${p.stock} ${p.unite || "pièce"}
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+    const dateStr = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Inventaire des Produits - ${boutique?.nom || "Soilihitech"}</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; color: #1e293b; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; border-bottom: 2px solid #224B35; padding-bottom: 16px; }
+          .title { font-size: 22px; font-weight: 800; color: #224B35; margin: 0; }
+          .kpi-box { display: flex; gap: 16px; margin-bottom: 20px; }
+          .kpi { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 16px; }
+          .kpi-title { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; }
+          .kpi-value { font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 4px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+          th { background: #224B35; color: #ffffff; padding: 10px 12px; text-transform: uppercase; font-size: 11px; }
+          @media print {
+            body { padding: 0; }
+            @page { margin: 1.2cm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1 class="title">${boutique?.nom || "Soilihitech"} - Inventaire & Tarifs</h1>
+            <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Édité le ${dateStr}</div>
+          </div>
+          <div style="text-align: right; font-size: 12px; color: #64748b;">
+            <div>${boutique?.emailContact || "contact@soilihitech.com"}</div>
+            <div>${boutique?.telephone || ""}</div>
+          </div>
+        </div>
+
+        <div class="kpi-box">
+          <div class="kpi">
+            <div class="kpi-title">Total Références</div>
+            <div class="kpi-value">${filteredProducts.length} articles</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-title">Stock Total en Unités</div>
+            <div class="kpi-value">${totalStock}</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-title">Valeur Stock (Coût Achat)</div>
+            <div class="kpi-value">${formatPrice(valeurStock, "KMF")}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Nom du produit</th>
+              <th>Marque</th>
+              <th>Catégorie</th>
+              <th>Prix Comores (KMF)</th>
+              <th>Prix Sénégal (FCFA)</th>
+              <th>Coût d'achat</th>
+              <th style="text-align: center;">Stock</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+
+        <div style="margin-top: 30px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+          Document généré automatiquement par le logiciel de gestion ${boutique?.nom || "Soilihitech"}.
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 14 }}>
         <div>
           <h1 style={{ fontSize: 26, margin: 0, color: "var(--forest-dark)" }}>Gestion des Produits</h1>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 14 }}>
@@ -336,39 +463,56 @@ export default function AdminProduits() {
           </p>
         </div>
 
-        {/* TABS DE NAVIGATION */}
-        <div style={{ display: "flex", gap: 8, background: "var(--paper)", padding: 4, borderRadius: 30, border: "1px solid var(--line)" }}>
+        {/* TABS & PDF BUTTON */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <button
-            className={`bs-btn-primary ${activeTab === "liste" ? "" : "inactive"}`}
+            onClick={handleDownloadPDF}
             style={{
-              padding: "8px 18px",
-              borderRadius: 24,
-              fontSize: 13,
-              background: activeTab === "liste" ? "var(--forest)" : "transparent",
-              color: activeTab === "liste" ? "#fff" : "var(--muted)",
-              boxShadow: "none"
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "8px 16px", borderRadius: 24, fontSize: 13, fontWeight: 700,
+              background: "var(--card)", border: "1.5px solid var(--line)",
+              color: "var(--forest-dark)", cursor: "pointer",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "all 0.15s ease"
             }}
-            onClick={() => { setEditingId(null); setForm(initialForm); setActiveTab("liste"); }}
+            title="Exporter l'inventaire complet des produits au format PDF"
           >
-            <List size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Liste des produits ({products.length})
+            <Printer size={15} color="var(--forest)" />
+            <span>Imprimer / PDF</span>
           </button>
-          <button
-            className={`bs-btn-primary ${activeTab === "ajout" ? "" : "inactive"}`}
-            style={{
-              padding: "8px 18px",
-              borderRadius: 24,
-              fontSize: 13,
-              background: activeTab === "ajout" ? "var(--forest)" : "transparent",
-              color: activeTab === "ajout" ? "#fff" : "var(--muted)",
-              boxShadow: "none"
-            }}
-            onClick={() => {
-              if (!editingId) { setForm(initialForm); }
-              setActiveTab("ajout");
-            }}
-          >
-            <PlusCircle size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} /> {editingId ? "Modifier le produit" : "Ajouter un produit"}
-          </button>
+
+          <div style={{ display: "flex", gap: 8, background: "var(--paper)", padding: 4, borderRadius: 30, border: "1px solid var(--line)" }}>
+            <button
+              className={`bs-btn-primary ${activeTab === "liste" ? "" : "inactive"}`}
+              style={{
+                padding: "8px 18px",
+                borderRadius: 24,
+                fontSize: 13,
+                background: activeTab === "liste" ? "var(--forest)" : "transparent",
+                color: activeTab === "liste" ? "#fff" : "var(--muted)",
+                boxShadow: "none"
+              }}
+              onClick={() => { setEditingId(null); setForm(initialForm); setActiveTab("liste"); }}
+            >
+              <List size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Liste des produits ({products.length})
+            </button>
+            <button
+              className={`bs-btn-primary ${activeTab === "ajout" ? "" : "inactive"}`}
+              style={{
+                padding: "8px 18px",
+                borderRadius: 24,
+                fontSize: 13,
+                background: activeTab === "ajout" ? "var(--forest)" : "transparent",
+                color: activeTab === "ajout" ? "#fff" : "var(--muted)",
+                boxShadow: "none"
+              }}
+              onClick={() => {
+                if (!editingId) { setForm(initialForm); }
+                setActiveTab("ajout");
+              }}
+            >
+              <PlusCircle size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} /> {editingId ? "Modifier le produit" : "Ajouter un produit"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -376,7 +520,7 @@ export default function AdminProduits() {
 
       {/* CONTENUS DES ONGLETS */}
       {activeTab === "liste" && (
-        <div className="bs-panel" style={{ padding: 0, overflow: "hidden" }}>
+        <div className="bs-panel" style={{ padding: 0 }}>
           <div style={{ background: "var(--paper)", padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
             <div style={{ display: "flex", gap: 24, marginBottom: 16, flexWrap: "wrap" }}>
               <div style={{ display: "flex", flexDirection: "column" }}>
@@ -430,14 +574,16 @@ export default function AdminProduits() {
             </div>
           </div>
 
-          <table className="bs-table">
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%" }}>
+            <table className="bs-table" style={{ minWidth: 1040 }}>
             <thead>
               <tr>
                 <th>Photo</th>
                 <th>Nom du produit</th>
                 <th>Marque</th>
                 <th>Catégorie / Fournisseur</th>
-                <th>Prix de vente</th>
+                <th>Prix Vente Comores</th>
+                <th>Prix Vente Sénégal</th>
                 <th>Coût d'achat</th>
                 <th>Stock</th>
                 <th>Actions</th>
@@ -445,11 +591,11 @@ export default function AdminProduits() {
             </thead>
             <tbody>
               {loading && (
-                <SkeletonTableRows rows={6} cols={8} />
+                <SkeletonTableRows rows={6} cols={9} />
               )}
               {!loading && paginatedProducts.length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+                  <td colSpan={9} style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
                     Aucun produit ne correspond à votre recherche.
                   </td>
                 </tr>
@@ -499,15 +645,27 @@ export default function AdminProduits() {
                     <td>
                       {p.prixPromo ? (
                         <>
-                          <span style={{ textDecoration: "line-through", color: "var(--muted)", marginRight: 6, fontSize: 13 }}>{fcfa(p.prix)}</span>
-                          <span style={{ color: "var(--accent)", fontWeight: 700 }}>{fcfa(p.prixPromo)}</span>
+                          <span style={{ textDecoration: "line-through", color: "var(--muted)", marginRight: 6, fontSize: 13 }}>{formatPrice(p.prix, "KMF")}</span>
+                          <span style={{ color: "var(--accent)", fontWeight: 700 }}>{formatPrice(p.prixPromo, "KMF")}</span>
                         </>
                       ) : (
-                        <span style={{ fontWeight: 700 }}>{fcfa(p.prix)}</span>
+                        <span style={{ fontWeight: 700 }}>{formatPrice(p.prix, "KMF")}</span>
                       )}
-                      <span style={{ color: "var(--muted)", fontSize: 12 }}> / {p.poids && p.poids !== "1" ? `${p.poids} ` : ""}{p.unite}</span>
+                      <span style={{ color: "var(--muted)", fontSize: 11.5 }}> / {p.poids && p.poids !== "1" ? `${p.poids} ` : ""}{p.unite}</span>
                     </td>
-                    <td style={{ color: "var(--muted)" }}>{fcfa(p.coutAchat || 0)}</td>
+                    <td>
+                      {p.prixPromoSenegal ? (
+                        <>
+                          <span style={{ textDecoration: "line-through", color: "var(--muted)", marginRight: 6, fontSize: 13 }}>{formatPrice(p.prixSenegal, "FCFA")}</span>
+                          <span style={{ color: "#D97706", fontWeight: 800 }}>{formatPrice(p.prixPromoSenegal, "FCFA")}</span>
+                        </>
+                      ) : p.prixSenegal ? (
+                        <span style={{ fontWeight: 800, color: "#92400E" }}>{formatPrice(p.prixSenegal, "FCFA")}</span>
+                      ) : (
+                        <span style={{ color: "var(--muted)", fontSize: 12 }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ color: "var(--muted)" }}>{formatPrice(p.coutAchat || 0, "KMF")}</td>
                     <td className={p.stock <= p.seuilAlerte ? "bs-stock-low" : ""}>
                       <span style={{ fontWeight: 700 }}>{p.stock}</span> {p.unite}
                       {p.stock <= p.seuilAlerte && <AlertTriangle size={14} color="#B4483A" style={{ marginLeft: 6, verticalAlign: "-2px" }} />}
@@ -530,6 +688,7 @@ export default function AdminProduits() {
               })}
             </tbody>
           </table>
+          </div>
 
           {/* TABLE PAGINATION */}
           <TablePagination
@@ -597,7 +756,7 @@ export default function AdminProduits() {
               </div>
             </div>
 
-            <div className="bs-form-row-4">
+            <div className="bs-form-row-3">
               <div className="bs-input-group">
                 <label>Catégorie *</label>
                 <select
@@ -635,16 +794,6 @@ export default function AdminProduits() {
                     <option value={form.famille}>{form.famille}</option>
                   )}
                 </select>
-              </div>
-
-              <div className="bs-input-group">
-                <label>Poids / Qté *</label>
-                <input
-                  className="bs-input"
-                  placeholder="ex: 1, 1.5, 500"
-                  value={form.poids}
-                  onChange={(e) => set("poids", e.target.value)}
-                />
               </div>
 
               <div className="bs-input-group">
@@ -715,9 +864,9 @@ export default function AdminProduits() {
               </div>
             </div>
 
-            {/* PROMO & EXPIRATION SECTION */}
+            {/* PROMO & TARIFS PAYS SECTION (COMORES KMF & SÉNÉGAL FCFA) */}
             <div style={{ background: "var(--paper)", padding: 16, borderRadius: 12, border: "1px solid var(--line)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                 <input
                   type="checkbox"
                   id="enPromo"
@@ -730,45 +879,100 @@ export default function AdminProduits() {
                 </label>
               </div>
 
-              <div className="bs-form-row-3">
-                <div className="bs-input-group">
-                  <label>Prix Normal (€) *</label>
-                  <input
-                    className="bs-input"
-                    type="number"
-                    step="0.01"
-                    required
-                    placeholder="ex: 15.00"
-                    value={form.prix}
-                    onChange={(e) => set("prix", e.target.value)}
-                  />
+              {/* LIGNE 1 : TARIFS COMORES (KMF) */}
+              <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px dashed var(--line)" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#2563EB", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>Tarifs Comores (KMF) *</span>
                 </div>
+                <div className="bs-form-row-3">
+                  <div className="bs-input-group">
+                    <label>Prix Normal Comores (KMF) *</label>
+                    <input
+                      className="bs-input"
+                      type="number"
+                      step="1"
+                      required
+                      placeholder="ex: 6500"
+                      value={form.prix}
+                      onChange={(e) => set("prix", e.target.value)}
+                    />
+                  </div>
 
-                <div className="bs-input-group">
-                  <label>Prix Promo (€)</label>
-                  <input
-                    className="bs-input"
-                    type="number"
-                    step="0.01"
-                    disabled={!form.enPromo}
-                    placeholder="ex: 12.50"
-                    value={form.prixPromo}
-                    onChange={(e) => set("prixPromo", e.target.value)}
-                  />
+                  <div className="bs-input-group">
+                    <label>Prix Promo Comores (KMF)</label>
+                    <input
+                      className="bs-input"
+                      type="number"
+                      step="1"
+                      disabled={!form.enPromo}
+                      placeholder="ex: 5500"
+                      value={form.prixPromo}
+                      onChange={(e) => set("prixPromo", e.target.value)}
+                    />
+                  </div>
+
+                  <div className="bs-input-group">
+                    <label>Réduction Comores</label>
+                    <div style={{
+                      height: 44, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center",
+                      padding: "0 14px", background: "#E0F2FE", borderRadius: 8, border: "1.5px solid #BAE6FD",
+                      fontWeight: 800, color: "#0369A1", fontSize: 13, textAlign: "center"
+                    }}>
+                      {form.enPromo && form.prixPromo && Number(form.prix) > 0 ? (
+                        `-${Math.round(((Number(form.prix) - Number(form.prixPromo)) / Number(form.prix)) * 100)} % de remise`
+                      ) : (
+                        "Aucune promo active"
+                      )}
+                    </div>
+                  </div>
                 </div>
+              </div>
 
-                <div className="bs-input-group">
-                  <label>Réduction calculée</label>
-                  <div style={{
-                    height: 44, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center",
-                    padding: "0 14px", background: "#E0F2FE", borderRadius: 8, border: "1.5px solid #BAE6FD",
-                    fontWeight: 800, color: "#0369A1", fontSize: 13.5, textAlign: "center"
-                  }}>
-                    {form.enPromo && form.prixPromo && Number(form.prix) > 0 ? (
-                      `-${Math.round(((Number(form.prix) - Number(form.prixPromo)) / Number(form.prix)) * 100)} % de remise`
-                    ) : (
-                      "Aucune promo active"
-                    )}
+              {/* LIGNE 2 : TARIFS SÉNÉGAL (FCFA) */}
+              <div>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#15803D", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>Tarifs Sénégal (FCFA)</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)" }}>(S'affiche si le client choisit Sénégal)</span>
+                </div>
+                <div className="bs-form-row-3">
+                  <div className="bs-input-group">
+                    <label>Prix Vente Sénégal (FCFA)</label>
+                    <input
+                      className="bs-input"
+                      type="number"
+                      step="1"
+                      placeholder="ex: 8000"
+                      value={form.prixSenegal}
+                      onChange={(e) => set("prixSenegal", e.target.value)}
+                    />
+                  </div>
+
+                  <div className="bs-input-group">
+                    <label>Prix Promo Sénégal (FCFA)</label>
+                    <input
+                      className="bs-input"
+                      type="number"
+                      step="1"
+                      disabled={!form.enPromo}
+                      placeholder="ex: 7000"
+                      value={form.prixPromoSenegal}
+                      onChange={(e) => set("prixPromoSenegal", e.target.value)}
+                    />
+                  </div>
+
+                  <div className="bs-input-group">
+                    <label>Réduction Sénégal</label>
+                    <div style={{
+                      height: 44, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center",
+                      padding: "0 14px", background: "#DCFCE7", borderRadius: 8, border: "1.5px solid #86EFAC",
+                      fontWeight: 800, color: "#166534", fontSize: 13, textAlign: "center"
+                    }}>
+                      {form.enPromo && form.prixPromoSenegal && Number(form.prixSenegal) > 0 ? (
+                        `-${Math.round(((Number(form.prixSenegal) - Number(form.prixPromoSenegal)) / Number(form.prixSenegal)) * 100)} % de remise`
+                      ) : (
+                        "Aucune promo active"
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

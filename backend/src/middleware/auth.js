@@ -20,6 +20,26 @@ async function authenticate(req, res, next) {
   }
 }
 
+/** Authentification optionnelle (attache req.user si le token JWT est valide, sinon passe à la suite sans bloquer) */
+async function optionalAuthenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (token) {
+      const payload = verifyToken(token);
+      if (payload && payload.id) {
+        const user = await User.findByPk(payload.id);
+        if (user && user.statut !== "suspendu") {
+          req.user = user;
+        }
+      }
+    }
+  } catch (err) {
+    // Si token invalide ou expiré, on continue sans utilisateur connecté
+  }
+  next();
+}
+
 /** Autorise uniquement certains rôles */
 function requireRole(...roles) {
   return (req, res, next) => {
@@ -82,4 +102,4 @@ function requireOwnBoutique(req, res, next) {
   next();
 }
 
-module.exports = { authenticate, requireRole, loadBoutique, requireOwnBoutique };
+module.exports = { authenticate, optionalAuthenticate, requireRole, loadBoutique, requireOwnBoutique };

@@ -10,8 +10,8 @@ const getBaseUrl = () => {
     return import.meta.env.VITE_API_URL || `http://${hostname}:4000/api`;
   }
 
-  // En production (Vercel, mobile, domaine personnalisé), toujours contacter directement l'API en ligne
-  return "https://electro-backend-8hfq.onrender.com/api";
+  // En production (Vercel, mobile, domaine personnalisé) : utilise la variable VITE_API_URL si définie
+  return import.meta.env.VITE_API_URL || "https://electro-backend-8hfq.onrender.com/api";
 };
 
 export const SLUG = import.meta.env.VITE_BOUTIQUE_SLUG || "soilihitech";

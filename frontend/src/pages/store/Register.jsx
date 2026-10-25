@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   UserPlus, User, Mail, Lock, AlertCircle, ShieldCheck,
-  RefreshCw, Send, MessageSquare, CheckCircle2
+  RefreshCw, Send, MessageSquare, CheckCircle2, Eye, EyeOff
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import PhoneInputSelect from "../../components/PhoneInputSelect.jsx";
@@ -15,6 +15,7 @@ export default function Register() {
 
   const [step, setStep] = useState(1); // 1 = info, 2 = otp
   const [form, setForm] = useState({ nom: "", email: "", telephone: "", motDePasse: "" });
+  const [showPassword, setShowPassword] = useState(false);
 
   // OTP: individual boxes
   const [otpDigits, setOtpDigits] = useState(Array(OTP_LENGTH).fill(""));
@@ -214,15 +215,28 @@ export default function Register() {
 
               <div className="bs-input-group">
                 <label>Mot de passe</label>
-                <div className="bs-input-wrapper">
+                <div className="bs-input-wrapper" style={{ position: "relative" }}>
                   <Lock size={18} className="bs-input-icon" />
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
                     required
                     value={form.motDePasse}
                     onChange={(e) => setForm((f) => ({ ...f, motDePasse: e.target.value }))}
+                    style={{ paddingRight: 42 }}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                      background: "none", border: "none", cursor: "pointer", color: "var(--muted)",
+                      display: "flex", alignItems: "center", justifyContent: "center", padding: 4
+                    }}
+                    title={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
               </div>
 

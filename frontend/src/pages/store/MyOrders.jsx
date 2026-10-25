@@ -3,7 +3,7 @@ import { toast } from "react-hot-toast";
 import { SkeletonOrdersPage } from "../../components/Skeleton.jsx";
 import { readCache, writeCache } from "../../utils/swrCache.js";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Package, Truck, CheckCircle, XCircle, Clock, ShoppingBag, Search, ChevronRight, MapPin, CreditCard, ArrowLeft, PackageOpen, TrendingUp, RefreshCw, Receipt, Star, Smartphone, MessageCircle } from "lucide-react";
+import { Package, Truck, CheckCircle, XCircle, Clock, ShoppingBag, Search, ChevronRight, MapPin, CreditCard, ArrowLeft, PackageOpen, TrendingUp, RefreshCw, Receipt, Star, Smartphone, MessageCircle, ClipboardList, ExternalLink, Sparkles } from "lucide-react";
 import api, { SLUG } from "../../api";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useCart } from "../../context/CartContext.jsx";
@@ -43,15 +43,15 @@ const MOYEN_LABEL = {
 };
 
 const FILTERS = [
-  { key: "all",          label: "Toutes les commandes", icon: ShoppingBag },
-  { key: "recharge_mobile", label: "Recharges de crédit", icon: Smartphone },
-  { key: "en_attente",   label: "En attente",            icon: Clock },
-  { key: "validee",      label: "Confirmées",            icon: CheckCircle },
-  { key: "pret_retrait", label: "Prêtes à récupérer",   icon: Package },
-  { key: "en_livraison", label: "En livraison",          icon: Truck },
-  { key: "recuperee",    label: "Récupérées",            icon: CheckCircle },
-  { key: "livree",       label: "Livrées",               icon: CheckCircle },
-  { key: "annulee",      label: "Annulées",              icon: XCircle },
+  { key: "all",               label: "Toutes les commandes", icon: ShoppingBag },
+  { key: "demande_sur_mesure", label: "Demandes sur-mesure",   icon: ClipboardList },
+  { key: "en_attente",        label: "En attente",            icon: Clock },
+  { key: "validee",           label: "Confirmées",            icon: CheckCircle },
+  { key: "pret_retrait",      label: "Prêtes à récupérer",   icon: Package },
+  { key: "en_livraison",      label: "En livraison",          icon: Truck },
+  { key: "recuperee",         label: "Récupérées",            icon: CheckCircle },
+  { key: "livree",            label: "Livrées",               icon: CheckCircle },
+  { key: "annulee",           label: "Annulées",              icon: XCircle },
 ];
 
 
@@ -66,6 +66,7 @@ export default function MyOrders() {
   const targetOrderId = searchParams.get("orderId") || searchParams.get("id");
 
   const [orders, setOrders] = useState(() => readCache("my_orders") || []);
+  const [customRequests, setCustomRequests] = useState([]);
   const [loading, setLoading] = useState(() => readCache("my_orders") === undefined);
   const [selected, setSelected] = useState(null);
   const [receiptOrder, setReceiptOrder] = useState(null);
@@ -166,6 +167,7 @@ export default function MyOrders() {
   };
 
   const fetchOrders = () => {
+    // 1. Commandes classiques
     api.get(`/store/${SLUG}/orders/mine`)
       .then(res => {
         const freshOrders = res.data || [];
@@ -178,7 +180,17 @@ export default function MyOrders() {
           if (target) setSelected(target);
         }
       })
+      .catch(() => {})
       .finally(() => setLoading(false));
+
+    // 2. Demandes sur-mesure du client
+    api.get(`/store/${SLUG}/custom-requests/mine`, {
+      params: { telephone: user?.telephone || undefined }
+    })
+      .then(res => {
+        setCustomRequests(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => {});
   };
 
 
@@ -208,26 +220,31 @@ export default function MyOrders() {
     };
   }, []);
 
+  const filteredCustomRequests = customRequests.filter(r => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      (r.code && r.code.toLowerCase().includes(q)) ||
+      (r.modeleAppareil && r.modeleAppareil.toLowerCase().includes(q)) ||
+      (r.articles && r.articles.some(a => a.nom && a.nom.toLowerCase().includes(q)))
+    );
+  });
+
   const filtered = orders.filter(o => {
     const matchSearch = search === "" ||
       `${o.id}`.includes(search) ||
       o.items?.some(it => it.product?.nom?.toLowerCase().includes(search.toLowerCase()));
       
-    let matchFilter = false;
-    const isRecharge = o.typeVente === "recharge_mobile" || o.notes?.includes("recharge_mobile") || o.items?.some(it => it.product?.nom?.toLowerCase().includes("recharge"));
-    
-    if (filter === "all") matchFilter = true;
-    else if (filter === "recharge_mobile") matchFilter = isRecharge;
-    else matchFilter = o.statut === filter;
-    
-    return matchSearch && matchFilter;
+    if (filter === "all") return matchSearch;
+    if (filter === "demande_sur_mesure") return false;
+    return matchSearch && o.statut === filter;
   });
 
   const stats = {
-    total: orders.length,
-    enCours: orders.filter(o => !["livree", "annulee"].includes(o.statut)).length,
-    livrees: orders.filter(o => o.statut === "livree").length,
-    annulees: orders.filter(o => o.statut === "annulee").length,
+    total: orders.length + customRequests.length,
+    enCours: orders.filter(o => !["livree", "annulee"].includes(o.statut)).length + customRequests.filter(r => ["en_attente", "propose"].includes(r.statut)).length,
+    livrees: orders.filter(o => o.statut === "livree").length + customRequests.filter(r => r.statut === "valide").length,
+    annulees: orders.filter(o => o.statut === "annulee").length + customRequests.filter(r => r.statut === "refuse").length,
     montant: orders.filter(o => o.statut !== "annulee").reduce((s, o) => s + (o.total || 0), 0),
   };
 
@@ -624,7 +641,7 @@ export default function MyOrders() {
             </div>
             {FILTERS.map(f => {
               const count = f.key === "all" ? orders.length : 
-                            (f.key === "recharge_mobile" ? orders.filter(o => o.typeVente === "recharge_mobile" || o.notes?.includes("recharge_mobile") || o.items?.some(it => it.product?.nom?.toLowerCase().includes("recharge"))).length : 
+                            (f.key === "demande_sur_mesure" ? customRequests.length : 
                             orders.filter(o => o.statut === f.key).length);
               const active = filter === f.key;
               return (
@@ -684,7 +701,78 @@ export default function MyOrders() {
             </div>
 
             {/* LIST */}
-            {filtered.length === 0 ? (
+            {filter === "demande_sur_mesure" ? (
+              filteredCustomRequests.length === 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", color: "var(--muted)", textAlign: "center", background: "#fff", borderRadius: 16, border: "1px solid var(--line)" }}>
+                  <ClipboardList size={48} strokeWidth={1.2} style={{ marginBottom: 12, opacity: 0.4 }} />
+                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, color: "var(--ink)" }}>Aucune demande sur-mesure trouvée</div>
+                  <div style={{ fontSize: 12.5, marginBottom: 16 }}>Vous n'avez pas encore formulé de demande sur-mesure pour votre smartphone.</div>
+                  <button onClick={() => navigate("/demande-sur-mesure")} className="bs-btn-primary" style={{ padding: "10px 20px", fontSize: 13 }}>
+                    Faire une demande sur-mesure
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {filteredCustomRequests.map(r => {
+                    const badgeStyles = {
+                      en_attente: { bg: "#EFF6FF", color: "#1D4ED8", label: "En cours d'examen" },
+                      propose: { bg: "#FEF3C7", color: "#B45309", label: "Devis reçu - À valider" },
+                      valide: { bg: "#DCFCE7", color: "#15803D", label: "Devis validé" },
+                      refuse: { bg: "#FEE2E2", color: "#B91C1C", label: "Demande refusée" }
+                    };
+                    const b = badgeStyles[r.statut] || badgeStyles.en_attente;
+                    const totalDevis = Number(r.totalPropose || 0) + Number(r.fraisLivraison || 0);
+
+                    return (
+                      <div
+                        key={r.id}
+                        onClick={() => navigate(`/demande/${r.code}`)}
+                        className="bs-my-orders-card"
+                        style={{ cursor: "pointer", borderLeft: `4px solid ${b.color}` }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <div style={{ width: 44, height: 44, borderRadius: 12, background: "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#2563EB", flexShrink: 0 }}>
+                              <ClipboardList size={22} />
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--ink)", display: "flex", alignItems: "center", gap: 8 }}>
+                                <span>Demande #{r.code}</span>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: "#2563EB", background: "#EFF6FF", padding: "2px 8px", borderRadius: 8 }}>
+                                  {r.modeleAppareil}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>
+                                Demandée le {new Date(r.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                              </div>
+                            </div>
+                          </div>
+
+                          <span style={{ background: b.bg, color: b.color, padding: "4px 10px", borderRadius: 20, fontSize: 11.5, fontWeight: 800, flexShrink: 0 }}>
+                            {b.label}
+                          </span>
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+                          <div style={{ fontSize: 12, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, paddingRight: 10 }}>
+                            Articles : {r.articles?.map(a => `${a.nom} (x${a.quantite || 1})`).join(", ") || "Accessoires"}
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                            <div style={{ fontWeight: 900, fontSize: 15, color: "var(--forest-dark)" }}>
+                              {totalDevis > 0 ? fcfa(totalDevis) : "Chiffrage en cours"}
+                            </div>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, color: "#2563EB" }}>
+                              Consulter <ExternalLink size={14} />
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            ) : filtered.length === 0 ? (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", color: "var(--muted)", textAlign: "center", background: "#fff", borderRadius: 16, border: "1px solid var(--line)" }}>
                 <PackageOpen size={48} strokeWidth={1.2} style={{ marginBottom: 12, opacity: 0.4 }} />
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, color: "var(--ink)" }}>Aucune commande trouvée</div>

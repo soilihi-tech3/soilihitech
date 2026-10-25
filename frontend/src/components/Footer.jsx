@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { MapPin, Phone, Mail, Store, Facebook, Instagram, MessageCircle, Info, Package, Grid, Home as HomeIcon, Clock, ShieldCheck, Truck, CheckCircle, Headphones } from "lucide-react";
+import { MapPin, Phone, Mail, Store, Facebook, Instagram, MessageCircle, Info, Package, Grid, Home as HomeIcon, Clock, ShieldCheck, Truck, CheckCircle, Headphones, FileText } from "lucide-react";
 import api, { SLUG } from "../api";
 
 import { useAuth } from "../context/AuthContext.jsx";
@@ -195,7 +195,7 @@ export default function Footer() {
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
               <li><Link to="/" style={{ color: "#A8BEB1", textDecoration: "none", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}><HomeIcon size={14} /> Accueil</Link></li>
               <li><Link to="/catalogue" style={{ color: "#A8BEB1", textDecoration: "none", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}><Grid size={14} /> Tous nos produits</Link></li>
-              <li><Link to="/a-propos" style={{ color: "#A8BEB1", textDecoration: "none", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}><Info size={14} /> À propos de nous</Link></li>
+              <li><Link to="/demande-sur-mesure" style={{ color: "#A8BEB1", textDecoration: "none", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}><FileText size={14} /> Demande sur-mesure</Link></li>
               <li><Link to="/mes-commandes" style={{ color: "#A8BEB1", textDecoration: "none", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}><Package size={14} /> Suivi de mes commandes</Link></li>
             </ul>
           </div>

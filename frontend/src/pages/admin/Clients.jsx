@@ -229,11 +229,12 @@ export default function AdminClients() {
       </div>
 
       {/* ── CLIENTS TABLE ── */}
-      <div className="bs-panel" style={{ padding: 0, overflow: "hidden" }}>
+      <div className="bs-panel" style={{ padding: 0 }}>
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%" }}>
         {loading ? (
-          <table className="bs-table" style={{ width: "100%" }}><tbody><SkeletonTableRows rows={6} cols={6} /></tbody></table>
+          <table className="bs-table" style={{ width: "100%", minWidth: 700 }}><tbody><SkeletonTableRows rows={6} cols={6} /></tbody></table>
         ) : (
-          <table className="bs-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table className="bs-table" style={{ width: "100%", minWidth: 700, borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "var(--paper)", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
                 <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Client</th>
@@ -347,6 +348,7 @@ export default function AdminClients() {
             </tbody>
           </table>
         )}
+        </div>
 
         <TablePagination
           totalItems={filtered.length}

@@ -8,6 +8,8 @@ const Product = sequelize.define("Product", {
   description: { type: DataTypes.TEXT },
   prix: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   prixPromo: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
+  prixSenegal: { type: DataTypes.DECIMAL(10, 2), allowNull: true, field: "prix_senegal" },
+  prixPromoSenegal: { type: DataTypes.DECIMAL(10, 2), allowNull: true, field: "prix_promo_senegal" },
   enPromo: { type: DataTypes.BOOLEAN, defaultValue: false },
   dateExpiration: { type: DataTypes.DATEONLY, allowNull: true },
   famille: { type: DataTypes.STRING(100), defaultValue: "Cosmétique" },

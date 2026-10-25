@@ -348,7 +348,10 @@ async function ensureColumns() {
       "ALTER TABLE boutiques MODIFY COLUMN side_banners LONGTEXT NULL;",
       "ALTER TABLE boutiques MODIFY COLUMN formule_abonnement VARCHAR(50) DEFAULT 'standard';",
       "ALTER TABLE orders MODIFY COLUMN moyen_paiement VARCHAR(50) DEFAULT 'cash';",
-      "ALTER TABLE orders MODIFY COLUMN mode_livraison VARCHAR(50) DEFAULT 'domicile';"
+      "ALTER TABLE orders MODIFY COLUMN mode_livraison VARCHAR(50) DEFAULT 'domicile';",
+      "ALTER TABLE products ADD COLUMN prix_senegal DECIMAL(10, 2) NULL;",
+      "ALTER TABLE products ADD COLUMN prix_promo_senegal DECIMAL(10, 2) NULL;",
+      "ALTER TABLE orders ADD COLUMN devise VARCHAR(10) DEFAULT 'KMF';"
     ];
 
     for (const q of alterQueries) {
@@ -377,7 +380,18 @@ async function start() {
 
   await ensureColumns();
   await sequelize.sync(); // crée les tables si elles n'existent pas (compatibilité TiDB Cloud)
-  await runSeed();        // insère les données de démonstration et utilisateurs si la base est vide
+
+  // Insérer les données initiales UNIQUEMENT si la base de données est vierge (aucune boutique ou aucun produit)
+  const { Boutique, Product } = require("./models");
+  const existingCount = await Product.count().catch(() => 0);
+  const existingBoutique = await Boutique.count().catch(() => 0);
+
+  if (existingCount === 0 || existingBoutique === 0) {
+    console.log("Base de données vierge détectée : initialisation des données de démarrage...");
+    await runSeed();
+  } else {
+    console.log(`Base de données active : ${existingCount} produits et ${existingBoutique} boutique(s) conservés sans écrasement.`);
+  }
 
   app.listen(PORT, () => console.log(`API Boutique SaaS démarrée sur le port ${PORT}`));
 }

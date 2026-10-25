@@ -1,7 +1,7 @@
 const express = require("express");
 const { Op } = require("sequelize");
 const { sequelize, Product, Category, Order, OrderItem, Review, User, Notification, Famille, RechargePlan, Marque, Testimonial } = require("../models");
-const { authenticate, requireRole, loadBoutique } = require("../middleware/auth");
+const { authenticate, optionalAuthenticate, requireRole, loadBoutique } = require("../middleware/auth");
 const { cacheMiddleware, clearCachePattern } = require("../config/cache");
 const { sendOrderConfirmationEmail, sendOrderStatusEmail } = require("../services/email.service");
 const { sendReloadlyLowBalanceAlert } = require("../services/emailService");
@@ -291,7 +291,7 @@ router.post("/:slug/products/:id/reviews", loadBoutique, authenticate, requireRo
 router.post("/:slug/orders", loadBoutique, authenticate, requireRole("client"), async (req, res, next) => {
   const t = await sequelize.transaction();
   try {
-    const { items, modeLivraison, adresseLivraison, moyenPaiement } = req.body;
+    const { items, modeLivraison, adresseLivraison, moyenPaiement, devise } = req.body;
     if (!items || !items.length) {
       await t.rollback();
       return res.status(400).json({ message: "Le panier est vide." });
@@ -308,7 +308,15 @@ router.post("/:slug/orders", loadBoutique, authenticate, requireRole("client"), 
       if (!product) { await t.rollback(); return res.status(404).json({ message: `Produit ${item.productId} introuvable.` }); }
       if (product.stock < item.quantite) { await t.rollback(); return res.status(409).json({ message: `Stock insuffisant pour ${product.nom}.` }); }
 
-      const prixUnitaire = product.prixPromo || product.prix;
+      let prixUnitaire;
+      if (devise === "FCFA") {
+        prixUnitaire = (product.prixPromoSenegal && Number(product.prixPromoSenegal) > 0)
+          ? Number(product.prixPromoSenegal)
+          : (product.prixSenegal && Number(product.prixSenegal) > 0 ? Number(product.prixSenegal) : Number(product.prixPromo || product.prix));
+      } else {
+        prixUnitaire = Number(product.prixPromo || product.prix);
+      }
+
       sousTotal += prixUnitaire * item.quantite;
       lignesAvecPrix.push({ product, quantite: item.quantite, prixUnitaire });
     }
@@ -360,6 +368,7 @@ router.post("/:slug/orders", loadBoutique, authenticate, requireRole("client"), 
       boutiqueId: req.boutique.id, clientId: req.user.id, statut: statutInit,
       modeLivraison, adresseLivraison, moyenPaiement, sousTotal, fraisLivraison,
       total: sousTotal + fraisLivraison,
+      devise: devise || "KMF",
     }, { transaction: t });
 
     for (const ligne of lignesAvecPrix) {
@@ -1147,5 +1156,18 @@ router.delete("/:slug/admin/recharge-plans/:id", loadBoutique, authenticate, req
     next(error);
   }
 });
+
+// --- ROUTES DEMANDES SUR-MESURE / COMMANDES SPÉCIALES ---
+const {
+  createCustomRequest,
+  getCustomRequestByCode,
+  respondCustomRequest,
+  listClientCustomRequests
+} = require("../controllers/customOrder.controller");
+
+router.post("/:slug/custom-requests", createCustomRequest);
+router.get("/:slug/custom-requests/mine", optionalAuthenticate, listClientCustomRequests);
+router.get("/:slug/custom-requests/:code", getCustomRequestByCode);
+router.patch("/:slug/custom-requests/:code/decision", respondCustomRequest);
 
 module.exports = router;

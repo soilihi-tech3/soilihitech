@@ -78,15 +78,8 @@ async function runSeed() {
       aProposText: "Soilihitech est la boutique de référence pour tous vos accessoires pour smartphones et appareils électroniques. Que vous possédiez un iPhone, un Samsung, un Tecno, un Infinix ou un Xiaomi, nous vous garantissons les meilleurs chargeurs rapides, glaces de protection incassables, coques antichocs, écouteurs et batteries externes aux meilleurs prix.",
       bannerSlides: bannerSlides
     });
-  } else {
-    await boutique.update({
-      nom: "Soilihitech",
-      slug: "soilihitech",
-      couleurPrincipale: "#2563EB",
-      bannerSlides: bannerSlides,
-      aProposText: "Soilihitech est la boutique de référence pour tous vos accessoires pour smartphones et appareils électroniques : iPhone, Samsung, Tecno, Infinix, Xiaomi, Oraimo, Anker et Baseus."
-    });
   }
+  // Si la boutique existe déjà, on ne remplace pas ses bannières ni ses photos !
 
   // --- 4. Marques Référencées ---
   const marquesData = [
@@ -402,14 +395,14 @@ async function runSeed() {
     }
   ];
 
-  // Insérer ou mettre à jour les produits
+  // Insérer les produits seulement s'ils n'existent pas encore
   for (const p of produitsData) {
     const cat = cats[p.cat];
     const catId = cat ? cat.id : 1;
     const marqueObj = marquesMap[p.marque];
     const marqueId = marqueObj ? marqueObj.id : null;
 
-    let prod = await Product.findOne({ where: { nom: p.nom, boutiqueId: boutique.id } });
+    const prod = await Product.findOne({ where: { nom: p.nom, boutiqueId: boutique.id } });
     if (!prod) {
       await Product.create({
         boutiqueId: boutique.id,
@@ -431,19 +424,8 @@ async function runSeed() {
         imageUrl: p.imageUrl,
         imageUrl2: p.imageUrl2 || null
       });
-    } else {
-      await prod.update({
-        categoryId: catId,
-        marqueId: marqueId,
-        description: p.description,
-        prix: p.prix,
-        prixPromo: p.prixPromo,
-        enPromo: p.enPromo,
-        famille: p.famille,
-        imageUrl: p.imageUrl,
-        imageUrl2: p.imageUrl2
-      });
     }
+    // Si le produit existe déjà, on NE le modifie pas pour préserver les photos, prix et descriptions de l'utilisateur !
   }
 
   // --- 8. Témoignages Clients Soilihitech ---

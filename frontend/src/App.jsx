@@ -24,6 +24,8 @@ import Register from "./pages/store/Register.jsx";
 import About from "./pages/store/About.jsx";
 import Profile from "./pages/store/Profile.jsx";
 import RechargeMobile from "./pages/store/RechargeMobile.jsx";
+import DemandeSurMesure from "./pages/store/DemandeSurMesure.jsx";
+import SuiviDemande from "./pages/store/SuiviDemande.jsx";
 
 const AdminLayout = React.lazy(() => import("./pages/admin/AdminLayout.jsx"));
 const Dashboard = React.lazy(() => import("./pages/admin/Dashboard.jsx"));
@@ -42,6 +44,7 @@ const AdminMarques = React.lazy(() => import("./pages/admin/Marques.jsx"));
 const AdminAvisClients = React.lazy(() => import("./pages/admin/AvisClients.jsx"));
 const Achats = React.lazy(() => import("./pages/admin/Achats.jsx"));
 const SalesHistory = React.lazy(() => import("./pages/admin/SalesHistory.jsx"));
+const DemandesSpeciales = React.lazy(() => import("./pages/admin/DemandesSpeciales.jsx"));
 
 const SuperAdmin = React.lazy(() => import("./pages/superadmin/SuperAdmin.jsx"));
 
@@ -126,6 +129,8 @@ export default function App() {
       <Routes>
         {/* --- Boutique (front-office) --- */}
         <Route path="/" element={<StoreLayout><Home /></StoreLayout>} />
+        <Route path="/demande-sur-mesure" element={<StoreLayout><DemandeSurMesure /></StoreLayout>} />
+        <Route path="/demande/:code" element={<StoreLayout><SuiviDemande /></StoreLayout>} />
         <Route path="/a-propos" element={<StoreLayout><About /></StoreLayout>} />
         <Route path="/catalogue" element={<StoreLayout><Catalogue /></StoreLayout>} />
         <Route path="/produit/:id" element={<StoreLayout><ProductDetail /></StoreLayout>} />
@@ -163,6 +168,7 @@ export default function App() {
           <Route path="produits" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminProduits /></React.Suspense>} />
           <Route path="categories" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminCategories /></React.Suspense>} />
           <Route path="commandes" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminOrders /></React.Suspense>} />
+          <Route path="demandes" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><DemandesSpeciales /></React.Suspense>} />
           <Route path="clients" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminClients /></React.Suspense>} />
           <Route path="employes" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminEmployees /></React.Suspense>} />
 

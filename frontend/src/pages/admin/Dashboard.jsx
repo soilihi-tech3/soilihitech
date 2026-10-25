@@ -9,12 +9,26 @@ import { subscribeRealtime } from "../../utils/realtime.js";
 import { Skel, SkeletonStatCards } from "../../components/Skeleton.jsx";
 import { readCache, writeCache } from "../../utils/swrCache.js";
 
-import { formatPrice as fcfa } from "../../utils/currency.js";
+import { formatPrice, formatPrice as fcfa } from "../../utils/currency.js";
 
 export default function Dashboard() {
   const { user, boutique, theme } = useAuth();
   const [data, setData] = useState(() => readCache("admin_dashboard") || null);
-  const [prodChartTab, setProdChartTab] = useState("top"); // "top" | "flop"
+  const [activeCurrency, setActiveCurrencyState] = useState(() => boutique?.devise || "KMF");
+  const [prodChartTab, setProdChartTab] = useState("top");
+
+  useEffect(() => {
+    if (boutique?.devise) {
+      setActiveCurrencyState(boutique.devise);
+    }
+    const handleCurChange = (e) => {
+      setActiveCurrencyState(e.detail || boutique?.devise || "KMF");
+    };
+    window.addEventListener("currency_changed", handleCurChange);
+    return () => window.removeEventListener("currency_changed", handleCurChange);
+  }, [boutique?.devise]);
+
+  const storeDevise = activeCurrency || boutique?.devise || "KMF";
   const isDark = theme === "dark";
 
   // Chart styling options based on active theme
@@ -89,7 +103,7 @@ export default function Dashboard() {
                 <TrendingUp size={18} />
               </div>
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)" }}>{fcfa(data.monChiffreAffaires || 0)}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)" }}>{formatPrice(data.monChiffreAffaires || 0, storeDevise)}</div>
             <div style={{ fontSize: 12, color: "var(--muted)" }}>Commandes traitées hors annulées</div>
           </div>
 
@@ -172,7 +186,7 @@ export default function Dashboard() {
                     <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>Tél: {c.client?.telephone || c.telephoneClient || "Non renseigné"}</div>
                     
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px dashed var(--line)" }}>
-                      <span style={{ fontWeight: 800, fontSize: 14, color: "var(--forest)" }}>{fcfa(c.total)}</span>
+                      <span style={{ fontWeight: 800, fontSize: 14, color: "var(--forest)" }}>{formatPrice(c.total, c.devise || storeDevise)}</span>
                       <Link to="/admin/commandes" style={{ fontSize: 12, fontWeight: 700, color: "var(--forest-dark)", textDecoration: "underline" }}>
                         Modifier le statut
                       </Link>
@@ -203,7 +217,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── HIGH-ELEGANCE SLIM KPI CARDS GRID (10 Cartes Dynamiques Slims) ── */}
+      {/* ── HIGH-ELEGANCE SLIM KPI CARDS GRID (Cartes Dynamiques Slims) ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
         
         {/* 1. CHIFFRE D'AFFAIRES GLOBAL */}
@@ -220,7 +234,7 @@ export default function Dashboard() {
           </div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {fcfa(data.chiffreAffaires || 0)}
+              {formatPrice(data.chiffreAffaires || 0, storeDevise)}
             </div>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
               Chiffre d'affaires
@@ -228,7 +242,29 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 2. BÉNÉFICE NET */}
+        {/* 1.B DÉPENSES TOTALES D'ACHATS */}
+        <div style={{
+          background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+          position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+        }}>
+          <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(239,68,68,0.08)", pointerEvents: "none" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEE2E2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <ShoppingBag size={17} />
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#DC2626", letterSpacing: "-0.02em" }}>
+              {formatPrice(data.totalDepensesAchats || 0, storeDevise)}
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+              Dépenses Totales d'Achats
+            </div>
+          </div>
+        </div>
+
+        {/* 2. BÉNÉFICE NET GLOBAL */}
         <div style={{
           background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
           position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -242,13 +278,61 @@ export default function Dashboard() {
           </div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {fcfa(data.beneficeNet || 0)}
+              {formatPrice(data.beneficeNet || 0, storeDevise)}
             </div>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              Bénéfice net
+              Bénéfice net total
             </div>
           </div>
         </div>
+
+        {/* 2.B BÉNÉFICE COMORES (Affiché si la boutique utilise KMF ou s'il y a des ventes en KMF) */}
+        {(storeDevise === "KMF" || Number(data.beneficeComores || 0) > 0) && (
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(16,185,129,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#EBF7F0", color: "var(--forest-dark)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, letterSpacing: 0.5 }}>
+                KM
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "var(--forest-dark)", letterSpacing: "-0.02em" }}>
+                {formatPrice(data.beneficeComores || 0, "KMF")}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Bénéfice Comores (KMF)
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 2.C BÉNÉFICE SÉNÉGAL (Affiché si la boutique utilise FCFA ou s'il y a des ventes en FCFA) */}
+        {(storeDevise === "FCFA" || Number(data.beneficeSenegal || 0) > 0) && (
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(245,158,11,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEF3C7", color: "#92400E", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, letterSpacing: 0.5 }}>
+                SN
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#92400E", letterSpacing: "-0.02em" }}>
+                {formatPrice(data.beneficeSenegal || 0, "FCFA")}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Bénéfice Sénégal (FCFA)
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 3. VALEUR DU STOCK */}
         <div style={{
@@ -264,7 +348,7 @@ export default function Dashboard() {
           </div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {fcfa(data.valeurStockVente || 0)}
+              {formatPrice(data.valeurStockVente || 0, storeDevise)}
             </div>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
               Valeur stock (achat)
@@ -468,7 +552,7 @@ export default function Dashboard() {
                 }}
                 itemStyle={{ color: chartColors.tooltipText }}
                 labelStyle={{ color: chartColors.axisText }}
-                formatter={(v) => [fcfa(v), "Revenu"]} 
+                formatter={(v) => [formatPrice(v, storeDevise), "Revenu"]} 
               />
               <Area type="monotone" dataKey="ca" stroke={chartColors.stroke} strokeWidth={3} fillOpacity={1} fill="url(#colorCa)" />
             </AreaChart>
@@ -484,9 +568,9 @@ export default function Dashboard() {
             <PieChart>
               <Pie
                 data={[
-                  { name: "Espèces (Cash)", value: Math.max(1, Math.round((data.nbCommandes || 5) * 0.6)) },
-                  { name: "Mvola / Holam", value: Math.max(1, Math.round((data.nbCommandes || 5) * 0.25)) },
-                  { name: "Carte bancaire / Stripe", value: Math.max(1, Math.round((data.nbCommandes || 5) * 0.15)) },
+                  { name: "Espèces (Cash)", value: Math.max(1, Math.round((data.nbCommandes || 5) * 0.65)) },
+                  { name: "Mvola / Wero", value: Math.max(1, Math.round((data.nbCommandes || 5) * 0.20)) },
+                  { name: "Wave / Orange Money", value: Math.max(1, Math.round((data.nbCommandes || 5) * 0.15)) },
                 ]}
                 cx="50%"
                 cy="50%"
@@ -571,7 +655,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div style={{ fontWeight: 700, fontSize: 13, color: "var(--forest-dark)" }}>
-                    {fcfa(p.prixPromo || p.prix)}
+                    {formatPrice(p.prixPromo || p.prix, storeDevise)}
                   </div>
                 </div>
               ))
