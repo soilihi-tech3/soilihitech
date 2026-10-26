@@ -104,7 +104,7 @@ export default function DemandeSurMesure() {
 
     const filesToProcess = files.slice(0, remainingSlots);
     if (files.length > remainingSlots) {
-      toast(`Seules ${remainingSlots} photo(s) ont été ajoutées pour respecter le nombre d'articles.`, { icon: "ℹ️" });
+      toast(`Seules ${remainingSlots} photo(s) ont été ajoutées pour respecter le nombre d'articles.`);
     }
 
     const compressed = await Promise.all(filesToProcess.map(f => compressImage(f)));
@@ -588,28 +588,48 @@ export default function DemandeSurMesure() {
             </div>
           </div>
 
-          {/* ── ENCADRÉ DÉLAI MAXIMUM 6 JOURS ── */}
+          {/* ── DÉLAIS DE LIVRAISON : SÉNÉGAL (2J) & COMORES (6J) ── */}
           <div style={{
-            background: "#FFFBEB", border: "1.5px solid #FCD34D",
-            borderRadius: 16, padding: "16px 20px", marginBottom: 22,
-            display: "flex", alignItems: "flex-start", gap: 14,
-            boxShadow: "0 2px 8px rgba(245, 158, 11, 0.08)"
+            background: "#F8FAFC", border: "1.5px solid #E2E8F0",
+            borderRadius: 18, padding: "18px 20px", marginBottom: 22,
+            boxShadow: "0 2px 10px rgba(0,0,0,0.02)"
           }}>
-            <div style={{
-              background: "#F59E0B", color: "#fff", width: 38, height: 38,
-              borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
-              flexShrink: 0
-            }}>
-              <Clock size={20} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <Clock size={18} color="#2563EB" />
+              <span style={{ fontSize: 14.5, fontWeight: 800, color: "#1E293B" }}>
+                Délais de livraison après validation de votre devis
+              </span>
             </div>
-            <div>
-              <div style={{ fontSize: 14.5, fontWeight: 900, color: "#92400E", marginBottom: 4 }}>
-                ⏱️ Information Délais : 6 jours maximum
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 10 }}>
+              <div style={{
+                background: "#EFF6FF", border: "1px solid #BFDBFE",
+                borderRadius: 14, padding: "12px 16px"
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#2563EB", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Dakar (Sénégal)
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: "#1D4ED8", marginTop: 2 }}>
+                  2 jours maximum
+                </div>
               </div>
-              <div style={{ fontSize: 13, color: "#78350F", lineHeight: 1.55 }}>
-                La recherche de références rares, la vérification de conformité et l'acheminement d'une commande d'accessoires sur-mesure demandent du temps. Notre équipe vous transmettra votre chiffrage dans les plus brefs délais, et vos articles seront mis à votre disposition sous un <strong>délai maximum de 6 jours</strong>.
+
+              <div style={{
+                background: "#F0FDF4", border: "1px solid #BBF7D0",
+                borderRadius: 14, padding: "12px 16px"
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Comores
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: "#15803D", marginTop: 2 }}>
+                  6 jours maximum
+                </div>
               </div>
             </div>
+
+            <p style={{ margin: 0, fontSize: 12.5, color: "#64748B", lineHeight: 1.45 }}>
+              Une commande sur-mesure demande une recherche ciblée. Notre équipe vous chiffre les articles rapidement pour vous livrer sans attendre.
+            </p>
           </div>
 
           {/* BOUTON D'ENVOI */}
