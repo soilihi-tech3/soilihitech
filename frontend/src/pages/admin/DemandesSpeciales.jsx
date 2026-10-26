@@ -415,16 +415,36 @@ export default function DemandesSpeciales() {
                   )}
                 </div>
 
-                {selectedRequest.photoUrl && (
-                  <div style={{ textAlign: "center" }}>
-                    <img
-                      src={selectedRequest.photoUrl}
-                      alt="Photo client"
-                      style={{ width: 100, height: 75, objectFit: "contain", borderRadius: 8, background: "#fff", border: "1px solid #CBD5E1" }}
-                    />
-                    <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>Photo client</div>
-                  </div>
-                )}
+                {(() => {
+                  let adminPhotos = [];
+                  if (selectedRequest.photoUrl) {
+                    try {
+                      const parsed = JSON.parse(selectedRequest.photoUrl);
+                      adminPhotos = Array.isArray(parsed) ? parsed.filter(Boolean) : [selectedRequest.photoUrl];
+                    } catch (e) {
+                      adminPhotos = [selectedRequest.photoUrl];
+                    }
+                  }
+                  if (adminPhotos.length === 0) return null;
+                  return (
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+                        {adminPhotos.map((url, idx) => (
+                          <a key={idx} href={url} target="_blank" rel="noopener noreferrer" title="Cliquer pour agrandir">
+                            <img
+                              src={url}
+                              alt={`Photo ${idx + 1}`}
+                              style={{ width: 85, height: 65, objectFit: "cover", borderRadius: 8, background: "#fff", border: "1.5px solid #CBD5E1", cursor: "zoom-in" }}
+                            />
+                          </a>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#64748B", marginTop: 4 }}>
+                        Photo{adminPhotos.length > 1 ? `s (${adminPhotos.length})` : ""} client
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* TABLEAU CHIFFRAGE ARTICLES */}

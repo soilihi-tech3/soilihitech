@@ -1,44 +1,120 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { 
   ClipboardList, Plus, Trash2, Smartphone, Send, MessageCircle, 
-  CheckCircle2, ArrowRight, ShieldCheck, Sparkles, FileText, HelpCircle 
+  CheckCircle2, ArrowRight, ShieldCheck, Sparkles, FileText, HelpCircle,
+  Camera, Upload, Clock, Image as ImageIcon, X, AlertCircle
 } from "lucide-react";
 import api, { SLUG } from "../../api";
 import { useAuth } from "../../context/AuthContext";
-import ImageUploader from "../../components/ImageUploader";
 import { toast } from "react-hot-toast";
 
 export default function DemandeSurMesure() {
   const { user, boutique } = useAuth();
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
   const [nomClient, setNomClient] = useState(user?.nom || "");
   const [telephoneClient, setTelephoneClient] = useState(user?.telephone || "");
   const [emailClient, setEmailClient] = useState(user?.email || "");
   const [modeleAppareil, setModeleAppareil] = useState("");
   const [description, setDescription] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
+  const [photos, setPhotos] = useState([]);
   const [articles, setArticles] = useState([
     { id: 1, nom: "", quantite: 1 }
   ]);
   const [submitting, setSubmitting] = useState(false);
   const [createdRequest, setCreatedRequest] = useState(null);
 
+  // Ajouter un article (jusqu'à l'infini)
   function addArticleRow() {
     setArticles(prev => [
       ...prev,
-      { id: Date.now(), nom: "", quantite: 1 }
+      { id: Date.now() + Math.random(), nom: "", quantite: 1 }
     ]);
   }
 
+  // Supprimer un article et ajuster le nombre de photos si nécessaire
   function removeArticleRow(id) {
     if (articles.length <= 1) return;
-    setArticles(prev => prev.filter(a => a.id !== id));
+    const updated = articles.filter(a => a.id !== id);
+    setArticles(updated);
+    // Le nombre de photos ne peut pas dépasser le nombre d'articles
+    if (photos.length > updated.length) {
+      setPhotos(prev => prev.slice(0, updated.length));
+    }
   }
 
   function updateArticle(id, field, val) {
     setArticles(prev => prev.map(a => a.id === id ? { ...a, [field]: val } : a));
+  }
+
+  // Compression canvas instantanée côté client
+  function compressImage(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            const MAX_DIM = 900;
+            let width = img.width;
+            let height = img.height;
+            if (width > height) {
+              if (width > MAX_DIM) {
+                height = Math.round((height * MAX_DIM) / width);
+                width = MAX_DIM;
+              }
+            } else {
+              if (height > MAX_DIM) {
+                width = Math.round((width * MAX_DIM) / height);
+                height = MAX_DIM;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", 0.75));
+          } catch (err) {
+            resolve(e.target.result);
+          }
+        };
+        img.onerror = () => resolve(e.target.result);
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Sélection de photos jusqu'au nombre d'articles
+  async function handlePhotoSelect(e) {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const maxAllowed = articles.length;
+    const remainingSlots = maxAllowed - photos.length;
+
+    if (remainingSlots <= 0) {
+      toast.error(`Vous avez déjà atteint la limite de ${maxAllowed} photo${maxAllowed > 1 ? "s" : ""} pour vos ${maxAllowed} article${maxAllowed > 1 ? "s" : ""}.`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    const filesToProcess = files.slice(0, remainingSlots);
+    if (files.length > remainingSlots) {
+      toast(`Seules ${remainingSlots} photo(s) ont été ajoutées pour respecter le nombre d'articles.`, { icon: "ℹ️" });
+    }
+
+    const compressed = await Promise.all(filesToProcess.map(f => compressImage(f)));
+    setPhotos(prev => [...prev, ...compressed]);
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removePhoto(index) {
+    setPhotos(prev => prev.filter((_, i) => i !== index));
   }
 
   async function handleSubmit(e) {
@@ -72,7 +148,8 @@ export default function DemandeSurMesure() {
         modeleAppareil,
         articles: validArticles,
         description,
-        photoUrl
+        photos,
+        photoUrl: photos[0] || ""
       });
 
       if (res.data && res.data.success) {
@@ -123,7 +200,7 @@ export default function DemandeSurMesure() {
           fontSize: "clamp(14px, 2vw, 16px)", color: "var(--muted)",
           maxWidth: 640, margin: "0 auto", lineHeight: 1.6
         }}>
-          Un chargeur rare, une glace incassable spécifique, une coque ou un câble introuvable ? Listez vos besoins, notre équipe vous chiffre la commande directement.
+          Un chargeur spécifique, une glace incassable rare, une coque ou un câble introuvable ? Listez vos articles, notre équipe recherche et chiffre votre commande directement.
         </p>
       </div>
 
@@ -192,7 +269,7 @@ export default function DemandeSurMesure() {
                 setCreatedRequest(null);
                 setModeleAppareil("");
                 setDescription("");
-                setPhotoUrl("");
+                setPhotos([]);
                 setArticles([{ id: Date.now(), nom: "", quantite: 1 }]);
               }}
               style={{
@@ -286,7 +363,7 @@ export default function DemandeSurMesure() {
             </div>
           </div>
 
-          {/* SECTION 3 : ARTICLES & ACCESSOIRES SOUHAITÉS */}
+          {/* SECTION 3 : ARTICLES & ACCESSOIRES SOUHAITÉS (AJOUT À L'INFINI) */}
           <div style={{ marginBottom: 30 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, borderBottom: "1px solid var(--line)", paddingBottom: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -296,7 +373,7 @@ export default function DemandeSurMesure() {
                   fontWeight: 800, fontSize: 14
                 }}>3</span>
                 <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "var(--ink)" }}>
-                  Articles demandés
+                  Articles demandés ({articles.length})
                 </h3>
               </div>
               <button
@@ -312,6 +389,10 @@ export default function DemandeSurMesure() {
                 <Plus size={15} /> Ajouter un article
               </button>
             </div>
+
+            <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--muted)" }}>
+              Vous pouvez ajouter autant d'articles que vous le souhaitez.
+            </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {articles.map((art, index) => (
@@ -371,47 +452,168 @@ export default function DemandeSurMesure() {
             </div>
           </div>
 
-          {/* SECTION 4 : DESCRIPTION LIBRE & PHOTO */}
+          {/* SECTION 4 : PRÉCISIONS & PHOTOS (FACULTATIF, MAX = NOMBRE D'ARTICLES) */}
           <div style={{ marginBottom: 30 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, borderBottom: "1px solid var(--line)", paddingBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, borderBottom: "1px solid var(--line)", paddingBottom: 10, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{
+                  width: 28, height: 28, borderRadius: "50%", background: "#2563EB",
+                  color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                  fontWeight: 800, fontSize: 14
+                }}>4</span>
+                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "var(--ink)" }}>
+                  Précisions & Photos (Facultatif)
+                </h3>
+              </div>
               <span style={{
-                width: 28, height: 28, borderRadius: "50%", background: "#2563EB",
-                color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-                fontWeight: 800, fontSize: 14
-              }}>4</span>
-              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "var(--ink)" }}>
-                Précisions & Photo (Facultatif)
-              </h3>
+                fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 12,
+                background: photos.length >= articles.length ? "#FEF3C7" : "#EFF6FF",
+                color: photos.length >= articles.length ? "#B45309" : "#1D4ED8"
+              }}>
+                {photos.length} / {articles.length} photo{articles.length > 1 ? "s" : ""}
+              </span>
             </div>
 
-            <div className="bs-input-group" style={{ marginBottom: 16 }}>
+            <div className="bs-input-group" style={{ marginBottom: 18 }}>
               <label style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
-                Détails spécifiques (Couleur souhaitée, port de charge, urgence...)
+                Détails spécifiques (Couleur souhaitée, port de charge, référence...)
               </label>
               <textarea
                 className="bs-input"
-                style={{ minHeight: 90, resize: "vertical", lineHeight: 1.5 }}
-                placeholder="Ex: Je souhaite une coque de couleur noire mate avec protection d'appareil photo, et un câble de 2 mètres..."
+                style={{ minHeight: 85, resize: "vertical", lineHeight: 1.5 }}
+                placeholder="Ex: Je souhaite une coque de couleur noire mate avec protection d'appareil photo, et un câble tressé de 2 mètres..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
 
-            <ImageUploader
-              label="Photo de l'accessoire ou de votre appareil (Fichier, Caméra ou Lien URL)"
-              value={photoUrl}
-              onChange={(url) => setPhotoUrl(url)}
-              slot="principale"
-              productContext={{
-                nom: modeleAppareil || "Accessoire smartphone",
-                marque: "",
-                categorie: "Accessoire"
-              }}
-            />
+            {/* SYSTÈME D'UPLOAD MULTI-PHOTOS FACULTATIF SANS IA */}
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+                <label style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
+                  Photos de vos accessoires ou appareil
+                </label>
+                <span style={{ fontSize: 11.5, color: "var(--muted)" }}>
+                  Facultatif · Jusqu'à {articles.length} photo{articles.length > 1 ? "s" : ""} (1 par article)
+                </span>
+              </div>
+
+              {/* GRILLE DES PHOTOS EXISTANTES */}
+              {photos.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12, marginBottom: 14 }}>
+                  {photos.map((src, index) => (
+                    <div key={index} style={{
+                      position: "relative", borderRadius: 12, overflow: "hidden",
+                      border: "1.5px solid var(--line)", background: "#F8FAFC",
+                      aspectRatio: "1 / 1"
+                    }}>
+                      <img 
+                        src={src} 
+                        alt={`Photo ${index + 1}`} 
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }} 
+                      />
+                      <div style={{
+                        position: "absolute", top: 6, left: 6, background: "rgba(0,0,0,0.6)",
+                        color: "#fff", fontSize: 11, fontWeight: 800, padding: "2px 7px", borderRadius: 8
+                      }}>
+                        #{index + 1}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(index)}
+                        title="Supprimer cette photo"
+                        style={{
+                          position: "absolute", top: 6, right: 6, background: "#EF4444",
+                          color: "#fff", border: "none", width: 26, height: 26, borderRadius: "50%",
+                          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.2)"
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ZONE D'AJOUT RAPIDE SI LIMITE NON ATTEINTE */}
+              {photos.length < articles.length ? (
+                <div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*"
+                    multiple
+                    onChange={handlePhotoSelect}
+                    style={{ display: "none" }}
+                    id="photo-upload-input"
+                  />
+                  <label
+                    htmlFor="photo-upload-input"
+                    style={{
+                      border: "2px dashed #CBD5E1", borderRadius: 14, padding: "20px 16px",
+                      background: "#F8FAFC", display: "flex", flexDirection: "column",
+                      alignItems: "center", justifyContent: "center", gap: 8,
+                      cursor: "pointer", transition: "all 0.15s", textAlign: "center"
+                    }}
+                  >
+                    <div style={{
+                      width: 44, height: 44, borderRadius: "50%", background: "#EFF6FF",
+                      color: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center"
+                    }}>
+                      <Camera size={22} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 13.5, fontWeight: 800, color: "#1E293B" }}>
+                        + Ajouter une photo ({photos.length}/{articles.length})
+                      </span>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>
+                        Cliquez pour importer depuis votre appareil ou prendre une photo directe (Caméra)
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              ) : (
+                <div style={{
+                  padding: "12px 16px", borderRadius: 12, background: "#EFF6FF",
+                  border: "1px solid #BFDBFE", fontSize: 12.5, color: "#1D4ED8",
+                  display: "flex", alignItems: "center", gap: 8
+                }}>
+                  <CheckCircle2 size={16} color="#2563EB" />
+                  <span>
+                    Vous avez ajouté {photos.length} photo{photos.length > 1 ? "s" : ""} pour vos {articles.length} article{articles.length > 1 ? "s" : ""}. Pour en joindre d'autres, ajoutez un article supplémentaire dans la section 3.
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── ENCADRÉ DÉLAI MAXIMUM 6 JOURS ── */}
+          <div style={{
+            background: "#FFFBEB", border: "1.5px solid #FCD34D",
+            borderRadius: 16, padding: "16px 20px", marginBottom: 22,
+            display: "flex", alignItems: "flex-start", gap: 14,
+            boxShadow: "0 2px 8px rgba(245, 158, 11, 0.08)"
+          }}>
+            <div style={{
+              background: "#F59E0B", color: "#fff", width: 38, height: 38,
+              borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0
+            }}>
+              <Clock size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: 14.5, fontWeight: 900, color: "#92400E", marginBottom: 4 }}>
+                ⏱️ Information Délais : 6 jours maximum
+              </div>
+              <div style={{ fontSize: 13, color: "#78350F", lineHeight: 1.55 }}>
+                La recherche de références rares, la vérification de conformité et l'acheminement d'une commande d'accessoires sur-mesure demandent du temps. Notre équipe vous transmettra votre chiffrage dans les plus brefs délais, et vos articles seront mis à votre disposition sous un <strong>délai maximum de 6 jours</strong>.
+              </div>
+            </div>
           </div>
 
           {/* BOUTON D'ENVOI */}
-          <div style={{ marginTop: 32, borderTop: "1px solid var(--line)", paddingTop: 20 }}>
+          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 20 }}>
             <button
               type="submit"
               disabled={submitting}

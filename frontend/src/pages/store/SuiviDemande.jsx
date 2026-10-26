@@ -261,19 +261,37 @@ export default function SuiviDemande() {
           </div>
         </div>
 
-        {/* PHOTO JOINTES PAR LE CLIENT SI EXISTANTE */}
-        {request.photoUrl && (
-          <div style={{ marginBottom: 24, padding: "12px 16px", background: "#F8FAFC", borderRadius: 12, border: "1px solid #E2E8F0" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8 }}>
-              Photo de référence fournie par le client :
+        {/* PHOTO(S) JOINTES PAR LE CLIENT SI EXISTANTE(S) */}
+        {(() => {
+          let clientPhotos = [];
+          if (request.photoUrl) {
+            try {
+              const parsed = JSON.parse(request.photoUrl);
+              clientPhotos = Array.isArray(parsed) ? parsed.filter(Boolean) : [request.photoUrl];
+            } catch (e) {
+              clientPhotos = [request.photoUrl];
+            }
+          }
+          if (clientPhotos.length === 0) return null;
+          return (
+            <div style={{ marginBottom: 24, padding: "14px 18px", background: "#F8FAFC", borderRadius: 14, border: "1px solid #E2E8F0" }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#334155", marginBottom: 10 }}>
+                Photo{clientPhotos.length > 1 ? "s" : ""} de référence fournie{clientPhotos.length > 1 ? "s" : ""} par le client ({clientPhotos.length}) :
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {clientPhotos.map((url, idx) => (
+                  <a key={idx} href={url} target="_blank" rel="noopener noreferrer" title="Cliquer pour agrandir" style={{ display: "block" }}>
+                    <img
+                      src={url}
+                      alt={`Photo ${idx + 1}`}
+                      style={{ maxWidth: 160, maxHeight: 120, objectFit: "contain", borderRadius: 10, background: "#fff", border: "1.5px solid var(--line)", cursor: "zoom-in" }}
+                    />
+                  </a>
+                ))}
+              </div>
             </div>
-            <img
-              src={request.photoUrl}
-              alt="Référence accessoire"
-              style={{ maxWidth: 160, maxHeight: 120, objectFit: "contain", borderRadius: 8, background: "#fff", border: "1px solid var(--line)" }}
-            />
-          </div>
-        )}
+          );
+        })()}
 
         {/* TABLEAU DES ARTICLES */}
         <div style={{ marginBottom: 20, overflowX: "auto" }}>

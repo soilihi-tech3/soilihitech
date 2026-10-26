@@ -125,6 +125,7 @@ export default function CartDrawer({ onClose }) {
               {cart.map((l) => {
                 const isSenegal = activeCurrency === "FCFA";
                 const prix = getProductPrice(l.product, activeCurrency);
+                const lineTotal = prix * l.quantite;
                 const regularPrice = isSenegal && l.product.prixSenegal && Number(l.product.prixSenegal) > 0
                   ? Number(l.product.prixSenegal)
                   : Number(l.product.prix);
@@ -211,7 +212,7 @@ export default function CartDrawer({ onClose }) {
 
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontWeight: 800, fontSize: 14, color: "var(--forest-dark)" }}>
-                            {fcfa(lineTotal)}
+                            {fcfa(lineTotal, activeCurrency)}
                           </span>
                           <button 
                             onClick={() => removeFromCart(l.product.id)}

@@ -25,7 +25,8 @@ async function createCustomRequest(req, res) {
       modeleAppareil,
       articles,
       description,
-      photoUrl
+      photoUrl,
+      photos
     } = req.body;
 
     if (!nomClient || !telephoneClient || !modeleAppareil) {
@@ -37,6 +38,14 @@ async function createCustomRequest(req, res) {
     const parsedArticles = Array.isArray(articles) && articles.length > 0
       ? articles.filter(a => a && a.nom && a.nom.trim().length > 0)
       : [{ nom: "Accessoire demandé", quantite: 1 }];
+
+    let finalPhotoUrl = null;
+    if (Array.isArray(photos) && photos.length > 0) {
+      const cleanPhotos = photos.filter(p => typeof p === "string" && p.trim().length > 0);
+      finalPhotoUrl = cleanPhotos.length === 1 ? cleanPhotos[0] : JSON.stringify(cleanPhotos);
+    } else if (photoUrl) {
+      finalPhotoUrl = photoUrl;
+    }
 
     const code = generateRequestCode();
 
@@ -50,7 +59,7 @@ async function createCustomRequest(req, res) {
       modeleAppareil: modeleAppareil.trim(),
       articles: parsedArticles,
       description: description ? description.trim() : null,
-      photoUrl: photoUrl || null,
+      photoUrl: finalPhotoUrl,
       statut: "en_attente"
     });
 
