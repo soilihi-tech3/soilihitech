@@ -194,13 +194,13 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
     <>
       <header style={{ background: "var(--card)", borderBottom: "1px solid var(--line)", position: "sticky", top: 0, zIndex: 1000, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
         {/* ROW 1: MAIN HEADER ROW (Z-INDEX ÉLEVÉ POUR FLOTTER AU-DESSUS DE TOUT) */}
-        <div style={{ position: "relative", zIndex: 2000, maxWidth: 1520, margin: "0 auto", padding: "14px clamp(16px, 2.5vw, 36px)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
+        <div className="bs-header-row-1" style={{ position: "relative", zIndex: 2000, maxWidth: 1520, margin: "0 auto", padding: "12px clamp(10px, 2.5vw, 36px)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
 
           {/* LOGO & NOM D'ENTREPRISE : MAQUETTE LUXE & ÉLÉGANTE */}
-          <Link to="/" style={{ display: "flex", alignItems: "center", gap: 14, textDecoration: "none", flexShrink: 0 }}>
+          <Link to="/" className="bs-header-brand" style={{ display: "flex", alignItems: "center", gap: 12, textDecoration: "none", flexShrink: 0 }}>
             {boutique?.logoUrl ? (
-              <div style={{
-                height: 56, width: 56, borderRadius: 16, overflow: "hidden",
+              <div className="bs-header-logo-box" style={{
+                height: 52, width: 52, borderRadius: 16, overflow: "hidden",
                 background: "#fff", border: "2px solid rgba(190, 24, 93, 0.22)",
                 boxShadow: "0 4px 16px rgba(190, 24, 93, 0.12)", display: "flex",
                 alignItems: "center", justifyContent: "center", padding: 4, flexShrink: 0,
@@ -209,27 +209,27 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
                 <img src={boutique.logoUrl} alt={boutique.nom} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
               </div>
             ) : (
-              <div style={{
-                width: 56, height: 56, borderRadius: 16,
+              <div className="bs-header-logo-box" style={{
+                width: 52, height: 52, borderRadius: 16,
                 background: "linear-gradient(135deg, var(--forest-dark, #831843), var(--forest, #BE185D))",
                 display: "flex", alignItems: "center", justifyContent: "center", color: "#fff",
                 boxShadow: "0 6px 18px rgba(190, 24, 93, 0.25)", flexShrink: 0
               }}>
-                <Store size={26} color="#fff" />
+                <Store size={24} color="#fff" />
               </div>
             )}
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <span style={{
-                fontSize: 22, fontWeight: 900, color: "var(--forest-dark)", letterSpacing: "0.6px",
+              <span className="bs-header-store-nom" style={{
+                fontSize: 21, fontWeight: 900, color: "var(--forest-dark)", letterSpacing: "0.5px",
                 textTransform: "uppercase", lineHeight: 1.15
               }}>
                 {boutique?.nom || "Soilihitech"}
               </span>
-              <span style={{
-                fontSize: 11, fontWeight: 800, color: "var(--forest, #2563EB)", textTransform: "uppercase",
-                letterSpacing: "1.8px", marginTop: 3, display: "flex", alignItems: "center", gap: 6
+              <span className="bs-header-store-sub" style={{
+                fontSize: 10.5, fontWeight: 800, color: "var(--forest, #2563EB)", textTransform: "uppercase",
+                letterSpacing: "1.6px", marginTop: 2, display: "flex", alignItems: "center", gap: 5
               }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 8px #10B981" }}></span>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 8px #10B981" }}></span>
                 Boutique Officielle
               </span>
             </div>
@@ -445,7 +445,7 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
           </div>
 
             {/* ACTIONS (CONNEXION & PANIER PINNED FAR RIGHT) */}
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <div className="bs-header-actions" style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             {user ? (
               <>
                 <NotificationMenu />
@@ -565,13 +565,14 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
             )}
 
             {/* SÉLECTEUR DE DEVISE & PAYS : COMORES (KMF) OU SÉNÉGAL (FCFA) */}
-            <div style={{ display: "flex", alignItems: "center", background: "var(--paper)", border: "1.5px solid var(--line)", borderRadius: 24, padding: "3px 4px", gap: 3 }}>
+            <div className="bs-currency-switch" style={{ display: "flex", alignItems: "center", background: "var(--paper)", border: "1.5px solid var(--line)", borderRadius: 24, padding: "3px 4px", gap: 3, flexShrink: 0 }}>
               {CURRENCIES.map(c => {
                 const isActive = currentCurrency === c.code;
                 return (
                   <button
                     key={c.code}
                     type="button"
+                    className="bs-currency-btn"
                     onClick={() => setActiveCurrency(c.code)}
                     style={{
                       border: "none",
@@ -599,13 +600,15 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
             {/* BOUTON CHANGER LE THÈME */}
             <button
               onClick={toggleTheme}
+              className="bs-theme-toggle-btn"
               title={theme === "dark" ? "Passer en mode clair" : "Passer en mode sombre"}
+              aria-label="Changer de thème"
               style={{
                 background: "var(--paper)",
                 border: "1.5px solid var(--line)",
                 borderRadius: "50%",
-                width: 42,
-                height: 42,
+                width: 40,
+                height: 40,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -615,7 +618,7 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
                 flexShrink: 0
               }}
             >
-              {theme === "dark" ? <Sun size={19} color="#F59E0B" /> : <Moon size={19} color="var(--forest-dark)" />}
+              {theme === "dark" ? <Sun size={18} color="#F59E0B" /> : <Moon size={18} color="var(--forest-dark)" />}
             </button>
 
             <button className="bs-cart-btn" onClick={() => setCartOpen(true)} style={{
@@ -1009,23 +1012,43 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
               bottom: 72,
               right: 12,
               zIndex: 9999,
-              width: 200,
-              background: "#ffffff",
+              width: 220,
+              background: "var(--card)",
               borderRadius: 20,
-              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08)",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.12)",
               border: "1px solid var(--line)",
               overflow: "hidden",
               animation: "popIn 0.2s cubic-bezier(0.165, 0.84, 0.44, 1)"
             }}
           >
             <div style={{ display: "flex", flexDirection: "column" }}>
+              {/* THEME TOGGLE DIRECTLY IN MOBILE MORE MENU */}
+              <button
+                type="button"
+                onClick={() => {
+                  toggleTheme();
+                  setMobileMoreOpen(false);
+                }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 12, padding: "14px 16px",
+                  color: "var(--ink)", fontWeight: 700, fontSize: 14,
+                  borderBottom: "1px solid var(--line)", background: "var(--card)",
+                  borderTop: "none", borderLeft: "none", borderRight: "none",
+                  width: "100%", textAlign: "left", cursor: "pointer",
+                  transition: "background 0.15s"
+                }}
+              >
+                {theme === "dark" ? <Sun size={18} color="#F59E0B" /> : <Moon size={18} color="var(--forest-dark)" />}
+                <span style={{ flex: 1 }}>{theme === "dark" ? "Mode Clair" : "Mode Sombre"}</span>
+              </button>
+
               <Link 
                 to="/catalogue?favoris=1" 
                 onClick={() => setMobileMoreOpen(false)} 
                 style={{ 
                   display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", 
                   textDecoration: "none", color: "var(--ink)", fontWeight: 700, fontSize: 14,
-                  borderBottom: user ? "1px solid var(--line)" : "none", background: "#fff",
+                  borderBottom: "1px solid var(--line)", background: "var(--card)",
                   transition: "background 0.15s"
                 }}
               >
@@ -1039,7 +1062,7 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
                 style={{ 
                   display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", 
                   textDecoration: "none", color: "var(--ink)", fontWeight: 700, fontSize: 14,
-                  borderBottom: user ? "1px solid var(--line)" : "none", background: "#fff",
+                  borderBottom: user ? "1px solid var(--line)" : "none", background: "var(--card)",
                   transition: "background 0.15s"
                 }}
               >

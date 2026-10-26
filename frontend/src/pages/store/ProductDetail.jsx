@@ -321,9 +321,11 @@ export default function ProductDetail() {
                     {fcfa(regularPrice, activeCurrency)}
                   </span>
                 )}
-                <span style={{ color: "var(--muted)", fontSize: 15, fontWeight: 600 }}>
-                  / {product.poids && product.poids !== "1" ? `${product.poids} ` : ""}{product.unite}
-                </span>
+                {product.unite && (
+                  <span style={{ color: "var(--muted)", fontSize: 15, fontWeight: 600 }}>
+                    / {product.unite}
+                  </span>
+                )}
               </div>
             );
           })()}

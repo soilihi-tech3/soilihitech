@@ -76,9 +76,7 @@ export default function ProductCard({ product, isFavorisPage }) {
   const qtyInCart = itemInCart ? itemInCart.quantite : 0;
   const isMaxStockReached = !isOutOfStock && qtyInCart >= product.stock;
 
-  const weightUnitText = product.unite 
-    ? `/ ${product.poids && product.poids !== "1" ? `${product.poids} ` : ""}${product.unite}`
-    : "";
+  const weightUnitText = product.unite ? `/ ${product.unite}` : "";
 
   return (
     <div className="bs-card" onClick={() => navigate(`/produit/${product.id}`, { state: { product } })} style={{ opacity: isOutOfStock ? 0.75 : 1, position: "relative" }}>

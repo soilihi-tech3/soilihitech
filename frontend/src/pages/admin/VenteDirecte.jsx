@@ -190,7 +190,7 @@ export default function VenteDirecte() {
                     
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                       <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--forest-dark)" }}>
-                        {fcfa(prixEff)} {p.unite ? <span style={{ fontSize: 11, fontWeight: 500, color: "var(--muted)" }}>/ {p.poids && p.poids !== "1" ? `${p.poids} ` : ""}{p.unite}</span> : ""}
+                        {fcfa(prixEff)} {p.unite ? <span style={{ fontSize: 11, fontWeight: 500, color: "var(--muted)" }}>/ {p.unite}</span> : ""}
                       </div>
                       <span style={{ fontSize: 11, fontWeight: 700, color: inStock ? "#1F4D3A" : "#B4483A" }}>
                         {inStock ? `Stock: ${p.stock}` : "Épuisé"}

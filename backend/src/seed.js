@@ -414,7 +414,7 @@ async function runSeed() {
         prixPromo: p.prixPromo || null,
         enPromo: p.enPromo || false,
         famille: p.famille || "Accessoires",
-        poids: "0.2",
+        poids: p.poids || null,
         unite: p.unite || "pièce",
         stock: p.stock || 20,
         seuilAlerte: p.seuilAlerte || 5,

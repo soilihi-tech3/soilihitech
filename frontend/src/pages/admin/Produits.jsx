@@ -60,7 +60,7 @@ export default function AdminProduits() {
     enPromo: false,
     isNouveau: true,
     noteEtoiles: "5",
-    poids: "0.2",
+    poids: "",
     unite: "pièce",
     coutAchat: "",
     stock: "20",
@@ -180,7 +180,7 @@ export default function AdminProduits() {
       enPromo: Boolean(product.enPromo || product.prixPromo),
       isNouveau: Boolean(product.isNouveau),
       noteEtoiles: product.noteEtoiles !== undefined && product.noteEtoiles !== null ? String(product.noteEtoiles) : "5",
-      poids: product.poids || "0.2",
+      poids: product.poids || "",
       unite: product.unite || "pièce",
       coutAchat: product.coutAchat ?? "",
       stock: product.stock ?? "",
@@ -217,7 +217,7 @@ export default function AdminProduits() {
       categoryId: Number(form.categoryId),
       marqueId: form.marqueId ? Number(form.marqueId) : null,
       etat: form.etat || "neuf",
-      poids: form.poids || "0.2",
+      poids: form.poids || "",
       famille: form.famille || "Accessoires"
     };
 
@@ -651,7 +651,7 @@ export default function AdminProduits() {
                       ) : (
                         <span style={{ fontWeight: 700 }}>{formatPrice(p.prix, "KMF")}</span>
                       )}
-                      <span style={{ color: "var(--muted)", fontSize: 11.5 }}> / {p.poids && p.poids !== "1" ? `${p.poids} ` : ""}{p.unite}</span>
+                      {p.unite ? <span style={{ color: "var(--muted)", fontSize: 11.5 }}> / {p.unite}</span> : null}
                     </td>
                     <td>
                       {p.prixPromoSenegal ? (
