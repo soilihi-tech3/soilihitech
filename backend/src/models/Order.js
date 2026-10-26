@@ -3,7 +3,7 @@ const sequelize = require("../config/database");
 
 const Order = sequelize.define("Order", {
   boutiqueId: { type: DataTypes.INTEGER, allowNull: false },
-  clientId: { type: DataTypes.INTEGER, allowNull: false },
+  clientId: { type: DataTypes.INTEGER, allowNull: true },
   statut: {
     type: DataTypes.STRING(50),
     defaultValue: "en_attente",

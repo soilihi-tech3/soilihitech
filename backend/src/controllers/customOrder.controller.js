@@ -113,10 +113,55 @@ async function respondCustomRequest(req, res) {
       // Calcul du montant total
       const totalAmount = Number(request.totalPropose || 0) + Number(request.fraisLivraison || 0);
 
+      // Résolution du client (récupérer ou créer un compte client invité)
+      let clientId = request.clientId;
+      if (!clientId) {
+        let clientUser = null;
+        if (request.telephoneClient) {
+          clientUser = await User.findOne({ where: { telephone: request.telephoneClient } }).catch(() => null);
+        }
+        if (!clientUser && request.emailClient) {
+          clientUser = await User.findOne({ where: { email: request.emailClient } }).catch(() => null);
+        }
+        if (!clientUser) {
+          const bcrypt = require("bcryptjs");
+          const safePhone = (request.telephoneClient || "").replace(/[^0-9]/g, "");
+          const tempEmail = request.emailClient || `client_${safePhone || Date.now()}@soilihitech.com`;
+          try {
+            clientUser = await User.create({
+              nom: request.nomClient || "Client Devis",
+              telephone: request.telephoneClient || null,
+              email: tempEmail,
+              motDePasseHash: bcrypt.hashSync("Client123!", 10),
+              role: "client",
+              boutiqueId: request.boutiqueId
+            });
+          } catch (e) {
+            clientUser = await User.findOne({ where: { boutiqueId: request.boutiqueId } }).catch(() => null);
+          }
+        }
+        if (clientUser) {
+          clientId = clientUser.id;
+          request.clientId = clientId;
+        }
+      }
+
+      // Récupérer la boutique pour la devise
+      const boutiqueObj = await Boutique.findByPk(request.boutiqueId).catch(() => null);
+      const devise = boutiqueObj?.devise || "KMF";
+
+      // Formater la liste des articles chiffrés pour la note
+      let articlesText = "";
+      if (Array.isArray(request.articles) && request.articles.length > 0) {
+        articlesText = request.articles
+          .map((a, i) => `${i + 1}. ${a.designation} (Qté: ${a.quantite}, PU: ${a.prixUnitaire} ${devise})`)
+          .join(" | ");
+      }
+
       // Créer une commande officielle dans le système
       const order = await Order.create({
         boutiqueId: request.boutiqueId,
-        clientId: request.clientId || null,
+        clientId: clientId || null,
         statut: "en_attente",
         modeLivraison: "domicile",
         moyenPaiement: "cash",
@@ -124,7 +169,8 @@ async function respondCustomRequest(req, res) {
         sousTotal: Number(request.totalPropose || 0),
         fraisLivraison: String(request.fraisLivraison || 0),
         total: totalAmount,
-        notes: `Commande issue de la demande sur-mesure #${request.code}. Appareil: ${request.modeleAppareil}. Client: ${request.nomClient} (${request.telephoneClient})`
+        devise: devise,
+        notes: `Devis sur-mesure #${request.code}. Appareil: ${request.modeleAppareil}. Articles: ${articlesText || "Voir devis"}. Contact: ${request.nomClient} (${request.telephoneClient})`
       });
 
       request.statut = "valide";

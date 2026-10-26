@@ -349,6 +349,7 @@ async function ensureColumns() {
       "ALTER TABLE boutiques MODIFY COLUMN formule_abonnement VARCHAR(50) DEFAULT 'standard';",
       "ALTER TABLE orders MODIFY COLUMN moyen_paiement VARCHAR(50) DEFAULT 'cash';",
       "ALTER TABLE orders MODIFY COLUMN mode_livraison VARCHAR(50) DEFAULT 'domicile';",
+      "ALTER TABLE orders MODIFY COLUMN client_id INT NULL;",
       "ALTER TABLE products ADD COLUMN prix_senegal DECIMAL(10, 2) NULL;",
       "ALTER TABLE products ADD COLUMN prix_promo_senegal DECIMAL(10, 2) NULL;",
       "ALTER TABLE orders ADD COLUMN devise VARCHAR(10) DEFAULT 'KMF';"

@@ -64,7 +64,8 @@ export default function SuiviDemande() {
       }
     } catch (err) {
       console.error("Erreur décision:", err);
-      toast.error(err.response?.data?.message || "Erreur lors de l'enregistrement de votre décision.");
+      const errMsg = err.response?.data?.error || err.response?.data?.message || "Erreur lors de l'enregistrement de votre décision.";
+      toast.error(errMsg);
     } finally {
       setDecisionLoading(false);
     }
