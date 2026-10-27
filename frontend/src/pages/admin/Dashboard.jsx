@@ -82,9 +82,9 @@ export default function Dashboard() {
       <Skel w={280} h={26} style={{ marginBottom: 10 }} />
       <Skel w={360} h={12} style={{ marginBottom: 24 }} />
       <SkeletonStatCards count={8} />
-      <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1.2fr", gap: 20 }}>
-        <div className="bs-panel" style={{ padding: 20 }}><Skel h={250} r={12} /></div>
-        <div className="bs-panel" style={{ padding: 20 }}><Skel h={250} r={12} /></div>
+      <div className="bs-dashboard-charts-grid">
+        <div className="bs-panel bs-dashboard-chart-card" style={{ padding: 20 }}><Skel h={250} r={12} /></div>
+        <div className="bs-panel bs-dashboard-chart-card" style={{ padding: 20 }}><Skel h={250} r={12} /></div>
       </div>
     </div>
   );
@@ -99,64 +99,64 @@ export default function Dashboard() {
           <div style={{ display: "inline-block", background: "var(--forest-light)", color: "var(--forest)", padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
             Espace Opérationnel Employé
           </div>
-          <h1 style={{ fontSize: 26, margin: 0, color: "var(--forest-dark)" }}>Mon Tableau de bord & Activités</h1>
+          <h1 style={{ fontSize: "clamp(20px, 4vw, 26px)", margin: 0, color: "var(--forest-dark)" }}>Mon Tableau de bord & Activités</h1>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 14 }}>
             Bonjour {user?.nom}, voici un récapitulatif de votre chiffre d'affaires et de vos commandes chez {boutique?.nom || "la boutique"}.
           </p>
         </div>
 
         {/* STATS DE L'EMPLOYÉ */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 24 }}>
+        <div className="bs-dashboard-kpi-grid">
           
-          <div className="bs-panel" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="bs-panel bs-dashboard-kpi-card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>Chiffre d'affaires généré</span>
+              <span style={{ color: "var(--muted)", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Chiffre d'affaires</span>
               <div style={{ background: "var(--forest-light)", padding: 6, borderRadius: 8, color: "var(--forest)" }}>
                 <TrendingUp size={18} />
               </div>
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)" }}>{formatPrice(data.monChiffreAffaires || 0, storeDevise)}</div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>Commandes traitées hors annulées</div>
+            <div style={{ fontSize: "clamp(17px, 3.8vw, 22px)", fontWeight: 800, color: "var(--ink)", wordBreak: "break-word" }}>{formatPrice(data.monChiffreAffaires || 0, storeDevise)}</div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Commandes traitées</div>
           </div>
 
-          <div className="bs-panel" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="bs-panel bs-dashboard-kpi-card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>Commandes Livrées</span>
+              <span style={{ color: "var(--muted)", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Commandes Livrées</span>
               <div style={{ background: "#EBF7F0", padding: 6, borderRadius: 8, color: "#1F4D3A" }}>
                 <CheckCircle size={18} />
               </div>
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)" }}>{data.nbMesCommandesLivrees || 0}</div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>Livrées au client</div>
+            <div style={{ fontSize: "clamp(17px, 3.8vw, 22px)", fontWeight: 800, color: "var(--ink)" }}>{data.nbMesCommandesLivrees || 0}</div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Livrées au client</div>
           </div>
 
-          <div className="bs-panel" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="bs-panel bs-dashboard-kpi-card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>Commandes En cours</span>
+              <span style={{ color: "var(--muted)", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Commandes En cours</span>
               <div style={{ background: "#FEF3C7", padding: 6, borderRadius: 8, color: "#D97706" }}>
                 <Clock size={18} />
               </div>
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)" }}>{data.nbMesCommandesEnCours || 0}</div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>En cours de traitement</div>
+            <div style={{ fontSize: "clamp(17px, 3.8vw, 22px)", fontWeight: 800, color: "var(--ink)" }}>{data.nbMesCommandesEnCours || 0}</div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>En cours de traitement</div>
           </div>
 
-          <div className="bs-panel" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="bs-panel bs-dashboard-kpi-card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>Total Assignations</span>
+              <span style={{ color: "var(--muted)", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Total Assignations</span>
               <div style={{ background: "var(--forest-light)", padding: 6, borderRadius: 8, color: "var(--forest)" }}>
                 <ShoppingBag size={18} />
               </div>
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)" }}>{data.nbMesCommandes || 0}</div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>Total des commandes attribuées</div>
+            <div style={{ fontSize: "clamp(17px, 3.8vw, 22px)", fontWeight: 800, color: "var(--ink)" }}>{data.nbMesCommandes || 0}</div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Total des commandes</div>
           </div>
 
         </div>
 
         {/* LISTE DES COMMANDES ASSIGNÉES À L'EMPLOYÉ */}
-        <div className="bs-panel">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div className="bs-panel" style={{ padding: "20px 20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 16, color: "var(--forest-dark)" }}>Mes Commandes Assignées</h3>
               <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>
@@ -164,7 +164,7 @@ export default function Dashboard() {
               </div>
             </div>
             <Link to="/admin/commandes" style={{ fontSize: 13, fontWeight: 700, color: "var(--forest)", textDecoration: "none" }}>
-              Accéder à la gestion des commandes →
+              Gérer les commandes →
             </Link>
           </div>
 
@@ -173,7 +173,7 @@ export default function Dashboard() {
               Vous n'avez actuellement aucune commande assignée.
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+            <div className="bs-dashboard-orders-grid">
               {listCmds.map((c) => {
                 const cmdNum = "COM-B" + String(c.id).padStart(3, "0");
                 const statusBadges = {
@@ -187,20 +187,22 @@ export default function Dashboard() {
                 const st = statusBadges[c.statut] || { label: c.statut, bg: "#E5E7EB", color: "#374151" };
 
                 return (
-                  <div key={c.id} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 16, background: "var(--paper)" }}>
+                  <div key={c.id} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14, background: "var(--paper)", minWidth: 0, boxSizing: "border-box" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                      <span style={{ fontWeight: 800, fontSize: 15, color: "var(--forest-dark)" }}>#{cmdNum}</span>
-                      <span style={{ background: st.bg, color: st.color, padding: "3px 10px", borderRadius: 12, fontSize: 11.5, fontWeight: 700 }}>
+                      <span style={{ fontWeight: 800, fontSize: 14.5, color: "var(--forest-dark)" }}>#{cmdNum}</span>
+                      <span style={{ background: st.bg, color: st.color, padding: "3px 9px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>
                         {st.label}
                       </span>
                     </div>
-                    <div style={{ fontSize: 13, color: "var(--ink)", fontWeight: 700 }}>Client: {c.client?.nom || "Client non inscrit"}</div>
+                    <div style={{ fontSize: 13, color: "var(--ink)", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Client: {c.client?.nom || "Client non inscrit"}
+                    </div>
                     <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>Tél: {c.client?.telephone || c.telephoneClient || "Non renseigné"}</div>
                     
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px dashed var(--line)" }}>
-                      <span style={{ fontWeight: 800, fontSize: 14, color: "var(--forest)" }}>{formatPrice(c.total, c.devise || storeDevise)}</span>
+                      <span style={{ fontWeight: 800, fontSize: 14, color: "var(--forest)", whiteSpace: "nowrap" }}>{formatPrice(c.total, c.devise || storeDevise)}</span>
                       <Link to="/admin/commandes" style={{ fontSize: 12, fontWeight: 700, color: "var(--forest-dark)", textDecoration: "underline" }}>
-                        Modifier le statut
+                        Modifier statut
                       </Link>
                     </div>
                   </div>
@@ -269,14 +271,14 @@ export default function Dashboard() {
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--forest-light)", color: "var(--forest)", padding: "3px 10px", borderRadius: 16, fontSize: 11.5, fontWeight: 700, marginBottom: 6 }}>
             <span>{isComores ? "Comores Actif" : isSenegal ? "Sénégal Actif" : "Vue Globale"}</span>
           </div>
-          <h1 style={{ fontSize: 26, margin: 0, color: "var(--forest-dark)" }}>Tableau de bord Général Admin</h1>
+          <h1 style={{ fontSize: "clamp(20px, 4vw, 26px)", margin: 0, color: "var(--forest-dark)" }}>Tableau de bord Général Admin</h1>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 13.5 }}>
             Aperçu dynamique des ventes, des bénéfices réels et des achats par pays.
           </p>
         </div>
 
         {/* SÉLECTEUR DE PAYS DYNAMIQUE */}
-        <div style={{ display: "flex", gap: 6, background: "var(--paper)", padding: 4, borderRadius: 12, border: "1px solid var(--line)" }}>
+        <div className="bs-country-switcher">
           <button
             type="button"
             onClick={() => handleFilterCountry("KMF")}
@@ -288,7 +290,8 @@ export default function Dashboard() {
               transition: "all 0.15s ease"
             }}
           >
-            <span>Comores (KMF)</span>
+            <span className="bs-country-label-full">Comores (KMF)</span>
+            <span className="bs-country-label-short">Comores</span>
           </button>
           <button
             type="button"
@@ -301,7 +304,8 @@ export default function Dashboard() {
               transition: "all 0.15s ease"
             }}
           >
-            <span>Sénégal (FCFA)</span>
+            <span className="bs-country-label-full">Sénégal (FCFA)</span>
+            <span className="bs-country-label-short">Sénégal</span>
           </button>
           <button
             type="button"
@@ -314,13 +318,14 @@ export default function Dashboard() {
               transition: "all 0.15s ease"
             }}
           >
-            <span>Vue Globale (Tous)</span>
+            <span className="bs-country-label-full">Vue Globale (Tous)</span>
+            <span className="bs-country-label-short">Global</span>
           </button>
         </div>
       </div>
 
       {/* ── HIGH-ELEGANCE SLIM KPI CARDS GRID (Cartes 100% Dynamiques) ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
+      <div className="bs-dashboard-kpi-grid">
         
         {/* 1. CHIFFRE D'AFFAIRES DYNAMIQUE */}
         {isComores && (
@@ -760,11 +765,11 @@ export default function Dashboard() {
       </div>
 
       {/* ── SECTION GRAPHIQUES VARIÉS & STYLÉS ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1.2fr", gap: 20, marginBottom: 20 }}>
+      <div className="bs-dashboard-charts-grid">
         
         {/* 1. COURBE FLUIDE ET DÉGRADÉE - CHIFFRE D'AFFAIRES */}
-        <div className="bs-panel" style={{ padding: "20px 24px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div className="bs-panel bs-dashboard-chart-card" style={{ padding: "20px 24px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 16, color: "var(--forest-dark)", fontWeight: 700 }}>
                 Evolution du Chiffre d'Affaires {isComores ? "(Comores)" : isSenegal ? "(Sénégal)" : "(Global)"}
@@ -785,8 +790,8 @@ export default function Dashboard() {
                 </linearGradient>
               </defs>
               <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="jour" tick={{ fontSize: 12, fill: chartColors.axisText }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 12, fill: chartColors.axisText }} axisLine={false} tickLine={false} tickFormatter={(v) => v === 0 ? "0" : (v / 1000) + "k"} />
+              <XAxis dataKey="jour" tick={{ fontSize: 11, fill: chartColors.axisText }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: chartColors.axisText }} axisLine={false} tickLine={false} tickFormatter={(v) => v === 0 ? "0" : (v / 1000) + "k"} />
               <Tooltip 
                 contentStyle={{ 
                   background: chartColors.tooltipBg, 
@@ -807,7 +812,7 @@ export default function Dashboard() {
         </div>
 
         {/* 2. DIAGRAMME DONUT / CIRCULAIRE - MODES DE PAIEMENT & COMMANDES */}
-        <div className="bs-panel" style={{ padding: "20px 24px" }}>
+        <div className="bs-panel bs-dashboard-chart-card" style={{ padding: "20px 24px" }}>
           <h3 style={{ margin: "0 0 4px", fontSize: 16, color: "var(--forest-dark)", fontWeight: 700 }}>Modes de paiement</h3>
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 14 }}>
             Répartition des transactions {isComores ? "(Comores)" : isSenegal ? "(Sénégal)" : "(Global)"}
@@ -851,11 +856,11 @@ export default function Dashboard() {
       </div>
 
       {/* ── SECTION GRAPHIQUES 2 : TOP PRODUITS & TOP CATÉGORIES ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24 }}>
+      <div className="bs-dashboard-prods-grid">
         
         {/* TOP / FLOP PRODUITS LISTE MODERNE */}
-        <div className="bs-panel" style={{ padding: "20px 24px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div className="bs-panel bs-dashboard-chart-card" style={{ padding: "20px 24px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 16, color: "var(--forest-dark)", fontWeight: 700 }}>
                 {prodChartTab === "top" ? "Top Produits (Ventes)" : "Produits Moins Vendus"}
@@ -900,7 +905,7 @@ export default function Dashboard() {
                       <Stars rating={Math.round(p.noteMoyenne || 5)} size={11} />
                     </div>
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: "var(--forest-dark)" }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: "var(--forest-dark)", whiteSpace: "nowrap" }}>
                     {formatPrice(p.prixPromo || p.prix, storeDevise)}
                   </div>
                 </div>
@@ -914,8 +919,8 @@ export default function Dashboard() {
         </div>
 
         {/* BARS HORIZONTAUX POUR LES CATÉGORIES (Comme sur la photo 2) */}
-        <div className="bs-panel" style={{ padding: "20px 24px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div className="bs-panel bs-dashboard-chart-card" style={{ padding: "20px 24px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <h3 style={{ margin: 0, fontSize: 16, color: "var(--forest-dark)", fontWeight: 700 }}>Performance des Catégories</h3>
             <span style={{ fontSize: 12, color: "var(--forest)", fontWeight: 700 }}>Volume de ventes</span>
           </div>
@@ -924,11 +929,11 @@ export default function Dashboard() {
             <BarChart
               layout="vertical"
               data={data.topCategories || []}
-              margin={{ top: 0, right: 20, left: 20, bottom: 0 }}
+              margin={{ top: 0, right: 12, left: 0, bottom: 0 }}
             >
               <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11, fill: chartColors.axisText }} axisLine={false} tickLine={false} />
-              <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: chartColors.yAxisCategoryText, fontWeight: 600 }} axisLine={false} tickLine={false} width={90} />
+              <XAxis type="number" tick={{ fontSize: 10.5, fill: chartColors.axisText }} axisLine={false} tickLine={false} />
+              <YAxis dataKey="name" type="category" tick={{ fontSize: 10.5, fill: chartColors.yAxisCategoryText, fontWeight: 600 }} axisLine={false} tickLine={false} width={80} />
               <Tooltip 
                 contentStyle={{ 
                   background: chartColors.tooltipBg, 

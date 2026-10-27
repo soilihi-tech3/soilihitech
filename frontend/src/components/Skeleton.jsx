@@ -6,7 +6,7 @@ export function Skel({ w = "100%", h = 12, r = 8, style }) {
 
 export function SkeletonStatCards({ count = 4 }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
+    <div className="bs-dashboard-kpi-grid" style={{ marginBottom: 28 }}>
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
           <Skel w={46} h={46} r={12} />

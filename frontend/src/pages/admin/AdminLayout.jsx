@@ -246,7 +246,7 @@ export default function AdminLayout() {
         {/* ADMIN TOPBAR */}
         <div className="bs-admin-topbar">
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <span style={{ fontSize: 13.5, color: "var(--muted)", fontWeight: 500 }}>
+            <span className="bs-admin-topbar-role" style={{ fontSize: 13.5, color: "var(--muted)", fontWeight: 500 }}>
               Espace {user?.role === "admin" ? "Administrateur" : user?.role === "employe" ? "Employé" : "Super Admin"}
             </span>
 
