@@ -107,39 +107,52 @@ router.get("/dashboard", async (req, res, next) => {
     const orders = await Order.findAll({
       where: { boutiqueId, statut: { [Op.ne]: "annulee" } },
       include: [{ model: OrderItem, as: "items", include: [{ model: Product, as: "product" }] }],
+      order: [["createdAt", "ASC"]]
     });
+
+    // Séparation des commandes par pays/devise
+    const ordersComores = orders.filter((o) => !o.devise || o.devise === "KMF");
+    const ordersSenegal = orders.filter((o) => o.devise === "FCFA" || o.devise === "XOF");
 
     // Calcul des dépenses totales d'achats enregistrées
     const totalAchatsRows = await Achat.findAll({ where: { boutiqueId } });
     const totalDepensesAchats = totalAchatsRows.reduce((sum, a) => sum + Number(a.totalAchat || 0), 0);
 
-    const chiffreAffaires = orders.reduce((s, o) => s + Number(o.total), 0);
-    const beneficeNet = orders.reduce((s, o) => {
-      return s + o.items.reduce((ss, it) => ss + (Number(it.prixUnitaire) - (it.product ? Number(it.product.coutAchat) : 0)) * it.quantite, 0);
+    // Statistiques Comores
+    const caComores = ordersComores.reduce((s, o) => s + Number(o.total || 0), 0);
+    const coutAchatsComores = ordersComores.reduce((s, o) => {
+      return s + o.items.reduce((ss, it) => ss + (Number(it.product?.coutAchat || 0) * it.quantite), 0);
     }, 0);
-
-    // Calculs de bénéfices ventilés Comores (KMF) et Sénégal (FCFA)
-    const beneficeComores = orders
-      .filter((o) => !o.devise || o.devise === "KMF")
-      .reduce((s, o) => {
-        return s + o.items.reduce((ss, it) => {
-          const cout = it.product ? Number(it.product.coutAchat || 0) : 0;
-          const prix = Number(it.prixUnitaire || it.product?.prix || 0);
-          return ss + ((prix - cout) * it.quantite);
-        }, 0);
+    const beneficeComores = ordersComores.reduce((s, o) => {
+      return s + o.items.reduce((ss, it) => {
+        const cout = it.product ? Number(it.product.coutAchat || 0) : 0;
+        const prix = Number(it.prixUnitaire || it.product?.prix || 0);
+        return ss + ((prix - cout) * it.quantite);
       }, 0);
+    }, 0);
+    const nbCommandesComores = ordersComores.length;
+    const totalVentesCountComores = ordersComores.reduce((s, o) => s + o.items.reduce((ss, it) => ss + it.quantite, 0), 0);
+    const panierMoyenComores = nbCommandesComores > 0 ? Math.round(caComores / nbCommandesComores) : 0;
 
-    const beneficeSenegal = orders
-      .filter((o) => o.devise === "FCFA" || o.devise === "XOF")
-      .reduce((s, o) => {
-        return s + o.items.reduce((ss, it) => {
-          const cout = it.product ? Number(it.product.coutAchat || 0) : 0;
-          const prix = Number(it.prixUnitaire || it.product?.prixSenegal || 0);
-          return ss + ((prix - cout) * it.quantite);
-        }, 0);
+    // Statistiques Sénégal
+    const caSenegal = ordersSenegal.reduce((s, o) => s + Number(o.total || 0), 0);
+    const coutAchatsSenegal = ordersSenegal.reduce((s, o) => {
+      return s + o.items.reduce((ss, it) => ss + (Number(it.product?.coutAchat || 0) * it.quantite), 0);
+    }, 0);
+    const beneficeSenegal = ordersSenegal.reduce((s, o) => {
+      return s + o.items.reduce((ss, it) => {
+        const cout = it.product ? Number(it.product.coutAchat || 0) : 0;
+        const prix = Number(it.prixUnitaire || it.product?.prixPromoSenegal || it.product?.prixSenegal || 0);
+        return ss + ((prix - cout) * it.quantite);
       }, 0);
+    }, 0);
+    const nbCommandesSenegal = ordersSenegal.length;
+    const totalVentesCountSenegal = ordersSenegal.reduce((s, o) => s + o.items.reduce((ss, it) => ss + it.quantite, 0), 0);
+    const panierMoyenSenegal = nbCommandesSenegal > 0 ? Math.round(caSenegal / nbCommandesSenegal) : 0;
 
-    const nbCommandes = await Order.count({ where: { boutiqueId } });
+    // Totaux généraux
+    const nbCommandes = orders.length;
+    const totalVentesCount = orders.reduce((s, o) => s + o.items.reduce((ss, it) => ss + it.quantite, 0), 0);
     const totalClients = await User.count({ 
       where: { 
         role: "client",
@@ -161,6 +174,10 @@ router.get("/dashboard", async (req, res, next) => {
     const categories = await Category.findAll({ where: { boutiqueId } });
     const stockFaible = produits.filter((p) => p.stock <= p.seuilAlerte);
 
+    const valeurStockComores = produits.reduce((sum, p) => sum + (Number(p.stock || 0) * Number(p.prixPromo || p.prix || 0)), 0);
+    const valeurStockSenegal = produits.reduce((sum, p) => sum + (Number(p.stock || 0) * Number(p.prixPromoSenegal || p.prixSenegal || p.prix || 0)), 0);
+    const valeurStockAchat = produits.reduce((sum, p) => sum + (Number(p.stock || 0) * Number(p.coutAchat || 0)), 0);
+
     // Total avis & Note moyenne
     let totalReviews = 0;
     let sumNotes = 0;
@@ -179,6 +196,8 @@ router.get("/dashboard", async (req, res, next) => {
         nom: p.nom,
         prix: p.prix,
         prixPromo: p.prixPromo,
+        prixSenegal: p.prixSenegal,
+        prixPromoSenegal: p.prixPromoSenegal,
         imageUrl: p.imageUrl,
         ventesCount: p.ventesCount || 0,
         stock: p.stock,
@@ -209,33 +228,103 @@ router.get("/dashboard", async (req, res, next) => {
     const topCategories = [...categoryStats].sort((a, b) => b.ventes - a.ventes);
     const flopCategories = [...categoryStats].sort((a, b) => a.ventes - b.ventes);
 
-    const panierMoyen = nbCommandes > 0 ? Math.round(chiffreAffaires / nbCommandes) : 0;
-    const valeurStockVente = produits.reduce((sum, p) => sum + (Number(p.stock || 0) * Number(p.prixPromo || p.prix || 0)), 0);
-    const valeurStockAchat = produits.reduce((sum, p) => sum + (Number(p.stock || 0) * Number(p.coutAchat || 0)), 0);
-    const totalVentesCount = prodsWithStats.reduce((sum, p) => sum + Number(p.ventesCount || 0), 0);
+    // Données des 7 derniers jours réels
+    const daysLabels = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+    const now = new Date();
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
+      const dayName = daysLabels[d.getDay()];
+      last7Days.push({ dateStr, dayName });
+    }
 
-    // Expirations désactivées pour électricité et matériel
-    const produitsExpirant = [];
+    const chartDataComores = last7Days.map(({ dateStr, dayName }) => {
+      const dayOrders = ordersComores.filter(o => o.createdAt && new Date(o.createdAt).toISOString().slice(0, 10) === dateStr);
+      const ca = dayOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+      return { jour: dayName, date: dateStr, ca };
+    });
+
+    const chartDataSenegal = last7Days.map(({ dateStr, dayName }) => {
+      const dayOrders = ordersSenegal.filter(o => o.createdAt && new Date(o.createdAt).toISOString().slice(0, 10) === dateStr);
+      const ca = dayOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+      return { jour: dayName, date: dateStr, ca };
+    });
+
+    const chartDataGlobal = last7Days.map(({ dateStr, dayName }) => {
+      const dayOrdersComores = ordersComores.filter(o => o.createdAt && new Date(o.createdAt).toISOString().slice(0, 10) === dateStr);
+      const dayOrdersSenegal = ordersSenegal.filter(o => o.createdAt && new Date(o.createdAt).toISOString().slice(0, 10) === dateStr);
+      const dayCaComores = dayOrdersComores.reduce((sum, o) => sum + Number(o.total || 0), 0);
+      const dayCaSenegal = dayOrdersSenegal.reduce((sum, o) => sum + Number(o.total || 0), 0);
+      return {
+        jour: dayName,
+        date: dateStr,
+        caComores: dayCaComores,
+        caSenegal: dayCaSenegal,
+        ca: dayCaComores + dayCaSenegal
+      };
+    });
+
+    // Modes de paiement réels
+    const modesPaiementComores = [
+      { name: "Espèces (Cash)", value: ordersComores.filter(o => o.moyenPaiement === "cash" || o.moyenPaiement === "especes").length },
+      { name: "MVola", value: ordersComores.filter(o => o.moyenPaiement === "mvola").length },
+      { name: "Wero / Holam", value: ordersComores.filter(o => o.moyenPaiement === "wero" || o.moyenPaiement === "holam").length },
+      { name: "Carte", value: ordersComores.filter(o => o.moyenPaiement === "carte").length }
+    ].filter(m => m.value > 0);
+
+    const modesPaiementSenegal = [
+      { name: "Espèces (Cash)", value: ordersSenegal.filter(o => o.moyenPaiement === "cash" || o.moyenPaiement === "especes").length },
+      { name: "Wave / OM", value: ordersSenegal.filter(o => o.moyenPaiement === "wave" || o.moyenPaiement === "om" || o.moyenPaiement === "orange_money").length },
+      { name: "Carte", value: ordersSenegal.filter(o => o.moyenPaiement === "carte").length }
+    ].filter(m => m.value > 0);
 
     res.json({
       isEmploye: false,
-      chiffreAffaires,
-      beneficeNet,
-      totalDepensesAchats,
+      // Comores
+      comores: {
+        chiffreAffaires: caComores,
+        coutAchats: coutAchatsComores,
+        beneficeNet: beneficeComores,
+        nbCommandes: nbCommandesComores,
+        totalVentesCount: totalVentesCountComores,
+        panierMoyen: panierMoyenComores,
+        valeurStockVente: valeurStockComores,
+        chartData: chartDataComores,
+        modesPaiement: modesPaiementComores.length ? modesPaiementComores : [{ name: "Espèces", value: 1 }]
+      },
+      // Sénégal
+      senegal: {
+        chiffreAffaires: caSenegal,
+        coutAchats: coutAchatsSenegal,
+        beneficeNet: beneficeSenegal,
+        nbCommandes: nbCommandesSenegal,
+        totalVentesCount: totalVentesCountSenegal,
+        panierMoyen: panierMoyenSenegal,
+        valeurStockVente: valeurStockSenegal,
+        chartData: chartDataSenegal,
+        modesPaiement: modesPaiementSenegal.length ? modesPaiementSenegal : [{ name: "Espèces / Wave", value: 1 }]
+      },
+      // Global & Rétrocompatibilité
+      chiffreAffaires: caComores + caSenegal,
+      beneficeNet: beneficeComores + beneficeSenegal,
       beneficeComores,
       beneficeSenegal,
-      valeurStockVente,
+      totalDepensesAchats,
+      valeurStockVente: valeurStockComores + valeurStockSenegal,
       valeurStockAchat,
       totalVentesCount,
       nbCommandes,
-      panierMoyen,
+      panierMoyen: nbCommandes > 0 ? Math.round((caComores + caSenegal) / nbCommandes) : 0,
+      chartData: chartDataGlobal,
       totalClients,
       totalReviews,
       noteMoyenneGlobale,
       stockFaibleCount: stockFaible.length,
       stockFaibleList: stockFaible,
-      produitsExpirantCount: produitsExpirant.length,
-      produitsExpirantList: produitsExpirant,
+      produitsExpirantCount: 0,
+      produitsExpirantList: [],
       topProduits: top7Produits,
       top7Produits,
       flop7Produits,
@@ -894,10 +983,12 @@ router.put("/boutique", requireRole("admin"), async (req, res, next) => {
 
 router.post("/ventes/directe", async (req, res, next) => {
   try {
-    const { items, clientNom, clientTelephone, moyenPaiement } = req.body;
+    const { items, clientNom, clientTelephone, moyenPaiement, devise } = req.body;
     if (!items || !items.length) {
       return res.status(400).json({ message: "Le panier de vente est vide." });
     }
+
+    const saleCurrency = (devise && String(devise).toUpperCase() === "FCFA") ? "FCFA" : "KMF";
 
     // Client par défaut ou client renseigné
     let client = null;
@@ -925,12 +1016,19 @@ router.post("/ventes/directe", async (req, res, next) => {
       });
     }
 
-    // Calcul sous-total et vérification des stocks
+    // Calcul sous-total et vérification des stocks selon la devise
     let sousTotal = 0;
     for (const it of items) {
       const p = await Product.findOne({ where: { id: it.productId, boutiqueId: req.boutiqueId } });
       if (!p) return res.status(404).json({ message: `Produit ID ${it.productId} introuvable.` });
-      const prixEffectif = p.enPromo && p.prixPromo ? Number(p.prixPromo) : Number(p.prix);
+      
+      let prixEffectif = 0;
+      if (saleCurrency === "FCFA") {
+        prixEffectif = p.enPromo && p.prixPromoSenegal ? Number(p.prixPromoSenegal) : Number(p.prixSenegal || p.prix);
+      } else {
+        prixEffectif = p.enPromo && p.prixPromo ? Number(p.prixPromo) : Number(p.prix);
+      }
+
       it.prixUnitaire = prixEffectif;
       sousTotal += prixEffectif * it.quantite;
     }
@@ -947,7 +1045,8 @@ router.post("/ventes/directe", async (req, res, next) => {
       employeAssigneId: req.user.id,
       sousTotal,
       fraisLivraison: 0,
-      total: sousTotal
+      total: sousTotal,
+      devise: saleCurrency
     });
 
     // Enregistrement des items et décrémentation directe des stocks

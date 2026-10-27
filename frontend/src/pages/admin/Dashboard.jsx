@@ -9,24 +9,36 @@ import { subscribeRealtime } from "../../utils/realtime.js";
 import { Skel, SkeletonStatCards } from "../../components/Skeleton.jsx";
 import { readCache, writeCache } from "../../utils/swrCache.js";
 
-import { formatPrice, formatPrice as fcfa } from "../../utils/currency.js";
+import { formatPrice, formatPrice as fcfa, getActiveCurrency, setActiveCurrency } from "../../utils/currency.js";
 
 export default function Dashboard() {
   const { user, boutique, theme } = useAuth();
   const [data, setData] = useState(() => readCache("admin_dashboard") || null);
-  const [activeCurrency, setActiveCurrencyState] = useState(() => boutique?.devise || "KMF");
+  const [activeCurrency, setActiveCurrencyState] = useState(() => getActiveCurrency() || "KMF");
+  const [countryFilter, setCountryFilter] = useState(() => getActiveCurrency() || "KMF");
   const [prodChartTab, setProdChartTab] = useState("top");
 
   useEffect(() => {
-    if (boutique?.devise) {
-      setActiveCurrencyState(boutique.devise);
-    }
+    const cur = getActiveCurrency() || boutique?.devise || "KMF";
+    setActiveCurrencyState(cur);
+    setCountryFilter(cur);
+
     const handleCurChange = (e) => {
-      setActiveCurrencyState(e.detail || boutique?.devise || "KMF");
+      const newCur = e.detail || getActiveCurrency() || "KMF";
+      setActiveCurrencyState(newCur);
+      setCountryFilter(newCur);
     };
     window.addEventListener("currency_changed", handleCurChange);
     return () => window.removeEventListener("currency_changed", handleCurChange);
   }, [boutique?.devise]);
+
+  const handleFilterCountry = (filter) => {
+    setCountryFilter(filter);
+    if (filter === "KMF" || filter === "FCFA") {
+      setActiveCurrency(filter);
+      setActiveCurrencyState(filter);
+    }
+  };
 
   const storeDevise = activeCurrency || boutique?.devise || "KMF";
   const isDark = theme === "dark";
@@ -202,47 +214,348 @@ export default function Dashboard() {
   }
 
   // ── 2. DASHBOARD GLOBAL ADMINISTRATEUR ──
-  const chartData = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((jour, i) => ({
-    jour, ca: Math.round(data.chiffreAffaires / 7 * (0.6 + 0.15 * ((i * 7) % 5))),
-  }));
+  const isComores = countryFilter === "KMF";
+  const isSenegal = countryFilter === "FCFA";
+  const isAll = countryFilter === "ALL";
+
+  const comoresData = data.comores || {
+    chiffreAffaires: Number(data.chiffreAffairesComores || 0),
+    coutAchats: Number(data.coutAchatsComores || 0),
+    beneficeNet: Number(data.beneficeComores || 0),
+    nbCommandes: Number(data.nbCommandesComores || 0),
+    totalVentesCount: Number(data.totalVentesCountComores || 0),
+    panierMoyen: Number(data.panierMoyenComores || 0),
+    valeurStockVente: Number(data.valeurStockComores || 0),
+    chartData: [],
+    modesPaiement: []
+  };
+
+  const senegalData = data.senegal || {
+    chiffreAffaires: Number(data.chiffreAffairesSenegal || 0),
+    coutAchats: Number(data.coutAchatsSenegal || 0),
+    beneficeNet: Number(data.beneficeSenegal || 0),
+    nbCommandes: Number(data.nbCommandesSenegal || 0),
+    totalVentesCount: Number(data.totalVentesCountSenegal || 0),
+    panierMoyen: Number(data.panierMoyenSenegal || 0),
+    valeurStockVente: Number(data.valeurStockSenegal || 0),
+    chartData: [],
+    modesPaiement: []
+  };
+
+  // Sélection dynamique des données de graphiques
+  const currentChartData = isComores
+    ? (comoresData.chartData?.length ? comoresData.chartData : [])
+    : isSenegal
+    ? (senegalData.chartData?.length ? senegalData.chartData : [])
+    : (data.chartData || []);
+
+  const currentCurrencySymbol = isComores ? "KMF" : isSenegal ? "FCFA" : "FCFA";
+
+  const currentModesPaiement = isComores
+    ? (comoresData.modesPaiement?.length ? comoresData.modesPaiement : [{ name: "Espèces (Cash)", value: 1 }])
+    : isSenegal
+    ? (senegalData.modesPaiement?.length ? senegalData.modesPaiement : [{ name: "Espèces / Wave", value: 1 }])
+    : [
+        { name: "Espèces (Cash)", value: Math.max(1, (comoresData.nbCommandes || 0) + (senegalData.nbCommandes || 0)) },
+        { name: "Paiement Mobile", value: Math.max(1, Math.round(((data.nbCommandes || 1) * 0.4))) }
+      ];
 
   const activeProductsChart = prodChartTab === "top" ? (data.top7Produits || []) : (data.flop7Produits || []);
 
   return (
     <>
-      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+      <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 14 }}>
         <div>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--forest-light)", color: "var(--forest)", padding: "3px 10px", borderRadius: 16, fontSize: 11.5, fontWeight: 700, marginBottom: 6 }}>
+            <span>{isComores ? "Comores Actif" : isSenegal ? "Sénégal Actif" : "Vue Globale"}</span>
+          </div>
           <h1 style={{ fontSize: 26, margin: 0, color: "var(--forest-dark)" }}>Tableau de bord Général Admin</h1>
-          <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 14 }}>Aperçu global et statistiques avancées de votre boutique.</p>
+          <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 13.5 }}>
+            Aperçu dynamique des ventes, des bénéfices réels et des achats par pays.
+          </p>
+        </div>
+
+        {/* SÉLECTEUR DE PAYS DYNAMIQUE */}
+        <div style={{ display: "flex", gap: 6, background: "var(--paper)", padding: 4, borderRadius: 12, border: "1px solid var(--line)" }}>
+          <button
+            type="button"
+            onClick={() => handleFilterCountry("KMF")}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: countryFilter === "KMF" ? "var(--forest)" : "transparent",
+              color: countryFilter === "KMF" ? "#fff" : "var(--muted)",
+              border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+              transition: "all 0.15s ease"
+            }}
+          >
+            <span>Comores (KMF)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleFilterCountry("FCFA")}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: countryFilter === "FCFA" ? "var(--forest)" : "transparent",
+              color: countryFilter === "FCFA" ? "#fff" : "var(--muted)",
+              border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+              transition: "all 0.15s ease"
+            }}
+          >
+            <span>Sénégal (FCFA)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleFilterCountry("ALL")}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: countryFilter === "ALL" ? "var(--forest)" : "transparent",
+              color: countryFilter === "ALL" ? "#fff" : "var(--muted)",
+              border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+              transition: "all 0.15s ease"
+            }}
+          >
+            <span>Vue Globale (Tous)</span>
+          </button>
         </div>
       </div>
 
-      {/* ── HIGH-ELEGANCE SLIM KPI CARDS GRID (Cartes Dynamiques Slims) ── */}
+      {/* ── HIGH-ELEGANCE SLIM KPI CARDS GRID (Cartes 100% Dynamiques) ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
         
-        {/* 1. CHIFFRE D'AFFAIRES GLOBAL */}
-        <div style={{
-          background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-          position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-        }}>
-          <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(34,75,53,0.08)", pointerEvents: "none" }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(34,75,53,0.12)", color: "var(--forest-dark)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <TrendingUp size={17} />
+        {/* 1. CHIFFRE D'AFFAIRES DYNAMIQUE */}
+        {isComores && (
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(34,75,53,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(34,75,53,0.12)", color: "var(--forest-dark)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <TrendingUp size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
+                {formatPrice(comoresData.chiffreAffaires || 0, "KMF")}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Chiffre d'affaires Comores (KMF)
+              </div>
             </div>
           </div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {formatPrice(data.chiffreAffaires || 0, storeDevise)}
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              Chiffre d'affaires
-            </div>
-          </div>
-        </div>
+        )}
 
-        {/* 1.B DÉPENSES TOTALES D'ACHATS */}
+        {isSenegal && (
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(245,158,11,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEF3C7", color: "#92400E", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <TrendingUp size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
+                {formatPrice(senegalData.chiffreAffaires || 0, "FCFA")}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Chiffre d'affaires Sénégal (FCFA)
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isAll && (
+          <>
+            <div style={{
+              background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+              position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+            }}>
+              <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(34,75,53,0.08)", pointerEvents: "none" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(34,75,53,0.12)", color: "var(--forest-dark)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <TrendingUp size={17} />
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: "var(--forest-dark)", letterSpacing: "-0.02em" }}>
+                  {formatPrice(comoresData.chiffreAffaires || 0, "KMF")}
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                  Chiffre d'affaires Comores (KMF)
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+              position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+            }}>
+              <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(245,158,11,0.08)", pointerEvents: "none" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEF3C7", color: "#92400E", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <TrendingUp size={17} />
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: "#92400E", letterSpacing: "-0.02em" }}>
+                  {formatPrice(senegalData.chiffreAffaires || 0, "FCFA")}
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                  Chiffre d'affaires Sénégal (FCFA)
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* 2. DÉPENSES D'ACHATS DES VENTES */}
+        {isComores && (
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(239,68,68,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEE2E2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ShoppingBag size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#DC2626", letterSpacing: "-0.02em" }}>
+                {formatPrice(comoresData.coutAchats || 0, "FCFA")}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Coût d'achat ventes Comores (FCFA)
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isSenegal && (
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(239,68,68,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEE2E2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ShoppingBag size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#DC2626", letterSpacing: "-0.02em" }}>
+                {formatPrice(senegalData.coutAchats || 0, "FCFA")}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Coût d'achat ventes Sénégal (FCFA)
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 3. BÉNÉFICE NET DYNAMIQUE */}
+        {isComores && (
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(5,150,105,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#ECFDF5", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <DollarSign size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#059669", letterSpacing: "-0.02em" }}>
+                {formatPrice(comoresData.beneficeNet || 0, "KMF")}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Bénéfice net Comores (KMF)
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isSenegal && (
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(5,150,105,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#ECFDF5", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <DollarSign size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#059669", letterSpacing: "-0.02em" }}>
+                {formatPrice(senegalData.beneficeNet || 0, "FCFA")}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Bénéfice net Sénégal (FCFA)
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isAll && (
+          <>
+            <div style={{
+              background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+              position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+            }}>
+              <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(16,185,129,0.08)", pointerEvents: "none" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: "#EBF7F0", color: "var(--forest-dark)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, letterSpacing: 0.5 }}>
+                  KM
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: "var(--forest-dark)", letterSpacing: "-0.02em" }}>
+                  {formatPrice(comoresData.beneficeNet || 0, "KMF")}
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                  Bénéfice net Comores (KMF)
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+              position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+            }}>
+              <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(245,158,11,0.08)", pointerEvents: "none" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEF3C7", color: "#92400E", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, letterSpacing: 0.5 }}>
+                  SN
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: "#92400E", letterSpacing: "-0.02em" }}>
+                  {formatPrice(senegalData.beneficeNet || 0, "FCFA")}
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                  Bénéfice net Sénégal (FCFA)
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* 4. DÉPENSES TOTALES D'ACHATS (HISTORIQUE GLOBAL ENREGISTRÉ) */}
         <div style={{
           background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
           position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -256,85 +569,15 @@ export default function Dashboard() {
           </div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 900, color: "#DC2626", letterSpacing: "-0.02em" }}>
-              {formatPrice(data.totalDepensesAchats || 0, storeDevise)}
+              {formatPrice(data.totalDepensesAchats || 0, "FCFA")}
             </div>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              Dépenses Totales d'Achats
+              Dépenses Totales d'Achats (FCFA)
             </div>
           </div>
         </div>
 
-        {/* 2. BÉNÉFICE NET GLOBAL */}
-        <div style={{
-          background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-          position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-        }}>
-          <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(5,150,105,0.08)", pointerEvents: "none" }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: "#ECFDF5", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <DollarSign size={17} />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {formatPrice(data.beneficeNet || 0, storeDevise)}
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              Bénéfice net total
-            </div>
-          </div>
-        </div>
-
-        {/* 2.B BÉNÉFICE COMORES (Affiché si la boutique utilise KMF ou s'il y a des ventes en KMF) */}
-        {(storeDevise === "KMF" || Number(data.beneficeComores || 0) > 0) && (
-          <div style={{
-            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-          }}>
-            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(16,185,129,0.08)", pointerEvents: "none" }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#EBF7F0", color: "var(--forest-dark)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, letterSpacing: 0.5 }}>
-                KM
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "var(--forest-dark)", letterSpacing: "-0.02em" }}>
-                {formatPrice(data.beneficeComores || 0, "KMF")}
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-                Bénéfice Comores (KMF)
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 2.C BÉNÉFICE SÉNÉGAL (Affiché si la boutique utilise FCFA ou s'il y a des ventes en FCFA) */}
-        {(storeDevise === "FCFA" || Number(data.beneficeSenegal || 0) > 0) && (
-          <div style={{
-            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-          }}>
-            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(245,158,11,0.08)", pointerEvents: "none" }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEF3C7", color: "#92400E", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, letterSpacing: 0.5 }}>
-                SN
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#92400E", letterSpacing: "-0.02em" }}>
-                {formatPrice(data.beneficeSenegal || 0, "FCFA")}
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-                Bénéfice Sénégal (FCFA)
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 3. VALEUR DU STOCK */}
+        {/* 5. VALEUR DU STOCK EN VENTE */}
         <div style={{
           background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
           position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -348,15 +591,19 @@ export default function Dashboard() {
           </div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {formatPrice(data.valeurStockVente || 0, storeDevise)}
+              {isComores && formatPrice(comoresData.valeurStockVente || 0, "KMF")}
+              {isSenegal && formatPrice(senegalData.valeurStockVente || 0, "FCFA")}
+              {isAll && formatPrice(data.valeurStockAchat || 0, "FCFA")}
             </div>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              Valeur stock (achat)
+              {isComores && "Valeur stock vente (KMF)"}
+              {isSenegal && "Valeur stock vente (FCFA)"}
+              {isAll && "Valeur stock achat (FCFA)"}
             </div>
           </div>
         </div>
 
-        {/* 4. COMMANDES REÇUES */}
+        {/* 6. COMMANDES REÇUES */}
         <div style={{
           background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
           position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -370,15 +617,15 @@ export default function Dashboard() {
           </div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {data.nbCommandes || 0}
+              {isComores ? (comoresData.nbCommandes || 0) : isSenegal ? (senegalData.nbCommandes || 0) : (data.nbCommandes || 0)}
             </div>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              Commandes reçues
+              {isComores ? "Commandes Comores" : isSenegal ? "Commandes Sénégal" : "Total commandes reçues"}
             </div>
           </div>
         </div>
 
-        {/* 5. VENTES CE MOIS */}
+        {/* 7. NOMBRE TOTAL D'ARTICLES VENDUS */}
         <div style={{
           background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
           position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -392,15 +639,15 @@ export default function Dashboard() {
           </div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {data.nbCommandes || 0}
+              {isComores ? (comoresData.totalVentesCount || 0) : isSenegal ? (senegalData.totalVentesCount || 0) : (data.totalVentesCount || 0)}
             </div>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              Nombre total de ventes
+              {isComores ? "Articles vendus Comores" : isSenegal ? "Articles vendus Sénégal" : "Nombre total de ventes"}
             </div>
           </div>
         </div>
 
-        {/* 6. TOTAL PRODUITS */}
+        {/* 8. TOTAL PRODUITS */}
         <div style={{
           background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
           position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -422,7 +669,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 7. CATÉGORIES EN CATALOGUE */}
+        {/* 9. CATÉGORIES EN CATALOGUE */}
         <div style={{
           background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
           position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -444,7 +691,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 8. CLIENTS ACTIFS */}
+        {/* 10. CLIENTS ACTIFS */}
         <div style={{
           background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
           position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -466,7 +713,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 9. AVIS CLIENTS */}
+        {/* 11. AVIS CLIENTS */}
         <div style={{
           background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
           position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -488,7 +735,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 10. ALERTES STOCK */}
+        {/* 12. ALERTES STOCK */}
         <div style={{
           background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
           position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -510,8 +757,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-
-
       </div>
 
       {/* ── SECTION GRAPHIQUES VARIÉS & STYLÉS ── */}
@@ -521,7 +766,9 @@ export default function Dashboard() {
         <div className="bs-panel" style={{ padding: "20px 24px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: 16, color: "var(--forest-dark)", fontWeight: 700 }}>Evolution du Chiffre d'Affaires</h3>
+              <h3 style={{ margin: 0, fontSize: 16, color: "var(--forest-dark)", fontWeight: 700 }}>
+                Evolution du Chiffre d'Affaires {isComores ? "(Comores)" : isSenegal ? "(Sénégal)" : "(Global)"}
+              </h3>
               <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Tendance des 7 derniers jours</div>
             </div>
             <span style={{ background: chartColors.badgeBg, color: chartColors.badgeText, padding: "4px 10px", borderRadius: 12, fontSize: 11.5, fontWeight: 700 }}>
@@ -530,7 +777,7 @@ export default function Dashboard() {
           </div>
 
           <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <AreaChart data={currentChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorCa" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={chartColors.stroke} stopOpacity={isDark ? 0.5 : 0.35}/>
@@ -552,7 +799,7 @@ export default function Dashboard() {
                 }}
                 itemStyle={{ color: chartColors.tooltipText }}
                 labelStyle={{ color: chartColors.axisText }}
-                formatter={(v) => [formatPrice(v, storeDevise), "Revenu"]} 
+                formatter={(v) => [formatPrice(v, currentCurrencySymbol), "Revenu"]} 
               />
               <Area type="monotone" dataKey="ca" stroke={chartColors.stroke} strokeWidth={3} fillOpacity={1} fill="url(#colorCa)" />
             </AreaChart>
@@ -562,16 +809,14 @@ export default function Dashboard() {
         {/* 2. DIAGRAMME DONUT / CIRCULAIRE - MODES DE PAIEMENT & COMMANDES */}
         <div className="bs-panel" style={{ padding: "20px 24px" }}>
           <h3 style={{ margin: "0 0 4px", fontSize: 16, color: "var(--forest-dark)", fontWeight: 700 }}>Modes de paiement</h3>
-          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 14 }}>Répartition globale des transactions</div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 14 }}>
+            Répartition des transactions {isComores ? "(Comores)" : isSenegal ? "(Sénégal)" : "(Global)"}
+          </div>
 
           <ResponsiveContainer width="100%" height={210}>
             <PieChart>
               <Pie
-                data={[
-                  { name: "Espèces (Cash)", value: Math.max(1, Math.round((data.nbCommandes || 5) * 0.65)) },
-                  { name: "Mvola / Wero", value: Math.max(1, Math.round((data.nbCommandes || 5) * 0.20)) },
-                  { name: "Wave / Orange Money", value: Math.max(1, Math.round((data.nbCommandes || 5) * 0.15)) },
-                ]}
+                data={currentModesPaiement}
                 cx="50%"
                 cy="50%"
                 innerRadius={55}
@@ -582,6 +827,7 @@ export default function Dashboard() {
                 <Cell key="cell-0" fill="#10B981" />
                 <Cell key="cell-1" fill="#F59E0B" />
                 <Cell key="cell-2" fill="#06B6D4" />
+                <Cell key="cell-3" fill="#8B5CF6" />
               </Pie>
               <Tooltip 
                 contentStyle={{ 

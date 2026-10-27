@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { NavLink, Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { 
   LayoutDashboard, Package, ShoppingCart, Users, Store, LogOut, Layers, 
@@ -10,6 +10,8 @@ import { useCart } from "../../context/CartContext.jsx";
 import NotificationMenu from "../../components/NotificationMenu.jsx";
 import ProfileModal from "../../components/ProfileModal.jsx";
 
+
+import { CURRENCIES, getActiveCurrency, setActiveCurrency } from "../../utils/currency.js";
 
 const ROUTE_MODULE_MAP = {
   "/admin/vente": { key: "vente", label: "Vente Directe (POS)" },
@@ -38,22 +40,29 @@ export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [currentCurrency, setCurrentCurrency] = useState(() => getActiveCurrency());
+
+  useEffect(() => {
+    const handleCurr = (e) => setCurrentCurrency(e.detail);
+    window.addEventListener("currency_changed", handleCurr);
+    return () => window.removeEventListener("currency_changed", handleCurr);
+  }, []);
 
   const perms = Array.isArray(user?.permissions) ? user.permissions : [];
   const storeName = boutique?.nom || "Boutique";
 
   const allLinks = [
     { to: "/admin", label: "Tableau de bord", icon: LayoutDashboard, exact: true, permKey: "voir_dashboard" },
-    { to: "/admin/vente", label: "Vente Directe (POS)", icon: CreditCard, permKey: ["gerer_commandes", "voir_dashboard"], moduleKey: "vente" },
-    { to: "/admin/ventes-historique", label: "Historique Ventes", icon: History, permKey: ["gerer_commandes", "voir_dashboard"], moduleKey: "ventesHistorique" },
-    { to: "/admin/achats", label: "Achats & Stocks", icon: ShoppingBag, permKey: ["gerer_produits", "gerer_parametres"], moduleKey: "achats" },
-    { to: "/admin/fournisseurs", label: "Fournisseurs", icon: Truck, permKey: ["gerer_produits", "gerer_parametres"], moduleKey: "fournisseurs" },
+    { to: "/admin/vente", label: "Vente Directe (POS)", icon: CreditCard, permKey: ["vente_directe", "gerer_commandes"], moduleKey: "vente" },
+    { to: "/admin/ventes-historique", label: "Historique Ventes", icon: History, permKey: ["historique_ventes", "vente_directe", "gerer_commandes", "voir_dashboard"], moduleKey: "ventesHistorique" },
+    { to: "/admin/achats", label: "Achats & Stocks", icon: ShoppingBag, permKey: ["achats_stocks", "gerer_produits", "gerer_parametres"], moduleKey: "achats" },
+    { to: "/admin/fournisseurs", label: "Fournisseurs", icon: Truck, permKey: ["achats_stocks", "gerer_produits", "gerer_parametres"], moduleKey: "fournisseurs" },
     { to: "/admin/unites", label: "Unités de vente", icon: Scale, permKey: ["gerer_produits", "gerer_categories"], moduleKey: "unites" },
     { to: "/admin/marques", label: "Marques", icon: Award, permKey: ["gerer_categories", "gerer_produits"] },
     { to: "/admin/categories", label: "Catégories", icon: Layers, permKey: "gerer_categories", moduleKey: "categories" },
-    { to: "/admin/produits", label: "Produits", icon: Package, permKey: ["ajouter_produit", "modifier_produit", "supprimer_produit", "gerer_produits"], moduleKey: "produits" },
+    { to: "/admin/produits", label: "Produits", icon: Package, permKey: ["voir_produits", "ajouter_modifier_produit", "supprimer_produit", "gerer_produits"], moduleKey: "produits" },
     { to: "/admin/avis", label: "Avis Clients WhatsApp", icon: MessageCircle, permKey: ["gerer_produits", "voir_dashboard"] },
-    { to: "/admin/commandes", label: "Commandes", icon: ShoppingCart, permKey: ["valider_commande", "changer_statut_commande", "assigner_commande", "gerer_commandes"], moduleKey: "commandes" },
+    { to: "/admin/commandes", label: "Commandes", icon: ShoppingCart, permKey: ["gerer_commandes", "valider_commande", "changer_statut_commande", "assigner_commande"], moduleKey: "commandes" },
     { to: "/admin/demandes", label: "Demandes & Devis", icon: ClipboardList, permKey: ["gerer_commandes", "voir_dashboard"] },
     { to: "/admin/clients", label: "Clients", icon: UserCheck, permKey: ["gerer_commandes", "gerer_utilisateurs", "voir_dashboard"] },
     { to: "/admin/employes", label: "Équipe & Rôles", icon: Users, adminOnly: true, moduleKey: "employes" },
@@ -87,7 +96,33 @@ export default function AdminLayout() {
         </button>
         <div className="bs-admin-mobile-brand">{storeName}</div>
         
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* MOBILE CURRENCY SWITCH */}
+          <div style={{ display: "flex", alignItems: "center", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 16, padding: "2px", gap: 2 }}>
+            {CURRENCIES.map(c => {
+              const isActive = currentCurrency === c.code;
+              return (
+                <button
+                  key={c.code}
+                  type="button"
+                  onClick={() => setActiveCurrency(c.code)}
+                  style={{
+                    border: "none",
+                    background: isActive ? "var(--forest-dark)" : "transparent",
+                    color: isActive ? "#ffffff" : "var(--ink)",
+                    borderRadius: 12,
+                    padding: "3px 6px",
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    cursor: "pointer"
+                  }}
+                >
+                  {c.code}
+                </button>
+              );
+            })}
+          </div>
+
           <Link
             to="/"
             title="Retour au site public"
@@ -242,7 +277,39 @@ export default function AdminLayout() {
             </Link>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {/* SÉLECTEUR DE DEVISE & PAYS : COMORES (KMF) OU SÉNÉGAL (FCFA) */}
+            <div style={{ display: "flex", alignItems: "center", background: "var(--paper)", border: "1.5px solid var(--line)", borderRadius: 20, padding: "2px 3px", gap: 2 }}>
+              {CURRENCIES.map(c => {
+                const isActive = currentCurrency === c.code;
+                return (
+                  <button
+                    key={c.code}
+                    type="button"
+                    onClick={() => setActiveCurrency(c.code)}
+                    style={{
+                      border: "none",
+                      background: isActive ? "var(--forest-dark)" : "transparent",
+                      color: isActive ? "#ffffff" : "var(--ink)",
+                      borderRadius: 16,
+                      padding: "4px 9px",
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      transition: "all 0.15s ease",
+                      boxShadow: isActive ? "0 2px 6px rgba(0,0,0,0.12)" : "none"
+                    }}
+                    title={`Basculer les prix et encaissements en ${c.label}`}
+                  >
+                    <span>{c.code}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             {/* BOUTON BASCULER DE THÈME (DARK / LIGHT) */}
             <button
               onClick={toggleTheme}

@@ -237,6 +237,9 @@ export default function AdminOrders() {
 
   // Filtering logic with COM-B001 format, product name matching, month, year, and date
   const filteredOrders = orders.filter(o => {
+    // Les ventes directes au comptoir appartiennent à l'Historique des Ventes (ne pas mélanger avec commandes en ligne)
+    if (o.typeVente === "vente_directe") return false;
+
     const q = search.trim().toLowerCase();
     const formattedNum = formatOrderNum(o.id).toLowerCase();
     const rawId = String(o.id);
@@ -579,7 +582,12 @@ export default function AdminOrders() {
                     {/* 7. Montant Total */}
                     <td>
                       <div style={{ fontWeight: 800, fontSize: 15, color: "var(--forest-dark)" }}>
-                        {fcfa(o.total)}
+                        {fcfa(o.total, o.devise || "KMF")}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, marginBottom: 4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: (o.devise === "FCFA" ? "#FEF3C7" : "#EFF6FF"), color: (o.devise === "FCFA" ? "#B45309" : "#1D4ED8") }}>
+                          {o.devise === "FCFA" ? "Sénégal (FCFA)" : "Comores (KMF)"}
+                        </span>
                       </div>
                       <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 4 }}>
                         {MOYEN_LABEL[o.moyenPaiement] || o.moyenPaiement || "Paiement à la livraison"}

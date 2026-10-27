@@ -1,16 +1,21 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { PlusCircle, Edit, Trash2, Shield, Lock, CheckCircle, Ban, User, AlertCircle, X, ShieldCheck, UserCheck, Key, Settings, Layers, Package, ShoppingCart, Image, Eye, EyeOff, Copy, RefreshCw, Send } from "lucide-react";
+import { PlusCircle, Edit, Trash2, Shield, Lock, CheckCircle, Ban, User, AlertCircle, X, ShieldCheck, UserCheck, Key, Settings, Layers, Package, ShoppingCart, Image, Eye, EyeOff, Copy, RefreshCw, Send, CreditCard, History, ShoppingBag } from "lucide-react";
 import api from "../../api";
 import TablePagination from "../../components/TablePagination";
 import { useAuth } from "../../context/AuthContext.jsx";
 
 const PERMISSIONS_LIST = [
-  { key: "voir_dashboard", label: "Tableau de bord Opérationnel", desc: "Aperçu des performances et commandes attribuées", icon: Settings },
+  { key: "voir_dashboard", label: "Tableau de bord Opérationnel", desc: "Aperçu des performances personnelles et activités", icon: Settings },
+  { key: "vente_directe", label: "Caisse & Vente Directe (POS)", desc: "Encaisser les ventes directes au comptoir", icon: CreditCard },
+  { key: "historique_ventes", label: "Historique des Ventes", desc: "Consulter l'historique et les encaissements", icon: History },
+  { key: "gerer_commandes", label: "Commandes en ligne", desc: "Traitement, affectation et suivi des livraisons", icon: ShoppingCart },
+  { key: "voir_produits", label: "Consulter le Catalogue Produits", desc: "Voir la liste des articles et stocks disponibles", icon: Package },
+  { key: "ajouter_modifier_produit", label: "Ajouter & Modifier des Produits", desc: "Créer ou éditer les fiches articles et prix", icon: Package },
+  { key: "supprimer_produit", label: "Supprimer des Produits", desc: "Supprimer définitivement des articles du catalogue", icon: Trash2 },
+  { key: "achats_stocks", label: "Achats & Stocks", desc: "Enregistrer des réapprovisionnements et gérer les stocks", icon: ShoppingBag },
+  { key: "gerer_categories", label: "Catégories & Marques", desc: "Création et modification des catégories et marques", icon: Layers },
   { key: "gerer_banners", label: "Bannières d'accueil & Side Banners", desc: "Gestion des carousels visuels et promotions", icon: Image },
-  { key: "gerer_categories", label: "Catégories & Familles de produits", desc: "Création et modification des catégories", icon: Layers },
-  { key: "gerer_produits", label: "Gestion des Produits & Stock", desc: "Ajout, modification et gestion du stock", icon: Package },
-  { key: "gerer_commandes", label: "Gestion des Commandes", desc: "Traitement, affectation et suivi des livraisons", icon: ShoppingCart },
   { key: "gerer_parametres", label: "Paramètres Boutique", desc: "Coordonnées, adresses et réglages généraux", icon: Settings },
 ];
 
@@ -22,7 +27,7 @@ export default function AdminEmployees() {
   const [createdCredentials, setCreatedCredentials] = useState(null);
 
   const [form, setForm] = useState({ 
-    nom: "", email: "", telephone: "", motDePasse: "", role: "employe", permissions: ["voir_dashboard", "gerer_commandes"] 
+    nom: "", email: "", telephone: "", motDePasse: "", role: "employe", permissions: ["voir_dashboard", "vente_directe", "historique_ventes", "voir_produits"] 
   });
   const [showPassword, setShowPassword] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -58,7 +63,7 @@ export default function AdminEmployees() {
       telephone: "", 
       motDePasse: randomPwd, 
       role: "employe", 
-      permissions: ["voir_dashboard", "gerer_commandes"] 
+      permissions: ["voir_dashboard", "vente_directe", "historique_ventes", "voir_produits"] 
     });
     setShowPassword(true);
     setErreur("");

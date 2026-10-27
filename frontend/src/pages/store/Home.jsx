@@ -641,27 +641,68 @@ export default function Home() {
       )}
 
 
-      {/* 6. SECTIONS PAR FAMILLE / CATÉGORIE (COSMÉTIQUE, CHEVEUX, BROCHES, MAQUILLAGE, ETC.) */}
-      {uniqueFamilles.map((famName) => {
-        const normTarget = famName.toLowerCase();
-        const famProds = safeProducts.filter(p => {
-          const pFam = getNormalizedFamilleName(p.Category?.famille || p.famille);
-          return pFam.toLowerCase() === normTarget;
-        });
+      {/* 6. SECTIONS PAR FAMILLE / CATÉGORIE (LIMITÉES À 3 SECTIONS MAXIMUM SUR L'ACCUEIL) */}
+      {(() => {
+        const sectionsWithProducts = uniqueFamilles
+          .map((famName) => {
+            const normTarget = famName.toLowerCase();
+            const famProds = safeProducts.filter(p => {
+              const pFam = getNormalizedFamilleName(p.Category?.famille || p.famille);
+              return pFam.toLowerCase() === normTarget;
+            });
+            return { famName, normTarget, famProds };
+          })
+          .filter(s => s.famProds.length > 0);
 
-        if (famProds.length === 0) return null;
-
-        const sectionTitle = `Section ${famName}`;
+        const displayedSections = sectionsWithProducts.slice(0, 3);
 
         return (
-          <CategoryScrollSection
-            key={normTarget}
-            category={{ id: `fam-${normTarget}`, nom: sectionTitle }}
-            products={famProds}
-            onNavigate={() => navigate(`/catalogue?famille=${encodeURIComponent(famName)}`)}
-          />
+          <>
+            {displayedSections.map(({ famName, normTarget, famProds }) => (
+              <CategoryScrollSection
+                key={normTarget}
+                category={{ id: `fam-${normTarget}`, nom: `Section ${famName}` }}
+                products={famProds}
+                onNavigate={() => navigate(`/catalogue?famille=${encodeURIComponent(famName)}`)}
+              />
+            ))}
+
+            {/* BOUTON POUR VOIR TOUTES LES SECTIONS ET TOUT LE CATALOGUE */}
+            <div style={{ textAlign: "center", marginTop: 36, marginBottom: 28 }}>
+              <button
+                type="button"
+                onClick={() => navigate("/catalogue")}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "14px 34px",
+                  borderRadius: 30,
+                  fontSize: 15,
+                  fontWeight: 800,
+                  background: "linear-gradient(135deg, var(--forest-dark, #831843), var(--forest, #BE185D))",
+                  color: "#ffffff",
+                  border: "none",
+                  cursor: "pointer",
+                  boxShadow: "0 6px 20px rgba(190, 24, 93, 0.28)",
+                  transition: "all 0.2s ease"
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 8px 26px rgba(190, 24, 93, 0.38)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(190, 24, 93, 0.28)";
+                }}
+              >
+                <span>Voir toutes les sections & tout le catalogue</span>
+                <ArrowRight size={18} />
+              </button>
+            </div>
+          </>
         );
-      })}
+      })()}
 
 
 

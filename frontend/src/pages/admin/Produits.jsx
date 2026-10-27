@@ -11,7 +11,12 @@ import { subscribeRealtime } from "../../utils/realtime.js";
 import { formatPrice, formatPrice as fcfa } from "../../utils/currency.js";
 
 export default function AdminProduits() {
-  const { boutique } = useAuth();
+  const { boutique, user } = useAuth();
+  const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const canAddEdit = isAdmin || perms.includes("ajouter_modifier_produit") || perms.includes("gerer_produits");
+  const canDelete = isAdmin || perms.includes("supprimer_produit") || perms.includes("gerer_produits");
+
   const [activeTab, setActiveTab] = useState("liste"); // "liste" | "ajout"
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -21,6 +26,19 @@ export default function AdminProduits() {
   const [marques, setMarques] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
+
+  // Modal export PDF personnalisé avec sélection de colonnes
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfColumns, setPdfColumns] = useState({
+    nom: true,
+    marque: true,
+    categorie: true,
+    prixKMF: true,
+    prixFCFA: true,
+    coutAchat: true,
+    stock: true,
+    statut: true
+  });
 
   // États Assistant IA Multi-fournisseurs (Groq, Gemini, Cohere)
   const [aiLoading, setAiLoading] = useState(false);
@@ -328,13 +346,43 @@ export default function AdminProduits() {
   useEffect(() => { setCurrentPage(1); }, [search, filterCat, filterStock, filterGenre, filterMarque]);
 
   const totalItems = filteredProducts.length;
+
+  // Règle stricte : 1 seul prix par article (Prix Promo s'il existe et > 0, sinon Prix Normal. Jamais les 2 additionnés et le prix barré n'est pas compté)
+  const getProductPriceKMF = (p) => {
+    const promo = Number(p.prixPromo || 0);
+    if (promo > 0) return promo; // Uniquement le prix promo
+    return Number(p.prix || 0);  // Sinon le seul prix normal
+  };
+
+  const getProductPriceFCFA = (p) => {
+    const promo = Number(p.prixPromoSenegal || 0);
+    if (promo > 0) return promo; // Uniquement le prix promo Sénégal
+    return Number(p.prixSenegal || 0); // Sinon le seul prix normal Sénégal
+  };
+
+  const totalValeurComores = filteredProducts.reduce((sum, p) => {
+    return sum + (getProductPriceKMF(p) * Number(p.stock || 0));
+  }, 0);
+
+  const totalValeurSenegal = filteredProducts.reduce((sum, p) => {
+    return sum + (getProductPriceFCFA(p) * Number(p.stock || 0));
+  }, 0);
+
+  const totalUnitairesComores = filteredProducts.reduce((sum, p) => {
+    return sum + getProductPriceKMF(p);
+  }, 0);
+
+  const totalUnitairesSenegal = filteredProducts.reduce((sum, p) => {
+    return sum + getProductPriceFCFA(p);
+  }, 0);
+
   const paginatedProducts = filteredProducts.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
 
-  // Exporter la liste des produits au format PDF imprimable
-  const handleDownloadPDF = () => {
+  // Exporter la liste des produits au format PDF imprimable avec colonnes personnalisées
+  const handleGeneratePDF = (cols = pdfColumns) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
       alert("Veuillez autoriser les fenêtres pop-up pour exporter le PDF.");
@@ -344,24 +392,38 @@ export default function AdminProduits() {
     const totalStock = filteredProducts.reduce((sum, p) => sum + Number(p.stock || 0), 0);
     const valeurStock = filteredProducts.reduce((sum, p) => sum + (Number(p.stock || 0) * Number(p.coutAchat || 0)), 0);
 
+    const thCells = [];
+    if (cols.nom) thCells.push("<th>Nom du produit</th>");
+    if (cols.marque) thCells.push("<th>Marque</th>");
+    if (cols.categorie) thCells.push("<th>Catégorie</th>");
+    if (cols.prixKMF) thCells.push("<th>Prix Comores (KMF)</th>");
+    if (cols.prixFCFA) thCells.push("<th>Prix Sénégal (FCFA)</th>");
+    if (cols.coutAchat) thCells.push("<th>Coût d'achat (FCFA)</th>");
+    if (cols.stock) thCells.push("<th style=\"text-align: center;\">Stock</th>");
+    if (cols.statut) thCells.push("<th style=\"text-align: center;\">Statut</th>");
+
     const rowsHtml = filteredProducts.map((p, idx) => {
       const marqueNom = p.marque?.nom || p.Marque?.nom || "Universel";
       const catNom = p.Category?.nom || "Non classé";
       const prixKMF = p.prixPromo ? `${formatPrice(p.prixPromo, "KMF")} (Promo)` : formatPrice(p.prix, "KMF");
       const prixFCFA = p.prixPromoSenegal ? `${formatPrice(p.prixPromoSenegal, "FCFA")} (Promo)` : (p.prixSenegal ? formatPrice(p.prixSenegal, "FCFA") : "—");
-      const coutKMF = formatPrice(p.coutAchat || 0, "KMF");
+      const coutFCFA = formatPrice(p.coutAchat || 0, "FCFA");
+      const statutStr = p.stock <= 0 ? "Rupture" : (p.enPromo ? "En Promo" : "En Stock");
+      const statutColor = p.stock <= 0 ? "#dc2626" : (p.enPromo ? "#d97706" : "#059669");
+
+      const tdCells = [];
+      if (cols.nom) tdCells.push(`<td style="padding: 9px 12px; font-weight: 700; color: #1e293b;">${p.nom}</td>`);
+      if (cols.marque) tdCells.push(`<td style="padding: 9px 12px; color: #1d4ed8; font-weight: 600;">${marqueNom}</td>`);
+      if (cols.categorie) tdCells.push(`<td style="padding: 9px 12px; color: #475569;">${catNom}</td>`);
+      if (cols.prixKMF) tdCells.push(`<td style="padding: 9px 12px; font-weight: 700; color: #059669;">${prixKMF}</td>`);
+      if (cols.prixFCFA) tdCells.push(`<td style="padding: 9px 12px; font-weight: 700; color: #d97706;">${prixFCFA}</td>`);
+      if (cols.coutAchat) tdCells.push(`<td style="padding: 9px 12px; color: #64748b;">${coutFCFA}</td>`);
+      if (cols.stock) tdCells.push(`<td style="padding: 9px 12px; font-weight: 800; text-align: center; color: ${p.stock <= p.seuilAlerte ? "#dc2626" : "#1e293b"};">${p.stock} ${p.unite || "pièce"}</td>`);
+      if (cols.statut) tdCells.push(`<td style="padding: 9px 12px; text-align: center; font-weight: 700; color: ${statutColor};">${statutStr}</td>`);
 
       return `
         <tr style="border-bottom: 1px solid #e2e8f0; ${idx % 2 === 0 ? "background: #f8fafc;" : ""}">
-          <td style="padding: 9px 12px; font-weight: 700; color: #1e293b;">${p.nom}</td>
-          <td style="padding: 9px 12px; color: #1d4ed8; font-weight: 600;">${marqueNom}</td>
-          <td style="padding: 9px 12px; color: #475569;">${catNom}</td>
-          <td style="padding: 9px 12px; font-weight: 700; color: #059669;">${prixKMF}</td>
-          <td style="padding: 9px 12px; font-weight: 700; color: #d97706;">${prixFCFA}</td>
-          <td style="padding: 9px 12px; color: #64748b;">${coutKMF}</td>
-          <td style="padding: 9px 12px; font-weight: 800; text-align: center; color: ${p.stock <= p.seuilAlerte ? "#dc2626" : "#1e293b"};">
-            ${p.stock} ${p.unite || "pièce"}
-          </td>
+          ${tdCells.join("")}
         </tr>
       `;
     }).join("");
@@ -377,7 +439,7 @@ export default function AdminProduits() {
           body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; color: #1e293b; }
           .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; border-bottom: 2px solid #224B35; padding-bottom: 16px; }
           .title { font-size: 22px; font-weight: 800; color: #224B35; margin: 0; }
-          .kpi-box { display: flex; gap: 16px; margin-bottom: 20px; }
+          .kpi-box { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
           .kpi { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 16px; }
           .kpi-title { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; }
           .kpi-value { font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 4px; }
@@ -406,26 +468,22 @@ export default function AdminProduits() {
             <div class="kpi-title">Total Références</div>
             <div class="kpi-value">${filteredProducts.length} articles</div>
           </div>
+          ${cols.stock ? `
           <div class="kpi">
             <div class="kpi-title">Stock Total en Unités</div>
             <div class="kpi-value">${totalStock}</div>
-          </div>
+          </div>` : ""}
+          ${cols.coutAchat ? `
           <div class="kpi">
-            <div class="kpi-title">Valeur Stock (Coût Achat)</div>
-            <div class="kpi-value">${formatPrice(valeurStock, "KMF")}</div>
-          </div>
+            <div class="kpi-title">Valeur Stock (Coût Achat FCFA)</div>
+            <div class="kpi-value">${formatPrice(valeurStock, "FCFA")}</div>
+          </div>` : ""}
         </div>
 
         <table>
           <thead>
             <tr>
-              <th>Nom du produit</th>
-              <th>Marque</th>
-              <th>Catégorie</th>
-              <th>Prix Comores (KMF)</th>
-              <th>Prix Sénégal (FCFA)</th>
-              <th>Coût d'achat</th>
-              <th style="text-align: center;">Stock</th>
+              ${thCells.join("")}
             </tr>
           </thead>
           <tbody>
@@ -466,7 +524,7 @@ export default function AdminProduits() {
         {/* TABS & PDF BUTTON */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <button
-            onClick={handleDownloadPDF}
+            onClick={() => setShowPdfModal(true)}
             style={{
               display: "inline-flex", alignItems: "center", gap: 6,
               padding: "8px 16px", borderRadius: 24, fontSize: 13, fontWeight: 700,
@@ -474,7 +532,7 @@ export default function AdminProduits() {
               color: "var(--forest-dark)", cursor: "pointer",
               boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "all 0.15s ease"
             }}
-            title="Exporter l'inventaire complet des produits au format PDF"
+            title="Exporter l'inventaire complet des produits au format PDF personnalisé"
           >
             <Printer size={15} color="var(--forest)" />
             <span>Imprimer / PDF</span>
@@ -495,23 +553,25 @@ export default function AdminProduits() {
             >
               <List size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Liste des produits ({products.length})
             </button>
-            <button
-              className={`bs-btn-primary ${activeTab === "ajout" ? "" : "inactive"}`}
-              style={{
-                padding: "8px 18px",
-                borderRadius: 24,
-                fontSize: 13,
-                background: activeTab === "ajout" ? "var(--forest)" : "transparent",
-                color: activeTab === "ajout" ? "#fff" : "var(--muted)",
-                boxShadow: "none"
-              }}
-              onClick={() => {
-                if (!editingId) { setForm(initialForm); }
-                setActiveTab("ajout");
-              }}
-            >
-              <PlusCircle size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} /> {editingId ? "Modifier le produit" : "Ajouter un produit"}
-            </button>
+            {canAddEdit && (
+              <button
+                className={`bs-btn-primary ${activeTab === "ajout" ? "" : "inactive"}`}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: 24,
+                  fontSize: 13,
+                  background: activeTab === "ajout" ? "var(--forest)" : "transparent",
+                  color: activeTab === "ajout" ? "#fff" : "var(--muted)",
+                  boxShadow: "none"
+                }}
+                onClick={() => {
+                  if (!editingId) { setForm(initialForm); }
+                  setActiveTab("ajout");
+                }}
+              >
+                <PlusCircle size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} /> {editingId ? "Modifier le produit" : "Ajouter un produit"}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -536,6 +596,18 @@ export default function AdminProduits() {
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <span style={{ fontSize: 12, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Alertes Stock</span>
                 <span style={{ fontSize: 24, fontWeight: 800, color: "#B4483A" }}>{products.filter(p => p.stock <= p.seuilAlerte).length}</span>
+              </div>
+              <div style={{ width: 1, background: "var(--line)" }}></div>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <span style={{ fontSize: 12, color: "var(--forest)", textTransform: "uppercase", fontWeight: 700 }}>Total Prix Comores</span>
+                <span style={{ fontSize: 24, fontWeight: 800, color: "var(--forest-dark)" }}>{formatPrice(totalValeurComores, "KMF")}</span>
+                <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>Unitaire : {formatPrice(totalUnitairesComores, "KMF")}</span>
+              </div>
+              <div style={{ width: 1, background: "var(--line)" }}></div>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <span style={{ fontSize: 12, color: "#D97706", textTransform: "uppercase", fontWeight: 700 }}>Total Prix Sénégal</span>
+                <span style={{ fontSize: 24, fontWeight: 800, color: "#92400E" }}>{formatPrice(totalValeurSenegal, "FCFA")}</span>
+                <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>Unitaire : {formatPrice(totalUnitairesSenegal, "FCFA")}</span>
               </div>
             </div>
             
@@ -584,7 +656,7 @@ export default function AdminProduits() {
                 <th>Catégorie / Fournisseur</th>
                 <th>Prix Vente Comores</th>
                 <th>Prix Vente Sénégal</th>
-                <th>Coût d'achat</th>
+                <th>Coût d'achat (FCFA)</th>
                 <th>Stock</th>
                 <th>Actions</th>
               </tr>
@@ -665,7 +737,7 @@ export default function AdminProduits() {
                         <span style={{ color: "var(--muted)", fontSize: 12 }}>—</span>
                       )}
                     </td>
-                    <td style={{ color: "var(--muted)" }}>{formatPrice(p.coutAchat || 0, "KMF")}</td>
+                    <td style={{ color: "var(--muted)" }}>{formatPrice(p.coutAchat || 0, "FCFA")}</td>
                     <td className={p.stock <= p.seuilAlerte ? "bs-stock-low" : ""}>
                       <span style={{ fontWeight: 700 }}>{p.stock}</span> {p.unite}
                       {p.stock <= p.seuilAlerte && <AlertTriangle size={14} color="#B4483A" style={{ marginLeft: 6, verticalAlign: "-2px" }} />}
@@ -680,8 +752,13 @@ export default function AdminProduits() {
                       >
                         <Package size={15} />
                       </button>
-                      <button className="bs-icon-btn" title="Modifier" onClick={() => startEdit(p)}><Pencil size={15} /></button>{" "}
-                      <button className="bs-icon-btn" title="Supprimer" style={{ color: "#B4483A" }} onClick={() => deleteProduct(p.id)}><Trash2 size={15} /></button>
+                      {canAddEdit && (
+                        <button className="bs-icon-btn" title="Modifier" onClick={() => startEdit(p)}><Pencil size={15} /></button>
+                      )}
+                      {" "}
+                      {canDelete && (
+                        <button className="bs-icon-btn" title="Supprimer" style={{ color: "#B4483A" }} onClick={() => deleteProduct(p.id)}><Trash2 size={15} /></button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -1217,7 +1294,7 @@ export default function AdminProduits() {
                 </div>
 
                 <div className="bs-input-group">
-                  <label>Prix d'achat unitaire (€) *</label>
+                  <label>Prix d'achat unitaire (FCFA) *</label>
                   <input
                     className="bs-input"
                     type="number"
@@ -1408,6 +1485,147 @@ export default function AdminProduits() {
                     Garder ma photo + mettre l'IA en 2ème photo
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL SÉLECTION DES COLONNES POUR IMPRESSION / PDF */}
+      {showPdfModal && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 99999,
+          background: "rgba(15, 23, 42, 0.65)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 16
+        }}>
+          <div style={{
+            background: "#ffffff", borderRadius: 20, width: "100%", maxWidth: 520,
+            overflow: "hidden", boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
+            border: "1px solid var(--line)"
+          }}>
+            <div style={{
+              padding: "20px 24px", borderBottom: "1px solid var(--line)",
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              background: "var(--paper)"
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, color: "var(--forest-dark)", fontWeight: 800 }}>
+                  Export PDF & Impression
+                </h3>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
+                  Choisissez les colonnes à inclure dans le document
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPdfModal(false)}
+                style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--muted)" }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: 24 }}>
+              {/* Presets rapides */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setPdfColumns({
+                    nom: true, marque: true, categorie: true, prixKMF: true, prixFCFA: true, coutAchat: true, stock: true, statut: true
+                  })}
+                  style={{
+                    padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)",
+                    background: "#f1f5f9", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "var(--ink)"
+                  }}
+                >
+                  Tout cocher
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPdfColumns({
+                    nom: true, marque: true, categorie: true, prixKMF: true, prixFCFA: true, coutAchat: false, stock: true, statut: true
+                  })}
+                  style={{
+                    padding: "6px 12px", borderRadius: 8, border: "1px solid #bfdbfe",
+                    background: "#eff6ff", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#1d4ed8"
+                  }}
+                >
+                  Usage Client (Sans coût achat)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPdfColumns({
+                    nom: true, marque: false, categorie: false, prixKMF: true, prixFCFA: true, coutAchat: true, stock: true, statut: false
+                  })}
+                  style={{
+                    padding: "6px 12px", borderRadius: 8, border: "1px solid #fed7aa",
+                    background: "#fff7ed", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#c2410c"
+                  }}
+                >
+                  Tarifs & Stocks Seuls
+                </button>
+              </div>
+
+              {/* Liste des colonnes */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+                {[
+                  { key: "nom", label: "Nom du produit" },
+                  { key: "marque", label: "Marque" },
+                  { key: "categorie", label: "Catégorie" },
+                  { key: "prixKMF", label: "Prix Comores (KMF)" },
+                  { key: "prixFCFA", label: "Prix Sénégal (FCFA)" },
+                  { key: "coutAchat", label: "Coût d'Achat (FCFA)" },
+                  { key: "stock", label: "Stock & Unité" },
+                  { key: "statut", label: "Statut (En stock / Promo)" },
+                ].map(col => (
+                  <label
+                    key={col.key}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, padding: "10px 12px",
+                      borderRadius: 10, border: "1px solid",
+                      borderColor: pdfColumns[col.key] ? "var(--forest)" : "var(--line)",
+                      background: pdfColumns[col.key] ? "var(--forest-light)" : "#fff",
+                      cursor: "pointer", fontSize: 13, fontWeight: pdfColumns[col.key] ? 700 : 500,
+                      color: pdfColumns[col.key] ? "var(--forest-dark)" : "var(--ink)"
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!pdfColumns[col.key]}
+                      onChange={(e) => setPdfColumns(prev => ({ ...prev, [col.key]: e.target.checked }))}
+                      style={{ accentColor: "var(--forest)" }}
+                    />
+                    <span>{col.label}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowPdfModal(false)}
+                  style={{
+                    flex: 1, padding: "12px", borderRadius: 12, border: "1px solid var(--line)",
+                    background: "#fff", fontWeight: 600, cursor: "pointer", color: "var(--ink)"
+                  }}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPdfModal(false);
+                    handleGeneratePDF(pdfColumns);
+                  }}
+                  className="bs-btn-primary"
+                  style={{
+                    flex: 1.5, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8
+                  }}
+                >
+                  <Printer size={16} />
+                  Générer et Imprimer
+                </button>
               </div>
             </div>
           </div>

@@ -47,6 +47,7 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
   });
   const [showDropdown, setShowDropdown] = useState(false);
   const searchRef = useRef(null);
+  const mobileSearchRef = useRef(null);
   const userMenuRef = useRef(null);
   const categoriesRef = useRef(null);
   const mobileSearchInputRef = useRef(null);
@@ -117,27 +118,27 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
       // Analyse intelligente des mots-clés
       let suggestedTag = null;
       if (q.includes("charg") || q.includes("bloc") || q.includes("prise")) {
-        suggestedTag = { label: "⚡ Voir nos Chargeurs Rapides (20W à 65W)", url: "/catalogue?famille=Chargeurs" };
+        suggestedTag = { label: "Voir nos Chargeurs Rapides (20W à 65W)", url: "/catalogue?famille=Chargeurs" };
       } else if (q.includes("glac") || q.includes("verr") || q.includes("film") || q.includes("protect")) {
-        suggestedTag = { label: "🛡️ Découvrir nos Glaces Trempées 9D & Antiespion", url: "/catalogue?famille=Protections" };
+        suggestedTag = { label: "Découvrir nos Glaces Trempées 9D & Antiespion", url: "/catalogue?famille=Protections" };
       } else if (q.includes("coq") || q.includes("poch") || q.includes("hous") || q.includes("etui")) {
-        suggestedTag = { label: "📱 Voir nos Pochettes & Coques Antichoc", url: "/catalogue?famille=Pochettes" };
+        suggestedTag = { label: "Voir nos Pochettes & Coques Antichoc", url: "/catalogue?famille=Pochettes" };
       } else if (q.includes("ecout") || q.includes("airpod") || q.includes("casq") || q.includes("son")) {
-        suggestedTag = { label: "🎵 Explorer les Écouteurs Sans Fil & AirPods", url: "/catalogue?famille=Audio" };
+        suggestedTag = { label: "Explorer les Écouteurs Sans Fil & AirPods", url: "/catalogue?famille=Audio" };
       } else if (q.includes("cabl") || q.includes("fil")) {
-        suggestedTag = { label: "🔌 Découvrir nos Câbles USB-C & Lightning", url: "/catalogue?famille=Câbles" };
+        suggestedTag = { label: "Découvrir nos Câbles USB-C & Lightning", url: "/catalogue?famille=Câbles" };
       } else if (q.includes("power") || q.includes("batt")) {
-        suggestedTag = { label: "🔋 Voir nos Batteries Externes 20 000mAh", url: "/catalogue?famille=Powerbanks" };
+        suggestedTag = { label: "Voir nos Batteries Externes 20 000mAh", url: "/catalogue?famille=Powerbanks" };
       } else if (q.includes("iph") || q.includes("app")) {
-        suggestedTag = { label: "🍎 Tous les accessoires iPhone / Apple", url: "/catalogue?search=Apple" };
+        suggestedTag = { label: "Tous les accessoires iPhone / Apple", url: "/catalogue?search=Apple" };
       } else if (q.includes("sam")) {
-        suggestedTag = { label: "⚡ Tous les accessoires Samsung Galaxy", url: "/catalogue?search=Samsung" };
+        suggestedTag = { label: "Tous les accessoires Samsung Galaxy", url: "/catalogue?search=Samsung" };
       } else if (q.includes("tec")) {
-        suggestedTag = { label: "📱 Tous les accessoires Tecno", url: "/catalogue?search=Tecno" };
+        suggestedTag = { label: "Tous les accessoires Tecno", url: "/catalogue?search=Tecno" };
       } else if (q.includes("inf")) {
-        suggestedTag = { label: "📱 Tous les accessoires Infinix", url: "/catalogue?search=Infinix" };
+        suggestedTag = { label: "Tous les accessoires Infinix", url: "/catalogue?search=Infinix" };
       } else if (q.includes("xiao") || q.includes("red")) {
-        suggestedTag = { label: "⚡ Tous les accessoires Xiaomi & Redmi", url: "/catalogue?search=Xiaomi" };
+        suggestedTag = { label: "Tous les accessoires Xiaomi & Redmi", url: "/catalogue?search=Xiaomi" };
       }
 
       setSmartFallback({
@@ -155,7 +156,9 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
   // Click outside listener
   useEffect(() => {
     function handleClick(e) {
-      if (searchRef.current && !searchRef.current.contains(e.target)) {
+      const inDesktop = searchRef.current && searchRef.current.contains(e.target);
+      const inMobile = mobileSearchRef.current && mobileSearchRef.current.contains(e.target);
+      if (!inDesktop && !inMobile) {
         setShowDropdown(false);
       }
       if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
@@ -166,7 +169,11 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
       }
     }
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("touchstart", handleClick, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("touchstart", handleClick);
+    };
   }, []);
 
   function onSearch(e) {
@@ -258,7 +265,7 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
             }}>
               <Search size={18} color={isSearchFocused ? "#2563EB" : "var(--muted)"} style={{ marginRight: 10, flexShrink: 0, transition: "color 0.2s" }} />
               <input
-                placeholder={isSearchFocused ? "Ex: char, 20w, iphone, tecno spark, airpods, glace, pochette..." : "Rechercher un accessoire, chargeur, glace, pochette, marque (iPhone, Samsung, Tecno...)"}
+                placeholder={isSearchFocused ? "Ex: chargeur 20W, coque silicone, power bank, écouteurs..." : "Rechercher un chargeur, coque, power bank..."}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onFocus={() => { 
@@ -271,7 +278,7 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
                 autoComplete="off"
                 style={{
                   border: "none", background: "transparent", outline: "none",
-                  width: "100%", fontSize: 14.5, color: "var(--ink)", fontWeight: 500
+                  width: "100%", fontSize: 16, color: "var(--ink)", fontWeight: 500
                 }}
               />
               {query && (
@@ -633,31 +640,31 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
         </div>
 
         {/* ROW 1.5: MOBILE SEARCH BAR (VISIBLE ONLY ON MOBILE/TABLET) */}
-        <div className="bs-mobile-search-bar">
-          <div style={{ maxWidth: 1440, margin: "0 auto", padding: "0 20px 12px 20px", position: "relative" }}>
+        <div className="bs-mobile-search-bar" ref={mobileSearchRef}>
+          <div style={{ maxWidth: 1440, margin: "0 auto", padding: "0 16px 12px 16px", position: "relative" }}>
             {/* Overlay background when search is focused */}
             <div style={{
-              position: "fixed", inset: 0, background: "rgba(255,255,255,0.7)", backdropFilter: "blur(4px)",
-              opacity: isSearchFocused ? 1 : 0, pointerEvents: isSearchFocused ? "auto" : "none",
-              transition: "opacity 0.3s ease", zIndex: -1
+              position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", backdropFilter: "blur(2px)",
+              opacity: isSearchFocused && query.trim() ? 1 : 0, pointerEvents: isSearchFocused && query.trim() ? "auto" : "none",
+              transition: "opacity 0.25s ease", zIndex: 100
             }} onClick={() => setIsSearchFocused(false)}></div>
 
             <form onSubmit={onSearch} style={{
-              display: "flex", alignItems: "center", background: "var(--paper)",
-              border: isSearchFocused ? "2px solid var(--forest)" : "1.5px solid var(--line)", 
-              borderRadius: 24, padding: isSearchFocused ? "8px 16px" : "8px 12px",
-              boxShadow: isSearchFocused ? "0 12px 40px rgba(0,0,0,0.12)" : "none",
-              transition: "all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.2)",
-              position: "relative", zIndex: 20
+              display: "flex", alignItems: "center", background: "#ffffff",
+              border: isSearchFocused ? "2px solid #2563EB" : "1.5px solid var(--line)", 
+              borderRadius: 24, padding: "8px 14px",
+              boxShadow: isSearchFocused ? "0 8px 24px rgba(37,99,235,0.15)" : "0 2px 6px rgba(0,0,0,0.03)",
+              transition: "all 0.2s ease",
+              position: "relative", zIndex: 110
             }}>
-              <Search size={16} color={isSearchFocused ? "var(--forest)" : "var(--muted)"} style={{ marginRight: isSearchFocused ? 6 : 4, flexShrink: 0, transition: "color 0.2s" }} />
+              <Search size={17} color={isSearchFocused ? "#2563EB" : "var(--muted)"} style={{ marginRight: 8, flexShrink: 0, transition: "color 0.2s" }} />
               <input
-                placeholder={isSearchFocused ? "Rechercher un produit..." : "Recherche"}
+                placeholder="Rechercher un chargeur, coque, power bank..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onFocus={() => { 
                   setIsSearchFocused(true);
-                  if (results.length > 0) setShowDropdown(true); 
+                  if (query.trim()) setShowDropdown(true); 
                 }}
                 onBlur={() => {
                   setTimeout(() => setIsSearchFocused(false), 400);
@@ -665,62 +672,184 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
                 autoComplete="off"
                 style={{
                   border: "none", background: "transparent", outline: "none",
-                  width: "100%", fontSize: isSearchFocused ? 14 : 12.5, color: "var(--ink)", fontWeight: 500
+                  width: "100%", fontSize: 16, color: "var(--ink)", fontWeight: 500
                 }}
               />
               {query && (
                 <button type="button" onClick={clearSearch} style={{
-                  background: "none", border: "none", cursor: "pointer", color: "var(--muted)",
-                  display: "flex", alignItems: "center", padding: 0, marginLeft: 4
+                  background: "var(--line)", border: "none", borderRadius: "50%", width: 22, height: 22,
+                  cursor: "pointer", color: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center",
+                  padding: 0, marginLeft: 6
                 }}>
-                  <X size={15} />
+                  <X size={14} />
                 </button>
               )}
             </form>
 
-            {/* LIVE SEARCH DROPDOWN */}
-            {showDropdown && isSearchFocused && (
+            {/* LIVE SEARCH DROPDOWN MOBILE (EXACTEMENT COMME SUR WEB / DESKTOP) */}
+            {showDropdown && isSearchFocused && query.trim() && (
               <div style={{
-                position: "absolute", top: "calc(100% - 4px)", left: 20, right: 20,
-                background: "#fff", borderRadius: 16, border: "1px solid var(--line)",
-                boxShadow: "0 16px 50px rgba(0,0,0,0.15)", zIndex: 3000, overflow: "hidden",
-                animation: "popIn 0.2s ease-out"
+                position: "absolute", top: "calc(100% + 6px)", left: 16, right: 16,
+                background: "#ffffff", borderRadius: 16, border: "1.5px solid var(--line)",
+                boxShadow: "0 18px 45px rgba(0,0,0,0.2)", zIndex: 3000, overflow: "hidden",
+                animation: "popIn 0.2s ease-out", maxHeight: "68vh", overflowY: "auto",
+                WebkitOverflowScrolling: "touch"
               }}>
                 {results.length === 0 ? (
-                  <div style={{ padding: "16px 18px", fontSize: 13, color: "var(--muted)", textAlign: "center" }}>
-                    Aucun produit trouvé pour « {query} »
+                  <div style={{ padding: "16px 14px" }}>
+                    <div style={{
+                      background: "#FEF2F2", border: "1px solid #FEE2E2", borderRadius: 10,
+                      padding: "10px 12px", color: "#991B1B", fontSize: 13, fontWeight: 600,
+                      marginBottom: 12, display: "flex", alignItems: "center", gap: 8
+                    }}>
+                      <Search size={16} color="#DC2626" />
+                      <span>Aucun accessoire exact trouvé pour « <strong>{query}</strong> ».</span>
+                    </div>
+
+                    {smartFallback?.suggestedTag && (
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#1E40AF", letterSpacing: "0.8px", marginBottom: 6 }}>
+                          Suggestion intelligente :
+                        </div>
+                        <button
+                          type="button"
+                          onMouseDown={() => {
+                            setShowDropdown(false);
+                            navigate(smartFallback.suggestedTag.url);
+                          }}
+                          onTouchStart={() => {
+                            setShowDropdown(false);
+                            navigate(smartFallback.suggestedTag.url);
+                          }}
+                          style={{
+                            width: "100%", padding: "10px 14px", borderRadius: 10,
+                            background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
+                            color: "#fff", border: "none", fontWeight: 700, fontSize: 13,
+                            cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between",
+                            boxShadow: "0 4px 12px rgba(37,99,235,0.25)"
+                          }}
+                        >
+                          <span>{smartFallback.suggestedTag.label}</span>
+                          <span style={{ fontSize: 15 }}>→</span>
+                        </button>
+                      </div>
+                    )}
+
+                    <div style={{ fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.8px", marginBottom: 8 }}>
+                      Accessoires recommandés pour vous :
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {(smartFallback?.recommendations || allProducts.slice(0, 3)).map((p) => {
+                        const marqueNom = p.marque?.nom || p.Marque?.nom;
+                        return (
+                          <div
+                            key={p.id}
+                            onMouseDown={() => goToProduct(p.id)}
+                            onTouchStart={() => goToProduct(p.id)}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+                              borderRadius: 8, background: "var(--paper)", cursor: "pointer",
+                              border: "1px solid var(--line)"
+                            }}
+                          >
+                            <img
+                              src={p.imageUrl || "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=80&q=80"}
+                              alt={p.nom}
+                              style={{ width: 38, height: 38, borderRadius: 6, objectFit: "cover", flexShrink: 0 }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 12.5, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {p.nom}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                                {marqueNom && <span style={{ fontWeight: 700, color: "#2563EB" }}>{marqueNom}</span>}
+                                <span>• {p.Category?.nom || "Accessoire"}</span>
+                              </div>
+                            </div>
+                            <div style={{ fontWeight: 800, fontSize: 12.5, color: "#2563EB" }}>
+                              {fcfa(p.prixPromo || p.prix)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>Recherches fréquentes :</span>
+                      {["Chargeurs 20W", "Glaces 9D", "Pochettes Silicone", "AirPods", "Câbles Type-C", "Powerbank"].map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onMouseDown={() => {
+                            setQuery(tag);
+                            setShowDropdown(false);
+                            navigate(`/catalogue?search=${encodeURIComponent(tag)}`);
+                          }}
+                          onTouchStart={() => {
+                            setQuery(tag);
+                            setShowDropdown(false);
+                            navigate(`/catalogue?search=${encodeURIComponent(tag)}`);
+                          }}
+                          style={{
+                            background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 10,
+                            padding: "4px 8px", fontSize: 11, fontWeight: 600, color: "var(--ink)", cursor: "pointer"
+                          }}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <>
-                    {results.map(p => (
-                      <div key={p.id} onMouseDown={() => goToProduct(p.id)} style={{
-                        display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
-                        cursor: "pointer", borderBottom: "1px solid var(--line)", transition: "background 0.15s"
-                      }}
-                        onMouseEnter={e => e.currentTarget.style.background = "var(--paper)"}
-                        onMouseLeave={e => e.currentTarget.style.background = "#fff"}
-                      >
-                        <img
-                          src={p.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=60&q=80"}
-                          alt={p.nom}
-                          style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover", flexShrink: 0, border: "1px solid var(--line)" }}
-                        />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {p.nom}
+                    <div style={{ padding: "8px 14px 6px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", color: "var(--muted)", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between" }}>
+                      <span>Suggestions instantanées ({results.length})</span>
+                      <span style={{ color: "#2563EB", fontWeight: 700 }}>Soilihitech</span>
+                    </div>
+                    {results.map(p => {
+                      const marqueNom = p.marque?.nom || p.Marque?.nom;
+                      return (
+                        <div key={p.id}
+                          onMouseDown={() => goToProduct(p.id)}
+                          onTouchStart={() => goToProduct(p.id)}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                            cursor: "pointer", borderBottom: "1px solid var(--line)"
+                          }}
+                        >
+                          <img
+                            src={p.imageUrl || "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=80&q=80"}
+                            alt={p.nom}
+                            style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover", flexShrink: 0, border: "1px solid var(--line)" }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {p.nom}
+                            </div>
+                            <div style={{ fontSize: 11.5, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                              {marqueNom && (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 4,
+                                  background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE"
+                                }}>
+                                  {marqueNom}
+                                </span>
+                              )}
+                              <span>{p.Category?.nom || "Accessoire"}</span>
+                            </div>
                           </div>
-                          <div style={{ fontSize: 12, color: "var(--muted)" }}>{p.Category?.nom}</div>
+                          <div style={{ fontWeight: 800, fontSize: 13, color: "#1E3A8A", flexShrink: 0 }}>
+                            {fcfa(p.prixPromo || p.prix)}
+                          </div>
                         </div>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: "var(--forest-dark)", flexShrink: 0 }}>
-                          {fcfa(p.prixPromo || p.prix)}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <div
                       onMouseDown={() => { setShowDropdown(false); navigate(`/catalogue?search=${encodeURIComponent(query.trim())}`); }}
-                      style={{ padding: "10px 14px", textAlign: "center", fontSize: 13, color: "var(--forest)", fontWeight: 700, cursor: "pointer", background: "var(--forest-light)" }}
+                      onTouchStart={() => { setShowDropdown(false); navigate(`/catalogue?search=${encodeURIComponent(query.trim())}`); }}
+                      style={{ padding: "12px 14px", textAlign: "center", fontSize: 13, color: "#2563EB", fontWeight: 700, cursor: "pointer", background: "#EFF6FF" }}
                     >
-                      Voir tous les résultats pour « {query} »
+                      Voir tous les résultats pour « {query} » →
                     </div>
                   </>
                 )}

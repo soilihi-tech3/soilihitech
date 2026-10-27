@@ -34,7 +34,7 @@ export default function ReceiptModal({ order, boutique, onClose }) {
   if (!order) return null;
 
   const storeName = boutique?.nom || "Marché Vert";
-  const activeDevise = boutique?.devise || "EUR";
+  const activeDevise = order.devise || boutique?.devise || "KMF";
 
   // 1. DYNAMIC CLIENT NAME
   const clientName = order.client?.nom || order.nomClient || user?.nom || "Client connecté";

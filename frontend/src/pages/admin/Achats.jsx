@@ -94,8 +94,8 @@ export default function Achats() {
       const prodNom = a.product?.nom || "Produit";
       const fournNom = a.fournisseur?.nom || "Achat Direct";
       const qte = a.quantite || 1;
-      const pu = formatPrice(a.prixAchatUnitaire || 0, "KMF");
-      const tot = formatPrice(a.totalAchat || 0, "KMF");
+      const pu = formatPrice(a.prixAchatUnitaire || 0, "FCFA");
+      const tot = formatPrice(a.totalAchat || 0, "FCFA");
 
       return `
         <tr>
@@ -150,15 +150,11 @@ export default function Achats() {
         <div class="kpi-container">
           <div class="kpi-box">
             <div class="kpi-title">Total Dépenses d'Achats</div>
-            <div class="kpi-value" style="color: #dc2626;">${formatPrice(kpis.totalDepenses || totalDepensesFiltrees, "KMF")}</div>
+            <div class="kpi-value" style="color: #dc2626;">${formatPrice(kpis.totalDepenses || totalDepensesFiltrees, "FCFA")}</div>
           </div>
           <div class="kpi-box">
-            <div class="kpi-title">Bénéfice Prévisionnel Comores</div>
-            <div class="kpi-value" style="color: #163424;">${formatPrice(kpis.beneficePrevisionnelKMF, "KMF")}</div>
-          </div>
-          <div class="kpi-box">
-            <div class="kpi-title">Bénéfice Prévisionnel Sénégal</div>
-            <div class="kpi-value" style="color: #b45309;">${formatPrice(kpis.beneficePrevisionnelFCFA, "FCFA")}</div>
+            <div class="kpi-title">Total Lignes d'Achats</div>
+            <div class="kpi-value" style="color: #163424;">${filteredAchats.length}</div>
           </div>
         </div>
 
@@ -221,7 +217,7 @@ export default function Achats() {
 
       {/* KPI SUMMARY CARDS */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}>
-        {/* 1. DÉPENSES TOTALES */}
+        {/* DÉPENSES TOTALES */}
         <div className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ background: "#FEE2E2", color: "#DC2626", borderRadius: 12, padding: 12 }}>
             <DollarSign size={22} />
@@ -229,38 +225,12 @@ export default function Achats() {
           <div>
             <div style={{ fontSize: 12, color: "#DC2626", fontWeight: 700, textTransform: "uppercase" }}>Dépenses Totales d'Achats</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: "#991B1B" }}>
-              {formatPrice(kpis.totalDepenses || totalDepensesFiltrees, "KMF")}
+              {formatPrice(kpis.totalDepenses || totalDepensesFiltrees, "FCFA")}
             </div>
           </div>
         </div>
 
-        {/* 2. BÉNÉFICE PRÉVISIONNEL COMORES */}
-        <div className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ background: "var(--forest-light)", color: "var(--forest)", borderRadius: 12, padding: "10px 12px", fontSize: 12, fontWeight: 900 }}>
-            KM
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--forest)", fontWeight: 700, textTransform: "uppercase" }}>Bénéfice Prévisionnel Comores</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--forest-dark)" }}>
-              {formatPrice(kpis.beneficePrevisionnelKMF, "KMF")}
-            </div>
-          </div>
-        </div>
-
-        {/* 3. BÉNÉFICE PRÉVISIONNEL SÉNÉGAL */}
-        <div className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ background: "#FEF3C7", color: "#D97706", borderRadius: 12, padding: "10px 12px", fontSize: 12, fontWeight: 900 }}>
-            SN
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "#B45309", fontWeight: 700, textTransform: "uppercase" }}>Bénéfice Prévisionnel Sénégal</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#92400E" }}>
-              {formatPrice(kpis.beneficePrevisionnelFCFA, "FCFA")}
-            </div>
-          </div>
-        </div>
-
-        {/* 4. TOTAL ACHATS */}
+        {/* TOTAL ACHATS */}
         <div className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ background: "var(--paper)", color: "var(--ink)", borderRadius: 12, padding: 12 }}>
             <ShoppingBag size={22} />
@@ -341,8 +311,8 @@ export default function Achats() {
               <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Produit</th>
               <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Fournisseur</th>
               <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Quantité</th>
-              <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Prix Achat Unitaire</th>
-              <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", textAlign: "right" }}>Coût Total</th>
+              <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Prix Achat (FCFA)</th>
+              <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", textAlign: "right" }}>Coût Total (FCFA)</th>
             </tr>
           </thead>
           <tbody>
@@ -390,13 +360,13 @@ export default function Achats() {
 
                     <td style={{ padding: "14px 18px" }}>
                       <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>
-                        {formatPrice(a.prixAchatUnitaire, "KMF")}
+                        {formatPrice(a.prixAchatUnitaire, "FCFA")}
                       </div>
                     </td>
 
                     <td style={{ padding: "14px 18px", textAlign: "right" }}>
                       <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--forest-dark)" }}>
-                        {formatPrice(a.totalAchat, "KMF")}
+                        {formatPrice(a.totalAchat, "FCFA")}
                       </div>
                     </td>
                   </tr>

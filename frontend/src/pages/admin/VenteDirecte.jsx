@@ -7,7 +7,7 @@ import api from "../../api";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { subscribeRealtime } from "../../utils/realtime.js";
 
-import { formatPrice as fcfa } from "../../utils/currency.js";
+import { formatPrice as fcfa, getActiveCurrency } from "../../utils/currency.js";
 
 export default function VenteDirecte() {
   const { boutique } = useAuth();
@@ -21,6 +21,23 @@ export default function VenteDirecte() {
   const [loading, setLoading] = useState(false);
   const [completedSale, setCompletedSale] = useState(null);
   const [mobileTab, setMobileTab] = useState("produits"); // 'produits' | 'panier'
+  const [activeCurrency, setActiveCurrency] = useState(() => getActiveCurrency());
+
+  useEffect(() => {
+    const handleCurr = (e) => setActiveCurrency(e.detail);
+    window.addEventListener("currency_changed", handleCurr);
+    return () => window.removeEventListener("currency_changed", handleCurr);
+  }, []);
+
+  function getEffectivePrice(p, curr = activeCurrency) {
+    if (!p) return 0;
+    if (curr === "FCFA") {
+      if (p.enPromo && p.prixPromoSenegal) return Number(p.prixPromoSenegal);
+      return Number(p.prixSenegal || p.prix || 0);
+    }
+    if (p.enPromo && p.prixPromo) return Number(p.prixPromo);
+    return Number(p.prix || 0);
+  }
 
 
   function load() {
@@ -79,7 +96,7 @@ export default function VenteDirecte() {
   }
 
   const sousTotal = cart.reduce((sum, item) => {
-    const prixEff = item.product.enPromo && item.product.prixPromo ? Number(item.product.prixPromo) : Number(item.product.prix);
+    const prixEff = getEffectivePrice(item.product, activeCurrency);
     return sum + (prixEff * item.quantite);
   }, 0);
 
@@ -96,7 +113,8 @@ export default function VenteDirecte() {
         items: itemsPayload,
         clientNom: clientNom.trim() || "Client comptoir",
         clientTelephone: clientTelephone.trim() || "",
-        moyenPaiement
+        moyenPaiement,
+        devise: activeCurrency
       });
 
       setCompletedSale(res.data);
@@ -161,7 +179,7 @@ export default function VenteDirecte() {
           <div className="bs-pos-products-grid">
             {filteredProducts.map(p => {
               const inStock = p.stock > 0;
-              const prixEff = p.enPromo && p.prixPromo ? Number(p.prixPromo) : Number(p.prix);
+              const prixEff = getEffectivePrice(p, activeCurrency);
 
               return (
                 <div
@@ -190,7 +208,7 @@ export default function VenteDirecte() {
                     
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                       <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--forest-dark)" }}>
-                        {fcfa(prixEff)} {p.unite ? <span style={{ fontSize: 11, fontWeight: 500, color: "var(--muted)" }}>/ {p.unite}</span> : ""}
+                        {fcfa(prixEff, activeCurrency)} {p.unite ? <span style={{ fontSize: 11, fontWeight: 500, color: "var(--muted)" }}>/ {p.unite}</span> : ""}
                       </div>
                       <span style={{ fontSize: 11, fontWeight: 700, color: inStock ? "#1F4D3A" : "#B4483A" }}>
                         {inStock ? `Stock: ${p.stock}` : "Épuisé"}
@@ -236,7 +254,7 @@ export default function VenteDirecte() {
                 </div>
               ) : (
                 cart.map(item => {
-                  const prixEff = item.product.enPromo && item.product.prixPromo ? Number(item.product.prixPromo) : Number(item.product.prix);
+                  const prixEff = getEffectivePrice(item.product, activeCurrency);
 
                   return (
                     <div key={item.product.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, background: "var(--paper)", borderRadius: 10, border: "1px solid var(--line)" }}>
@@ -250,7 +268,7 @@ export default function VenteDirecte() {
                           {item.product.nom}
                         </div>
                         <div style={{ fontSize: 12, color: "var(--forest)", fontWeight: 700 }}>
-                          {fcfa(prixEff)} x {item.quantite} = {fcfa(prixEff * item.quantite)}
+                          {fcfa(prixEff, activeCurrency)} x {item.quantite} = {fcfa(prixEff * item.quantite, activeCurrency)}
                         </div>
                       </div>
 
@@ -327,7 +345,7 @@ export default function VenteDirecte() {
             <div style={{ background: "var(--paper)", padding: 14, borderRadius: 12, border: "1px solid var(--line)", marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>Total à Payer</span>
-                <span style={{ fontSize: 22, fontWeight: 900, color: "var(--forest-dark)" }}>{fcfa(sousTotal)}</span>
+                <span style={{ fontSize: 22, fontWeight: 900, color: "var(--forest-dark)" }}>{fcfa(sousTotal, activeCurrency)}</span>
               </div>
             </div>
 
@@ -340,7 +358,7 @@ export default function VenteDirecte() {
               {loading ? (
                 "Validation en cours..."
               ) : (
-                <><CheckCircle size={18} /> Valider la Vente Directe</>
+                <><CheckCircle size={18} /> Valider la Vente Directe ({activeCurrency})</>
               )}
             </button>
           </div>
@@ -350,7 +368,7 @@ export default function VenteDirecte() {
       {/* FLOATING ACTION BUTTON ON MOBILE */}
       {cart.length > 0 && mobileTab === "produits" && (
         <button className="bs-pos-mobile-float-cart" onClick={() => setMobileTab("panier")}>
-          <ShoppingCart size={18} /> Voir / Valider le Panier ({cart.reduce((sum, item) => sum + item.quantite, 0)}) · {fcfa(sousTotal)}
+          <ShoppingCart size={18} /> Voir / Valider le Panier ({cart.reduce((sum, item) => sum + item.quantite, 0)}) · {fcfa(sousTotal, activeCurrency)}
         </button>
       )}
 
@@ -400,6 +418,7 @@ export default function VenteDirecte() {
               </div>
 
               {completedSale.items?.map((it, idx) => {
+                const saleDev = completedSale.devise || activeCurrency;
                 const pu = Number(it.prixUnitaire || it.product?.prix || 0);
                 const totLine = pu * it.quantite;
 
@@ -409,8 +428,8 @@ export default function VenteDirecte() {
                       {it.product?.nom || "Produit"}
                     </span>
                     <span style={{ textAlign: "center" }}>{it.quantite}</span>
-                    <span style={{ textAlign: "right" }}>{pu.toFixed(2)} €</span>
-                    <span style={{ textAlign: "right", fontWeight: 700 }}>{totLine.toFixed(2)} €</span>
+                    <span style={{ textAlign: "right" }}>{fcfa(pu, saleDev)}</span>
+                    <span style={{ textAlign: "right", fontWeight: 700 }}>{fcfa(totLine, saleDev)}</span>
                   </div>
                 );
               })}
@@ -420,7 +439,7 @@ export default function VenteDirecte() {
             <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#1E293B", marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 900, color: "#0F172A" }}>
                 <span>TOTAL RÉGLÉ :</span>
-                <span>{fcfa(completedSale.total)}</span>
+                <span>{fcfa(completedSale.total, completedSale.devise || activeCurrency)}</span>
               </div>
             </div>
 

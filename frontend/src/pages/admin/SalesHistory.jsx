@@ -36,6 +36,7 @@ export default function SalesHistory() {
 
   // Filter state
   const [search, setSearch] = useState("");
+  const [filterPays, setFilterPays] = useState("tous"); // "tous" | "KM" | "SN"
   const [filterType, setFilterType] = useState("tous"); // "tous" | "vente_directe" | "commande_enligne"
   const [filterPaiement, setFilterPaiement] = useState("tous"); // "tous" | "cash" | "mvola" | "wero" | "carte"
   const [filterEmploye, setFilterEmploye] = useState("tous");
@@ -84,6 +85,11 @@ export default function SalesHistory() {
 
     if (filterType !== "tous" && saleType !== filterType) return false;
 
+    // Filter Pays / Devise
+    const orderDevise = o.devise || "KMF";
+    if (filterPays === "KM" && orderDevise === "FCFA") return false;
+    if (filterPays === "SN" && orderDevise !== "FCFA") return false;
+
     // Paiement filter
     if (filterPaiement !== "tous") {
       const p = o.moyenPaiement;
@@ -131,20 +137,10 @@ export default function SalesHistory() {
   });
 
   // Calculate totals for KPI cards
+  const totalVentesCount = filteredOrders.length;
+
   const totalCash = filteredOrders
     .filter(o => o.moyenPaiement === "cash" || o.moyenPaiement === "especes")
-    .reduce((sum, o) => sum + Number(o.total || 0), 0);
-
-  const totalMvola = filteredOrders
-    .filter(o => o.moyenPaiement === "mvola")
-    .reduce((sum, o) => sum + Number(o.total || 0), 0);
-
-  const totalWero = filteredOrders
-    .filter(o => o.moyenPaiement === "wero" || o.moyenPaiement === "holam")
-    .reduce((sum, o) => sum + Number(o.total || 0), 0);
-
-  const totalCarte = filteredOrders
-    .filter(o => o.moyenPaiement === "carte")
     .reduce((sum, o) => sum + Number(o.total || 0), 0);
 
   const totalComores = filteredOrders
@@ -155,10 +151,8 @@ export default function SalesHistory() {
     .filter(o => o.devise === "FCFA")
     .reduce((sum, o) => sum + Number(o.total || 0), 0);
 
-  const totalGlobal = filteredOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
-
   // Reset page
-  useEffect(() => { setCurrentPage(1); }, [search, filterType, filterPaiement, filterEmploye, filterAnnee, filterMois, isTodayOnly]);
+  useEffect(() => { setCurrentPage(1); }, [search, filterPays, filterType, filterPaiement, filterEmploye, filterAnnee, filterMois, isTodayOnly]);
 
   const totalItems = filteredOrders.length;
   const paginatedOrders = filteredOrders.slice(
@@ -249,6 +243,18 @@ export default function SalesHistory() {
             />
           </div>
 
+          {/* FILTER: PAYS (COMORES VS SÉNÉGAL) */}
+          <select
+            className="bs-select"
+            style={{ flex: 1, minWidth: 160, height: 40, fontWeight: 700 }}
+            value={filterPays}
+            onChange={(e) => setFilterPays(e.target.value)}
+          >
+            <option value="tous">🌍 Tous les pays</option>
+            <option value="KM">🇰🇲 Comores (KMF)</option>
+            <option value="SN">🇸🇳 Sénégal (FCFA)</option>
+          </select>
+
           {/* FILTER: TYPE VENTE */}
           <select
             className="bs-select"
@@ -330,74 +336,44 @@ export default function SalesHistory() {
       </div>
 
       {/* KPI SUMMARY CARDS */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 20 }}>
-        {/* TOTAL CASH */}
-        <div className="bs-panel" style={{ padding: 16, background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#166534", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
-            <DollarSign size={15} /> TOTAL CASH
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 14, marginBottom: 20 }}>
+        {/* NOMBRE TOTAL DE VENTES */}
+        <div className="bs-panel" style={{ padding: 16, background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--forest)", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
+            <ShoppingBag size={15} /> NOMBRE TOTAL DE VENTES
           </div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#15803D", marginTop: 6 }}>
-            {formatPrice(totalCash, boutique?.devise || "KMF")}
-          </div>
-        </div>
-
-        {/* TOTAL MVOLA */}
-        <div className="bs-panel" style={{ padding: 16, background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#047857", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
-            <Smartphone size={15} /> TOTAL MVOLA
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#059669", marginTop: 6 }}>
-            {formatPrice(totalMvola, boutique?.devise || "KMF")}
-          </div>
-        </div>
-
-        {/* TOTAL WERO */}
-        <div className="bs-panel" style={{ padding: 16, background: "#FEFCE8", border: "1px solid #FEF08A", borderRadius: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#854D0E", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
-            <Smartphone size={15} /> TOTAL WERO
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#CA8A04", marginTop: 6 }}>
-            {formatPrice(totalWero, boutique?.devise || "KMF")}
-          </div>
-        </div>
-
-        {/* TOTAL CARTE */}
-        <div className="bs-panel" style={{ padding: 16, background: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#6D28D9", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
-            <CreditCard size={15} /> TOTAL CARTE
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#7C3AED", marginTop: 6 }}>
-            {formatPrice(totalCarte, boutique?.devise || "KMF")}
+          <div style={{ fontSize: 24, fontWeight: 900, color: "var(--forest-dark)", marginTop: 6 }}>
+            {totalVentesCount} <span style={{ fontSize: 14, fontWeight: 700, color: "var(--muted)" }}>vente{totalVentesCount > 1 ? "s" : ""}</span>
           </div>
         </div>
 
         {/* VENTES COMORES */}
-        <div className="bs-panel" style={{ padding: 16, background: "#EBF7F0", border: "1px solid #A7F3D0", borderRadius: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--forest-dark)", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
+        <div className="bs-panel" style={{ padding: 16, background: "#EBF7F0", border: "1.5px solid #A7F3D0", borderRadius: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#166534", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
             <span style={{ background: "var(--forest)", color: "#fff", padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 900 }}>KM</span> VENTES COMORES
           </div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "var(--forest-dark)", marginTop: 6 }}>
+          <div style={{ fontSize: 24, fontWeight: 900, color: "var(--forest-dark)", marginTop: 6 }}>
             {formatPrice(totalComores, "KMF")}
           </div>
         </div>
 
         {/* VENTES SÉNÉGAL */}
-        <div className="bs-panel" style={{ padding: 16, background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: 14 }}>
+        <div className="bs-panel" style={{ padding: 16, background: "#FEF3C7", border: "1.5px solid #FDE68A", borderRadius: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#92400E", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
             <span style={{ background: "#D97706", color: "#fff", padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 900 }}>SN</span> VENTES SÉNÉGAL
           </div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#92400E", marginTop: 6 }}>
+          <div style={{ fontSize: 24, fontWeight: 900, color: "#92400E", marginTop: 6 }}>
             {formatPrice(totalSenegal, "FCFA")}
           </div>
         </div>
 
-        {/* TOTAL GLOBAL */}
-        <div className="bs-panel" style={{ padding: 16, background: "var(--forest-light)", border: "1px solid #A7F3D0", borderRadius: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--forest-dark)", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
-            <ShoppingBag size={15} /> TOTAL GLOBAL
+        {/* TOTAL CASH */}
+        <div className="bs-panel" style={{ padding: 16, background: "#F0FDF4", border: "1.5px solid #BBF7D0", borderRadius: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#166534", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
+            <DollarSign size={15} /> TOTAL CASH ENCAISSÉ
           </div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "var(--forest-dark)", marginTop: 6 }}>
-            {formatPrice(totalGlobal, boutique?.devise || "KMF")}
+          <div style={{ fontSize: 24, fontWeight: 900, color: "#15803D", marginTop: 6 }}>
+            {formatPrice(totalCash, boutique?.devise || "KMF")}
           </div>
         </div>
       </div>
@@ -501,8 +477,13 @@ export default function SalesHistory() {
                       {isCash ? "Cash / Espèces" : isMvola ? "MVola" : isWero ? "Wero" : "Carte"}
                     </span>
                   </td>
-                  <td style={{ fontWeight: 800, fontSize: 14, color: "var(--forest-dark)", whiteSpace: "nowrap" }}>
-                    {fcfa(o.total)}
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--forest-dark)" }}>
+                      {fcfa(o.total, o.devise || "KMF")}
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: (o.devise === "FCFA" ? "#FEF3C7" : "#EFF6FF"), color: (o.devise === "FCFA" ? "#B45309" : "#1D4ED8") }}>
+                      {o.devise === "FCFA" ? "🇸🇳 Sénégal" : "🇰🇲 Comores"}
+                    </span>
                   </td>
                   <td>
                     <button
