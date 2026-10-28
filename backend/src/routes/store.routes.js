@@ -1,6 +1,6 @@
 const express = require("express");
 const { Op } = require("sequelize");
-const { sequelize, Product, Category, Order, OrderItem, Review, User, Notification, Famille, RechargePlan, Marque, Testimonial } = require("../models");
+const { sequelize, Product, Category, Order, OrderItem, Review, User, Notification, Famille, RechargePlan, Marque, Testimonial, PhoneBrand, PhoneModel } = require("../models");
 const { authenticate, optionalAuthenticate, requireRole, loadBoutique } = require("../middleware/auth");
 const { cacheMiddleware, clearCachePattern } = require("../config/cache");
 const { sendOrderConfirmationEmail, sendOrderStatusEmail } = require("../services/email.service");
@@ -100,8 +100,10 @@ router.get(["/:slug", "/:slug/boutique"], loadBoutique, cacheMiddleware(15), (re
 // GET /api/store/:slug/familles (cached 10 min)
 router.get("/:slug/familles", loadBoutique, cacheMiddleware(600), async (req, res, next) => {
   try {
-    const list = await Famille.findAll({ where: { boutiqueId: req.boutique.id } });
-    if (list.length === 0) {
+    const where = { boutiqueId: req.boutique.id };
+    if (req.query.categoryId) where.categoryId = req.query.categoryId;
+    const list = await Famille.findAll({ where });
+    if (list.length === 0 && !req.query.categoryId) {
       const defaults = [
         { nom: "Cosmétique", boutiqueId: req.boutique.id },
         { nom: "Cheveux, Peignes & Brosses", boutiqueId: req.boutique.id },
@@ -119,7 +121,10 @@ router.get("/:slug/familles", loadBoutique, cacheMiddleware(600), async (req, re
 // GET /api/store/:slug/categories (cached 10 min)
 router.get("/:slug/categories", loadBoutique, cacheMiddleware(600), async (req, res, next) => {
   try {
-    const categories = await Category.findAll({ where: { boutiqueId: req.boutique.id } });
+    const categories = await Category.findAll({ 
+      where: { boutiqueId: req.boutique.id },
+      include: [{ model: Famille, as: "sousCategories" }]
+    });
     res.json(categories);
   } catch (err) { next(err); }
 });
@@ -132,6 +137,24 @@ router.get("/:slug/marques", loadBoutique, cacheMiddleware(300), async (req, res
       order: [["nom", "ASC"]]
     });
     res.json(marques);
+  } catch (err) { next(err); }
+});
+
+// GET /api/store/:slug/phones (cached 5 min)
+router.get("/:slug/phones", loadBoutique, cacheMiddleware(300), async (req, res, next) => {
+  try {
+    const brands = await PhoneBrand.findAll({
+      where: { boutiqueId: req.boutique.id },
+      include: [
+        {
+          model: PhoneModel,
+          as: "modeles",
+          order: [["ordre", "ASC"], ["nom", "ASC"]]
+        }
+      ],
+      order: [["ordre", "ASC"], ["nom", "ASC"]]
+    });
+    res.json(brands);
   } catch (err) { next(err); }
 });
 
@@ -153,7 +176,10 @@ router.get("/:slug/testimonials", loadBoutique, cacheMiddleware(120), async (req
 // GET /api/store/:slug/products?categoryId=&famille=&search=&promo=true&genre=&etat=&marqueId= (cached 2 min)
 router.get("/:slug/products", loadBoutique, cacheMiddleware(120), async (req, res, next) => {
   try {
-    const where = { boutiqueId: req.boutique.id };
+    const where = {
+      boutiqueId: req.boutique.id,
+      masquerSurSite: { [Op.ne]: true }
+    };
     if (req.query.categoryId) where.categoryId = req.query.categoryId;
     if (req.query.genre) where.genre = req.query.genre; // 'femme' | 'homme' | 'mixte'
     if (req.query.etat) where.etat = req.query.etat; // 'neuf' | 'occasion'
@@ -167,10 +193,6 @@ router.get("/:slug/products", loadBoutique, cacheMiddleware(120), async (req, re
       const searchConditions = [
         { famille: { [Op.like]: `%${famRaw}%` } },
         { famille: { [Op.like]: `%${famClean}%` } },
-        { '$Category.famille$': { [Op.like]: `%${famRaw}%` } },
-        { '$Category.famille$': { [Op.like]: `%${famClean}%` } },
-        { '$Category.nom$': { [Op.like]: `%${famRaw}%` } },
-        { '$Category.nom$': { [Op.like]: `%${famClean}%` } },
         { nom: { [Op.like]: `%${famRaw}%` } },
         { nom: { [Op.like]: `%${famClean}%` } }
       ];
@@ -222,7 +244,11 @@ router.get("/:slug/products", loadBoutique, cacheMiddleware(120), async (req, re
 router.get("/:slug/products/:id", loadBoutique, cacheMiddleware(120), async (req, res, next) => {
   try {
     const product = await Product.findOne({
-      where: { id: req.params.id, boutiqueId: req.boutique.id },
+      where: {
+        id: req.params.id,
+        boutiqueId: req.boutique.id,
+        masquerSurSite: { [Op.ne]: true }
+      },
       include: [
         { model: Category },
         { model: Marque, as: "marque", attributes: ["id", "nom", "logoUrl", "description"], required: false },
@@ -306,6 +332,7 @@ router.post("/:slug/orders", loadBoutique, authenticate, requireRole("client"), 
     for (const item of items) {
       const product = await Product.findOne({ where: { id: item.productId, boutiqueId: req.boutique.id }, transaction: t, lock: t.LOCK.UPDATE });
       if (!product) { await t.rollback(); return res.status(404).json({ message: `Produit ${item.productId} introuvable.` }); }
+      if (product.masquerSurSite) { await t.rollback(); return res.status(400).json({ message: `Le produit "${product.nom}" n'est pas disponible pour la commande en ligne.` }); }
       if (product.stock < item.quantite) { await t.rollback(); return res.status(409).json({ message: `Stock insuffisant pour ${product.nom}.` }); }
 
       let prixUnitaire;
@@ -317,8 +344,42 @@ router.post("/:slug/orders", loadBoutique, authenticate, requireRole("client"), 
         prixUnitaire = Number(product.prixPromo || product.prix);
       }
 
+      // Ajustement tarifaire par modèle ou couleur si configuré
+      const productCouleurs = typeof product.couleurs === "string" ? JSON.parse(product.couleurs || "[]") : (product.couleurs || []);
+      const productModeles = typeof product.modelesCompatibles === "string" ? JSON.parse(product.modelesCompatibles || "[]") : (product.modelesCompatibles || []);
+
+      if (item.couleur && Array.isArray(productCouleurs)) {
+        const cMatch = productCouleurs.find(c => c.nom === item.couleur);
+        if (cMatch) {
+          if (devise === "FCFA" && cMatch.prixFCFA && Number(cMatch.prixFCFA) > 0) {
+            prixUnitaire = Number(cMatch.prixFCFA);
+          } else if (cMatch.prixKMF && Number(cMatch.prixKMF) > 0) {
+            prixUnitaire = Number(cMatch.prixKMF);
+          }
+        }
+      }
+
+      if (item.modele && Array.isArray(productModeles)) {
+        const mMatch = productModeles.find(m => m.nom === item.modele || m.nomComplet === item.modele || `${m.brandNom} ${m.nom}` === item.modele);
+        if (mMatch) {
+          if (devise === "FCFA" && mMatch.prixFCFA && Number(mMatch.prixFCFA) > 0) {
+            prixUnitaire = Number(mMatch.prixFCFA);
+          } else if (mMatch.prixKMF && Number(mMatch.prixKMF) > 0) {
+            prixUnitaire = Number(mMatch.prixKMF);
+          }
+        }
+      }
+
       sousTotal += prixUnitaire * item.quantite;
-      lignesAvecPrix.push({ product, quantite: item.quantite, prixUnitaire });
+      lignesAvecPrix.push({
+        product,
+        quantite: item.quantite,
+        prixUnitaire,
+        marqueTelephone: item.marqueTelephone || item.marque || null,
+        modele: item.modele || null,
+        couleur: item.couleur || null,
+        imageUrl: item.imageUrl || null
+      });
     }
 
     const fraisLivraison = modeLivraison === "domicile" ? Number(req.boutique.fraisLivraison) : 0;
@@ -372,7 +433,16 @@ router.post("/:slug/orders", loadBoutique, authenticate, requireRole("client"), 
     }, { transaction: t });
 
     for (const ligne of lignesAvecPrix) {
-      await OrderItem.create({ orderId: order.id, productId: ligne.product.id, quantite: ligne.quantite, prixUnitaire: ligne.prixUnitaire }, { transaction: t });
+      await OrderItem.create({
+        orderId: order.id,
+        productId: ligne.product.id,
+        quantite: ligne.quantite,
+        prixUnitaire: ligne.prixUnitaire,
+        marqueTelephone: ligne.marqueTelephone,
+        modele: ligne.modele,
+        couleur: ligne.couleur,
+        imageUrl: ligne.imageUrl
+      }, { transaction: t });
       await ligne.product.update({ stock: ligne.product.stock - ligne.quantite, ventesCount: ligne.product.ventesCount + ligne.quantite }, { transaction: t });
     }
 

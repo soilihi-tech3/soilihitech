@@ -1363,15 +1363,21 @@ html[data-theme="dark"] .bs-testimonial-card span[style*="color: var(--ink)"] {
 
 .bs-detail {
   display: grid;
-  grid-template-columns: 460px 1fr;
+  grid-template-columns: minmax(320px, 460px) minmax(0, 1fr);
   gap: 40px;
   margin-top: 16px;
+  align-items: start;
 }
 
 .bs-gallery {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  width: 100%;
+  max-width: 460px;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .bs-main-image {
@@ -1386,22 +1392,28 @@ html[data-theme="dark"] .bs-testimonial-card span[style*="color: var(--ink)"] {
 
 .bs-thumbs {
   display: flex;
-  gap: 12px;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+  max-width: 100%;
+  align-items: center;
 }
 
 .bs-gallery-thumb {
-  width: 80px;
-  height: 80px;
+  width: 64px;
+  height: 64px;
   border-radius: var(--radius-md);
   object-fit: cover;
   cursor: pointer;
   border: 2px solid transparent;
+  flex-shrink: 0;
   transition: all 0.2s ease;
+  background: #fff;
 }
 
 .bs-gallery-thumb.active, .bs-gallery-thumb:hover {
   border-color: var(--forest);
-  transform: scale(1.03);
+  transform: scale(1.04);
 }
 
 /* ---- Forms & Panels ---- */

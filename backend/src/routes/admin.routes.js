@@ -342,8 +342,14 @@ router.get("/dashboard", async (req, res, next) => {
 
 router.get("/familles", async (req, res, next) => {
   try {
-    const list = await Famille.findAll({ where: { boutiqueId: req.boutiqueId } });
-    if (list.length === 0) {
+    const where = { boutiqueId: req.boutiqueId };
+    if (req.query.categoryId) where.categoryId = req.query.categoryId;
+    const list = await Famille.findAll({ 
+      where,
+      include: [{ model: Category, as: "category", attributes: ["id", "nom"] }],
+      order: [["nom", "ASC"]]
+    });
+    if (list.length === 0 && !req.query.categoryId) {
       const defaults = [
         { nom: "Cosmétique", boutiqueId: req.boutiqueId },
         { nom: "Cheveux, Peignes & Brosses", boutiqueId: req.boutiqueId },
@@ -352,7 +358,11 @@ router.get("/familles", async (req, res, next) => {
         { nom: "Maquillage & Teint", boutiqueId: req.boutiqueId }
       ];
       await Famille.bulkCreate(defaults);
-      return res.json(await Famille.findAll({ where: { boutiqueId: req.boutiqueId } }));
+      return res.json(await Famille.findAll({ 
+        where: { boutiqueId: req.boutiqueId },
+        include: [{ model: Category, as: "category", attributes: ["id", "nom"] }],
+        order: [["nom", "ASC"]]
+      }));
     }
     res.json(list);
   } catch (err) { next(err); }
@@ -361,6 +371,8 @@ router.get("/familles", async (req, res, next) => {
 router.post("/familles", async (req, res, next) => {
   try {
     const fam = await Famille.create({ ...req.body, boutiqueId: req.boutiqueId });
+    purgeCache();
+    broadcast("category_updated", { boutiqueId: req.boutiqueId });
     res.status(201).json(fam);
   } catch (err) { next(err); }
 });
@@ -370,6 +382,8 @@ router.put("/familles/:id", async (req, res, next) => {
     const fam = await Famille.findOne({ where: { id: req.params.id, boutiqueId: req.boutiqueId } });
     if (!fam) return res.status(404).json({ message: "Famille introuvable." });
     await fam.update(req.body);
+    purgeCache();
+    broadcast("category_updated", { boutiqueId: req.boutiqueId });
     res.json(fam);
   } catch (err) { next(err); }
 });
@@ -379,6 +393,8 @@ router.delete("/familles/:id", async (req, res, next) => {
     const fam = await Famille.findOne({ where: { id: req.params.id, boutiqueId: req.boutiqueId } });
     if (!fam) return res.status(404).json({ message: "Famille introuvable." });
     await fam.destroy();
+    purgeCache();
+    broadcast("category_updated", { boutiqueId: req.boutiqueId });
     res.json({ message: "Famille supprimée." });
   } catch (err) { next(err); }
 });
@@ -387,7 +403,11 @@ router.delete("/familles/:id", async (req, res, next) => {
 
 router.get("/categories", async (req, res, next) => {
   try {
-    res.json(await Category.findAll({ where: { boutiqueId: req.boutiqueId } }));
+    res.json(await Category.findAll({ 
+      where: { boutiqueId: req.boutiqueId },
+      include: [{ model: Famille, as: "sousCategories" }],
+      order: [["nom", "ASC"]]
+    }));
   } catch (err) { next(err); }
 });
 

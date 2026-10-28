@@ -525,13 +525,25 @@ export default function MyOrders() {
                 };
                 return (
                   <div key={it.id || idx} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderBottom: idx < selected.items.length - 1 ? "1px solid var(--line)" : "none", flexWrap: "wrap" }}>
-                    <img src={targetProduct.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80"} alt="" style={{ width: 48, height: 48, borderRadius: 10, objectFit: "cover", border: "1px solid var(--line)", flexShrink: 0 }} />
+                    <img src={it.imageUrl || targetProduct.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80"} alt="" style={{ width: 48, height: 48, borderRadius: 10, objectFit: "cover", border: "1px solid var(--line)", flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 160 }}>
                       <div style={{ fontWeight: 700, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{targetProduct.nom}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{fcfa(it.prixUnitaire)} · ×{it.quantite}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "3px 0" }}>
+                        {it.modele && (
+                          <span style={{ fontSize: 11, fontWeight: 700, background: "#EFF6FF", color: "#1D4ED8", padding: "1px 6px", borderRadius: 4, border: "1px solid #BFDBFE" }}>
+                            Modèle : {it.modele}
+                          </span>
+                        )}
+                        {it.couleur && (
+                          <span style={{ fontSize: 11, fontWeight: 600, background: "#F3F4F6", color: "#374151", padding: "1px 6px", borderRadius: 4, border: "1px solid #E5E7EB" }}>
+                            Couleur : {it.couleur}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{fcfa(it.prixUnitaire, selected.devise)} · ×{it.quantite}</div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-                      <div style={{ fontWeight: 800, fontSize: 14, color: "var(--forest-dark)" }}>{fcfa(it.prixUnitaire * it.quantite)}</div>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: "var(--forest-dark)" }}>{fcfa(it.prixUnitaire * it.quantite, selected.devise)}</div>
                       {canReview && targetProduct.id && (
                         <button
                           type="button"

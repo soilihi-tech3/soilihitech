@@ -168,7 +168,14 @@ export default function Checkout() {
 
     setLoading(true);
     try {
-      const items = cart.map((l) => ({ productId: l.product.id, quantite: l.quantite }));
+      const items = cart.map((l) => ({
+        productId: l.product.id,
+        quantite: l.quantite,
+        modele: l.selectedModele || null,
+        couleur: l.selectedCouleur || null,
+        marqueTelephone: l.selectedBrand || null,
+        imageUrl: l.selectedImageUrl || l.product?.imageUrl || null
+      }));
       const res = await api.post(`/store/${SLUG}/orders`, { items, devise: activeCurrency, ...form });
       
       if (form.moyenPaiement === "wero" || form.moyenPaiement === "holam" || form.moyenPaiement === "mvola") {
@@ -313,28 +320,47 @@ export default function Checkout() {
             {openSteps[1] && (
               <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, overflow: "hidden", width: "100%", boxSizing: "border-box" }}>
                 {cart.map((l, idx) => {
-                  const prix = l.product.prixPromo || l.product.prix;
+                  const itemKey = l.cartKey || (l.product ? `${l.product.id}_${l.selectedModele || ''}_${l.selectedCouleur || ''}` : String(l.id));
+                  const isSenegal = activeCurrency === "FCFA";
+                  let prix = l.product ? (l.product.prixPromo || l.product.prix) : 0;
+                  if (isSenegal && l.selectedPriceFCFA && Number(l.selectedPriceFCFA) > 0) {
+                    prix = Number(l.selectedPriceFCFA);
+                  } else if (!isSenegal && l.selectedPriceKMF && Number(l.selectedPriceKMF) > 0) {
+                    prix = Number(l.selectedPriceKMF);
+                  }
+
                   return (
-                    <div key={l.product.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", borderBottom: idx < cart.length - 1 ? "1px solid var(--line)" : "none", flexWrap: "wrap" }}>
-                      <img src={l.product.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80"} alt={l.product.nom} style={{ width: 68, height: 68, borderRadius: 12, objectFit: "cover", border: "1px solid var(--line)", flexShrink: 0 }} />
+                    <div key={itemKey} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", borderBottom: idx < cart.length - 1 ? "1px solid var(--line)" : "none", flexWrap: "wrap" }}>
+                      <img src={l.selectedImageUrl || l.product?.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80"} alt={l.product?.nom} style={{ width: 68, height: 68, borderRadius: 12, objectFit: "cover", border: "1px solid var(--line)", flexShrink: 0 }} />
                       <div style={{ flex: "1 1 180px", minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: 15, color: "var(--ink)", marginBottom: 2 }}>{l.product.nom}</div>
-                        <div style={{ fontSize: 13, color: "var(--muted)" }}>{fcfa(prix)} / {l.product.unite}</div>
-                        {l.product.prixPromo && (
-                          <div style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600 }}>
-                            Promo · <span style={{ textDecoration: "line-through", color: "var(--muted)" }}>{fcfa(l.product.prix)}</span>
-                          </div>
-                        )}
+                        <div style={{ fontWeight: 700, fontSize: 15, color: "var(--ink)", marginBottom: 2 }}>{l.product?.nom}</div>
+                        
+                        {/* Variant Badges */}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4, marginBottom: 4 }}>
+                          {l.selectedModele && (
+                            <span style={{ fontSize: 11.5, fontWeight: 700, background: "#EFF6FF", color: "#1D4ED8", padding: "2px 8px", borderRadius: 6, border: "1px solid #BFDBFE" }}>
+                              {l.selectedModele}
+                            </span>
+                          )}
+                          {l.selectedCouleur && (
+                            <span style={{ fontSize: 11.5, fontWeight: 600, background: "#F3F4F6", color: "#374151", padding: "2px 8px", borderRadius: 6, border: "1px solid #E5E7EB", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              {l.selectedCouleurHex && <span style={{ width: 8, height: 8, borderRadius: "50%", background: l.selectedCouleurHex, border: "1px solid rgba(0,0,0,0.2)" }} />}
+                              {l.selectedCouleur}
+                            </span>
+                          )}
+                        </div>
+
+                        <div style={{ fontSize: 13, color: "var(--muted)" }}>{fcfa(prix, activeCurrency)} {l.product?.unite ? `/ ${l.product.unite}` : ""}</div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%", maxWidth: 220, marginLeft: "auto" }}>
-                        <div style={{ fontWeight: 800, fontSize: 16, color: "var(--forest-dark)" }}>{fcfa(prix * l.quantite)}</div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: "var(--forest-dark)" }}>{fcfa(prix * l.quantite, activeCurrency)}</div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <div style={{ display: "flex", alignItems: "center", border: "1.5px solid var(--line)", borderRadius: 24, overflow: "hidden", background: "var(--paper)" }}>
-                            <button onClick={() => updateQuantite(l.product.id, -1)} style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink)" }}><Minus size={13} /></button>
+                            <button onClick={() => updateQuantite(itemKey, -1)} style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink)" }}><Minus size={13} /></button>
                             <span style={{ width: 28, textAlign: "center", fontWeight: 700, fontSize: 14 }}>{l.quantite}</span>
-                            <button onClick={() => updateQuantite(l.product.id, 1)} style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink)" }}><Plus size={13} /></button>
+                            <button onClick={() => updateQuantite(itemKey, 1)} style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink)" }}><Plus size={13} /></button>
                           </div>
-                          <button onClick={() => removeFromCart(l.product.id)} style={{ width: 32, height: 32, borderRadius: "50%", border: "none", background: "#FEF0EF", color: "#B4483A", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Trash2 size={13} /></button>
+                          <button onClick={() => removeFromCart(itemKey)} style={{ width: 32, height: 32, borderRadius: "50%", border: "none", background: "#FEF0EF", color: "#B4483A", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Trash2 size={13} /></button>
                         </div>
                       </div>
                     </div>
@@ -544,16 +570,36 @@ export default function Checkout() {
             {/* Items */}
             <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 24 }}>
               {cart.map(l => {
-                const prix = getProductPrice(l.product, activeCurrency);
+                const itemKey = l.cartKey || (l.product ? `${l.product.id}_${l.selectedModele || ''}_${l.selectedCouleur || ''}` : String(l.id));
+                const isSenegal = activeCurrency === "FCFA";
+                let prix = getProductPrice(l.product, activeCurrency);
+                if (isSenegal && l.selectedPriceFCFA && Number(l.selectedPriceFCFA) > 0) {
+                  prix = Number(l.selectedPriceFCFA);
+                } else if (!isSenegal && l.selectedPriceKMF && Number(l.selectedPriceKMF) > 0) {
+                  prix = Number(l.selectedPriceKMF);
+                }
+
                 return (
-                  <div key={l.product.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ position: "relative" }}>
-                      <img src={l.product.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=60&q=80"} alt="" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", border: "1px solid var(--line)" }} />
+                  <div key={itemKey} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ position: "relative", flexShrink: 0 }}>
+                      <img src={l.selectedImageUrl || l.product?.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=60&q=80"} alt="" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", border: "1px solid var(--line)" }} />
                       <span style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, background: "var(--forest)", color: "#fff", borderRadius: "50%", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{l.quantite}</span>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.product.nom}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{fcfa(prix, activeCurrency)} / {l.product.unite}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.product?.nom}</div>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", margin: "2px 0" }}>
+                        {l.selectedModele && (
+                          <span style={{ fontSize: 10.5, fontWeight: 700, color: "#1D4ED8", background: "#EFF6FF", padding: "1px 5px", borderRadius: 4 }}>
+                            {l.selectedModele}
+                          </span>
+                        )}
+                        {l.selectedCouleur && (
+                          <span style={{ fontSize: 10.5, fontWeight: 600, color: "#374151", background: "#F3F4F6", padding: "1px 5px", borderRadius: 4 }}>
+                            {l.selectedCouleur}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{fcfa(prix, activeCurrency)} {l.product?.unite ? `/ ${l.product.unite}` : ""}</div>
                     </div>
                     <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)", flexShrink: 0 }}>{fcfa(prix * l.quantite, activeCurrency)}</div>
                   </div>

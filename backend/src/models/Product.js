@@ -27,6 +27,10 @@ const Product = sequelize.define("Product", {
   genre: { type: DataTypes.STRING(20), defaultValue: "femme" }, // 'femme' | 'homme' | 'mixte'
   etat: { type: DataTypes.STRING(20), defaultValue: "neuf" }, // rétrocompatibilité
   marqueId: { type: DataTypes.INTEGER, allowNull: true, field: "marque_id" },
+  masquerSurSite: { type: DataTypes.BOOLEAN, defaultValue: false, field: "masquer_sur_site" },
+  images: { type: DataTypes.JSON, allowNull: true },
+  couleurs: { type: DataTypes.JSON, allowNull: true },
+  modelesCompatibles: { type: DataTypes.JSON, allowNull: true, field: "modeles_compatibles" },
 }, { tableName: "products" });
 
 module.exports = Product;

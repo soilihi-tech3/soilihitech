@@ -27,21 +27,31 @@ export function CartProvider({ children }) {
     } else if (type === "error") {
       toast.error(message);
     } else {
-      toast(message, { icon: "ℹ️" });
+      toast(message);
     }
   }
 
-  function addToCart(product, quantite = 1) {
+  function addToCart(product, quantite = 1, options = {}) {
     if (!product) return false;
 
+    const selectedModele = options.selectedModele || null;
+    const selectedCouleur = typeof options.selectedCouleur === "object" ? options.selectedCouleur?.nom : (options.selectedCouleur || null);
+    const selectedCouleurHex = typeof options.selectedCouleur === "object" ? options.selectedCouleur?.codeHex : (options.selectedCouleurHex || null);
+    const selectedBrand = options.marqueTelephone || options.selectedBrand || null;
+    const selectedImageUrl = options.selectedImageUrl || null;
+    const selectedPriceKMF = options.selectedPriceKMF || null;
+    const selectedPriceFCFA = options.selectedPriceFCFA || null;
+
+    const itemKey = `${product.id}_${selectedModele || ''}_${selectedCouleur || ''}`;
+
     const stockMax = Number(product.stock ?? 0);
-    const itemExistant = cart.find((l) => l.product.id === product.id);
+    const itemExistant = cart.find((l) => (l.cartKey || `${l.product?.id}_${l.selectedModele || ''}_${l.selectedCouleur || ''}`) === itemKey);
     const dejaEnPanier = itemExistant ? itemExistant.quantite : 0;
 
     // Case 1: Product out of stock completely
     if (stockMax <= 0) {
       showToast(
-        `Desolé, le produit "${product.nom}" est actuellement en rupture de stock.`,
+        `Désolé, le produit "${product.nom}" est actuellement en rupture de stock.`,
         "error"
       );
       return false;
@@ -63,7 +73,9 @@ export function CartProvider({ children }) {
       const qteAjoutee = stockMax - dejaEnPanier;
       setCart((prev) =>
         prev.map((l) =>
-          l.product.id === product.id ? { ...l, quantite: stockMax } : l
+          (l.cartKey || `${l.product?.id}_${l.selectedModele || ''}_${l.selectedCouleur || ''}`) === itemKey
+            ? { ...l, quantite: stockMax }
+            : l
         )
       );
       showToast(
@@ -77,37 +89,54 @@ export function CartProvider({ children }) {
     setCart((prev) => {
       if (itemExistant) {
         return prev.map((l) =>
-          l.product.id === product.id
+          (l.cartKey || `${l.product?.id}_${l.selectedModele || ''}_${l.selectedCouleur || ''}`) === itemKey
             ? { ...l, quantite: nouvelleQuantite }
             : l
         );
       }
-      return [...prev, { product, quantite }];
+      return [
+        ...prev,
+        {
+          cartKey: itemKey,
+          product,
+          quantite,
+          selectedModele,
+          selectedCouleur,
+          selectedCouleurHex,
+          selectedBrand,
+          selectedImageUrl,
+          selectedPriceKMF,
+          selectedPriceFCFA
+        }
+      ];
     });
+
+    const variantLabel = [selectedModele, selectedCouleur].filter(Boolean).join(" · ");
+    const nomComplet = variantLabel ? `${product.nom} (${variantLabel})` : product.nom;
 
     if (stockMax === nouvelleQuantite) {
       showToast(
-        `"${product.nom}" ajouté ! Vous avez atteint la totalité du stock disponible (${stockMax}).`,
+        `"${nomComplet}" ajouté ! Vous avez atteint la totalité du stock disponible (${stockMax}).`,
         "info"
       );
     } else {
-      showToast(`"${product.nom}" ajouté au panier !`, "success");
+      showToast(`"${nomComplet}" ajouté au panier !`, "success");
     }
 
     return true;
   }
 
-  function updateQuantite(productId, delta) {
+  function updateQuantite(keyOrId, delta) {
     setCart((prev) => {
-      const item = prev.find((l) => l.product.id === productId);
+      const item = prev.find((l) => (l.cartKey === keyOrId || String(l.product?.id) === String(keyOrId)));
       if (!item) return prev;
 
-      const stockMax = Number(item.product.stock ?? 0);
+      const stockMax = Number(item.product?.stock ?? 0);
       const nouvelleQte = item.quantite + delta;
 
       if (delta > 0 && nouvelleQte > stockMax) {
         showToast(
-          `Stock limité ! Impossible d'ajouter plus de ${stockMax} article(s) pour "${item.product.nom}".`,
+          `Stock limité ! Impossible d'ajouter plus de ${stockMax} article(s) pour "${item.product?.nom}".`,
           "warning"
         );
         return prev;
@@ -115,43 +144,46 @@ export function CartProvider({ children }) {
 
       return prev
         .map((l) =>
-          l.product.id === productId ? { ...l, quantite: nouvelleQte } : l
+          (l.cartKey === keyOrId || String(l.product?.id) === String(keyOrId))
+            ? { ...l, quantite: nouvelleQte }
+            : l
         )
         .filter((l) => l.quantite > 0);
     });
   }
 
-  function setExactQuantite(productId, targetValue) {
+  function setExactQuantite(keyOrId, targetValue) {
     const parsed = parseInt(targetValue, 10);
     if (isNaN(parsed) || parsed < 1) {
-      // Remove or reset to 1
-      removeFromCart(productId);
+      removeFromCart(keyOrId);
       return;
     }
 
     setCart((prev) => {
-      const item = prev.find((l) => l.product.id === productId);
+      const item = prev.find((l) => (l.cartKey === keyOrId || String(l.product?.id) === String(keyOrId)));
       if (!item) return prev;
 
-      const stockMax = Number(item.product.stock ?? 0);
+      const stockMax = Number(item.product?.stock ?? 0);
       let nouvelleQte = parsed;
 
       if (nouvelleQte > stockMax) {
         showToast(
-          `Quantité ajustée à ${stockMax} (maximum en stock pour "${item.product.nom}").`,
+          `Quantité ajustée à ${stockMax} (maximum en stock pour "${item.product?.nom}").`,
           "warning"
         );
         nouvelleQte = stockMax;
       }
 
       return prev.map((l) =>
-        l.product.id === productId ? { ...l, quantite: nouvelleQte } : l
+        (l.cartKey === keyOrId || String(l.product?.id) === String(keyOrId))
+          ? { ...l, quantite: nouvelleQte }
+          : l
       );
     });
   }
 
-  function removeFromCart(productId) {
-    setCart((prev) => prev.filter((l) => l.product.id !== productId));
+  function removeFromCart(keyOrId) {
+    setCart((prev) => prev.filter((l) => l.cartKey !== keyOrId && String(l.product?.id) !== String(keyOrId)));
   }
 
   function clearCart() {
@@ -164,17 +196,26 @@ export function CartProvider({ children }) {
       let newCart = [...prev];
       items.forEach(item => {
         const product = item.product;
-        if (!product) return; // Skip if product was deleted
+        if (!product) return;
         const quantite = item.quantite || 1;
         const stockMax = Number(product.stock ?? 0);
-        const itemExistant = newCart.find((l) => l.product.id === product.id);
+        const itemKey = `${product.id}_${item.selectedModele || ''}_${item.selectedCouleur || ''}`;
+        const itemExistant = newCart.find((l) => (l.cartKey || `${l.product?.id}_${l.selectedModele || ''}_${l.selectedCouleur || ''}`) === itemKey);
         const dejaEnPanier = itemExistant ? itemExistant.quantite : 0;
         if (stockMax > 0 && dejaEnPanier < stockMax) {
           const ajoutPossible = Math.min(quantite, stockMax - dejaEnPanier);
           if (itemExistant) {
-            newCart = newCart.map((l) => l.product.id === product.id ? { ...l, quantite: l.quantite + ajoutPossible } : l);
+            newCart = newCart.map((l) => (l.cartKey || `${l.product?.id}_${l.selectedModele || ''}_${l.selectedCouleur || ''}`) === itemKey ? { ...l, quantite: l.quantite + ajoutPossible } : l);
           } else {
-            newCart.push({ product, quantite: ajoutPossible });
+            newCart.push({
+              cartKey: itemKey,
+              product,
+              quantite: ajoutPossible,
+              selectedModele: item.selectedModele || null,
+              selectedCouleur: item.selectedCouleur || null,
+              selectedBrand: item.marqueTelephone || null,
+              selectedImageUrl: item.imageUrl || null
+            });
           }
           addedCount++;
         }
@@ -199,8 +240,18 @@ export function CartProvider({ children }) {
     return () => window.removeEventListener("currency_changed", handleCurr);
   }, []);
 
+  const getLinePrice = (line, currency) => {
+    if (currency === "FCFA" && line.selectedPriceFCFA && Number(line.selectedPriceFCFA) > 0) {
+      return Number(line.selectedPriceFCFA);
+    }
+    if (currency !== "FCFA" && line.selectedPriceKMF && Number(line.selectedPriceKMF) > 0) {
+      return Number(line.selectedPriceKMF);
+    }
+    return line.product ? getProductPrice(line.product, currency) : 0;
+  };
+
   const subtotal = cart.reduce(
-    (s, l) => s + (l.product ? getProductPrice(l.product, activeCurrency) : 0) * l.quantite,
+    (s, l) => s + getLinePrice(l, activeCurrency) * l.quantite,
     0
   );
   const count = cart.reduce((s, l) => s + l.quantite, 0);
@@ -218,10 +269,10 @@ export function CartProvider({ children }) {
         subtotal,
         count,
         showToast,
+        getLinePrice,
       }}
     >
       {children}
-
     </CartContext.Provider>
   );
 }

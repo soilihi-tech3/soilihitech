@@ -1,7 +1,7 @@
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 import React, { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { PlusCircle, List, Pencil, Trash2, AlertTriangle, CheckCircle, Package, X, Wand2, Sparkles, Loader2, Smartphone, Shield, Zap, Eye, CheckCircle2, Printer } from "lucide-react";
+import { PlusCircle, List, Pencil, Trash2, AlertTriangle, CheckCircle, Package, X, Wand2, Sparkles, Loader2, Smartphone, Shield, Zap, Eye, EyeOff, CheckCircle2, Printer, Star, ChevronDown, ChevronRight, Plus, Palette, Layers } from "lucide-react";
 import api from "../../api";
 import ImageUploader from "../../components/ImageUploader.jsx";
 import TablePagination from "../../components/TablePagination.jsx";
@@ -24,6 +24,8 @@ export default function AdminProduits() {
   const [unites, setUnites] = useState([]);
   const [fournisseurs, setFournisseurs] = useState([]);
   const [marques, setMarques] = useState([]);
+  const [phoneBrands, setPhoneBrands] = useState([]);
+  const [expandedPhoneBrands, setExpandedPhoneBrands] = useState({});
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
 
@@ -52,6 +54,7 @@ export default function AdminProduits() {
   const [filterStock, setFilterStock] = useState(false);
   const [filterGenre, setFilterGenre] = useState("");
   const [filterMarque, setFilterMarque] = useState("");
+  const [filterVisibilite, setFilterVisibilite] = useState(""); // "" | "visible" | "masque"
 
   // Modal d'approvisionnement
   const [restockProduct, setRestockProduct] = useState(null);
@@ -77,6 +80,7 @@ export default function AdminProduits() {
     prixPromoSenegal: "",
     enPromo: false,
     isNouveau: true,
+    masquerSurSite: true, // Coché par défaut à l'ajout pour préparer le stock avant affichage sur le site
     noteEtoiles: "5",
     poids: "",
     unite: "pièce",
@@ -84,7 +88,10 @@ export default function AdminProduits() {
     stock: "20",
     seuilAlerte: 5,
     imageUrl: "",
-    imageUrl2: ""
+    imageUrl2: "",
+    images: [],
+    couleurs: [],
+    modelesCompatibles: []
   };
   const [form, setForm] = useState(initialForm);
 
@@ -149,6 +156,7 @@ export default function AdminProduits() {
     api.get("/admin/unites").then((res) => setUnites(res.data || [])).catch(() => {});
     api.get("/admin/fournisseurs").then((res) => setFournisseurs(res.data || [])).catch(() => {});
     api.get("/admin/marques").then((res) => setMarques(res.data || [])).catch(() => {});
+    api.get("/admin/phones").then((res) => setPhoneBrands(res.data || [])).catch(() => {});
   }
 
   function load() {
@@ -159,6 +167,7 @@ export default function AdminProduits() {
     api.get("/admin/unites").then((res) => setUnites(res.data || [])).catch(() => {});
     api.get("/admin/fournisseurs").then((res) => setFournisseurs(res.data || [])).catch(() => {});
     api.get("/admin/marques").then((res) => setMarques(res.data || [])).catch(() => {});
+    api.get("/admin/phones").then((res) => setPhoneBrands(res.data || [])).catch(() => {});
   }
 
   useEffect(() => {
@@ -197,6 +206,7 @@ export default function AdminProduits() {
       prixPromoSenegal: product.prixPromoSenegal ?? "",
       enPromo: Boolean(product.enPromo || product.prixPromo),
       isNouveau: Boolean(product.isNouveau),
+      masquerSurSite: Boolean(product.masquerSurSite),
       noteEtoiles: product.noteEtoiles !== undefined && product.noteEtoiles !== null ? String(product.noteEtoiles) : "5",
       poids: product.poids || "",
       unite: product.unite || "pièce",
@@ -204,9 +214,132 @@ export default function AdminProduits() {
       stock: product.stock ?? "",
       seuilAlerte: product.seuilAlerte ?? 5,
       imageUrl: product.imageUrl || "",
-      imageUrl2: product.imageUrl2 || ""
+      imageUrl2: product.imageUrl2 || "",
+      images: parseJsonField(product.images),
+      couleurs: parseJsonField(product.couleurs),
+      modelesCompatibles: parseJsonField(product.modelesCompatibles)
     });
     setActiveTab("ajout");
+  }
+
+  function parseJsonField(val) {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    if (typeof val === "string") {
+      try { return JSON.parse(val); } catch (e) { return []; }
+    }
+    return [];
+  }
+
+  // Helpers Galerie Photos
+  function addGalleryImage() {
+    setForm(f => ({ ...f, images: [...(f.images || []), ""] }));
+  }
+  function updateGalleryImage(index, url) {
+    setForm(f => {
+      const arr = [...(f.images || [])];
+      arr[index] = url;
+      return { ...f, images: arr };
+    });
+  }
+  function removeGalleryImage(index) {
+    setForm(f => ({ ...f, images: (f.images || []).filter((_, i) => i !== index) }));
+  }
+
+  // Helpers Couleurs
+  function addColorVariant() {
+    setForm(f => ({
+      ...f,
+      couleurs: [
+        ...(f.couleurs || []),
+        { nom: "", codeHex: "#1E40AF", imageUrl: "", prixKMF: "", prixFCFA: "", stock: "" }
+      ]
+    }));
+  }
+  function updateColorVariant(index, field, value) {
+    setForm(f => {
+      const arr = [...(f.couleurs || [])];
+      arr[index] = { ...arr[index], [field]: value };
+      return { ...f, couleurs: arr };
+    });
+  }
+  function removeColorVariant(index) {
+    setForm(f => ({
+      ...f,
+      couleurs: (f.couleurs || []).filter((_, i) => i !== index)
+    }));
+  }
+
+  // Helpers Modèles de Téléphones
+  function togglePhoneModel(brand, model) {
+    setForm(f => {
+      const current = f.modelesCompatibles || [];
+      const exists = current.some(m => Number(m.modelId) === Number(model.id) || m.nom === model.nom);
+      if (exists) {
+        return {
+          ...f,
+          modelesCompatibles: current.filter(m => Number(m.modelId) !== Number(model.id) && m.nom !== model.nom)
+        };
+      } else {
+        return {
+          ...f,
+          modelesCompatibles: [
+            ...current,
+            {
+              brandId: brand.id,
+              brandNom: brand.nom,
+              modelId: model.id,
+              nom: model.nom,
+              nomComplet: model.nomComplet || `${brand.nom} ${model.nom}`,
+              prixKMF: "",
+              prixFCFA: ""
+            }
+          ]
+        };
+      }
+    });
+  }
+
+  function toggleAllModelsForBrand(brand, shouldSelect) {
+    setForm(f => {
+      const current = f.modelesCompatibles || [];
+      if (!shouldSelect) {
+        return {
+          ...f,
+          modelesCompatibles: current.filter(m => Number(m.brandId) !== Number(brand.id))
+        };
+      } else {
+        const brandModels = brand.modeles || [];
+        const newToAdd = brandModels
+          .filter(bm => !current.some(c => Number(c.modelId) === Number(bm.id) || c.nom === bm.nom))
+          .map(bm => ({
+            brandId: brand.id,
+            brandNom: brand.nom,
+            modelId: bm.id,
+            nom: bm.nom,
+            nomComplet: bm.nomComplet || `${brand.nom} ${bm.nom}`,
+            prixKMF: "",
+            prixFCFA: ""
+          }));
+        return {
+          ...f,
+          modelesCompatibles: [...current, ...newToAdd]
+        };
+      }
+    });
+  }
+
+  function updateModelPrice(modelId, field, value) {
+    setForm(f => {
+      const current = f.modelesCompatibles || [];
+      const updated = current.map(m => {
+        if (Number(m.modelId) === Number(modelId) || m.nom === modelId) {
+          return { ...m, [field]: value };
+        }
+        return m;
+      });
+      return { ...f, modelesCompatibles: updated };
+    });
   }
 
   function cancelEdit() {
@@ -228,6 +361,7 @@ export default function AdminProduits() {
       prixPromoSenegal: form.enPromo && form.prixPromoSenegal !== "" && form.prixPromoSenegal !== null ? Number(form.prixPromoSenegal) : null,
       enPromo: Boolean(form.enPromo),
       isNouveau: Boolean(form.isNouveau),
+      masquerSurSite: Boolean(form.masquerSurSite),
       noteEtoiles: form.noteEtoiles !== "" ? Number(form.noteEtoiles) : 5.0,
       coutAchat: form.coutAchat !== "" ? Number(form.coutAchat) : 0,
       stock: form.stock !== "" ? Number(form.stock) : 0,
@@ -236,7 +370,10 @@ export default function AdminProduits() {
       marqueId: form.marqueId ? Number(form.marqueId) : null,
       etat: form.etat || "neuf",
       poids: form.poids || "",
-      famille: form.famille || "Accessoires"
+      famille: form.famille || "Accessoires",
+      images: (form.images || []).filter(img => Boolean(img && img.trim())),
+      couleurs: (form.couleurs || []).filter(c => Boolean(c.nom && c.nom.trim())),
+      modelesCompatibles: form.modelesCompatibles || []
     };
 
     try {
@@ -284,6 +421,24 @@ export default function AdminProduits() {
     }
   }
 
+  async function toggleVisibility(product) {
+    const newStatus = !product.masquerSurSite;
+    try {
+      await api.put(`/admin/products/${product.id}`, { masquerSurSite: newStatus });
+      setProducts((prev) =>
+        prev.map((p) => (p.id === product.id ? { ...p, masquerSurSite: newStatus } : p))
+      );
+      showToast(
+        newStatus
+          ? "Produit masqué sur la boutique (gestion de stock uniquement)."
+          : "Produit désormais visible sur la boutique en ligne !"
+      );
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || "Erreur inconnue.";
+      showToast("Erreur visibilité : " + msg, "error");
+    }
+  }
+
   function openRestockModal(product) {
     setRestockProduct(product);
     setRestockForm({
@@ -327,7 +482,7 @@ export default function AdminProduits() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Filter products by search query, category, low stock, etat, marque
+  // Filter products by search query, category, low stock, etat, marque, visibilite
   const filteredProducts = products.filter((p) => {
     const matchSearch = !search || (
       p.nom?.toLowerCase().includes(search.toLowerCase()) ||
@@ -338,12 +493,15 @@ export default function AdminProduits() {
     const matchStock = !filterStock || p.stock <= p.seuilAlerte;
     const matchGenre = !filterGenre || (p.genre || "femme") === filterGenre;
     const matchMarque = !filterMarque || String(p.marqueId) === String(filterMarque);
+    const matchVisibilite = !filterVisibilite
+      || (filterVisibilite === "masque" && Boolean(p.masquerSurSite))
+      || (filterVisibilite === "visible" && !p.masquerSurSite);
 
-    return matchSearch && matchCat && matchStock && matchGenre && matchMarque;
+    return matchSearch && matchCat && matchStock && matchGenre && matchMarque && matchVisibilite;
   });
 
   // Reset page to 1 when filters change
-  useEffect(() => { setCurrentPage(1); }, [search, filterCat, filterStock, filterGenre, filterMarque]);
+  useEffect(() => { setCurrentPage(1); }, [search, filterCat, filterStock, filterGenre, filterMarque, filterVisibilite]);
 
   const totalItems = filteredProducts.length;
 
@@ -639,6 +797,17 @@ export default function AdminProduits() {
                 {marques.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
               </select>
 
+              <select 
+                className="bs-select" 
+                style={{ width: 175 }} 
+                value={filterVisibilite} 
+                onChange={(e) => setFilterVisibilite(e.target.value)}
+              >
+                <option value="">Toute visibilité</option>
+                <option value="visible">Visibles sur le site</option>
+                <option value="masque">Masqués (Stock seul)</option>
+              </select>
+
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, cursor: "pointer", background: filterStock ? "#FAD2CD" : "var(--forest-light)", padding: "0 12px", borderRadius: 8, color: filterStock ? "#B4483A" : "var(--forest-dark)", fontWeight: 700, height: 40 }}>
                 <input type="checkbox" checked={filterStock} onChange={(e) => setFilterStock(e.target.checked)} style={{ margin: 0 }} />
                 Stock faible
@@ -647,7 +816,7 @@ export default function AdminProduits() {
           </div>
 
           <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%" }}>
-            <table className="bs-table" style={{ minWidth: 1040 }}>
+            <table className="bs-table" style={{ minWidth: 1140 }}>
             <thead>
               <tr>
                 <th>Photo</th>
@@ -658,16 +827,17 @@ export default function AdminProduits() {
                 <th>Prix Vente Sénégal</th>
                 <th>Coût d'achat (FCFA)</th>
                 <th>Stock</th>
+                <th>Visibilité</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <SkeletonTableRows rows={6} cols={9} />
+                <SkeletonTableRows rows={6} cols={10} />
               )}
               {!loading && paginatedProducts.length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+                  <td colSpan={10} style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
                     Aucun produit ne correspond à votre recherche.
                   </td>
                 </tr>
@@ -687,7 +857,7 @@ export default function AdminProduits() {
                     <td style={{ fontWeight: 700, color: "var(--ink)" }}>
                       <div>{p.nom}</div>
                       <div style={{ fontSize: 11.5, color: "#F59E0B", marginTop: 2, display: "flex", alignItems: "center", gap: 3 }}>
-                        ⭐ <strong>{(p.avis?.length ? (p.avis.reduce((s, a) => s + a.note, 0) / p.avis.length) : (p.noteEtoiles !== undefined && p.noteEtoiles !== null ? Number(p.noteEtoiles) : 5.0)).toFixed(1)}</strong>
+                        <Star size={11} fill="#F59E0B" color="#F59E0B" style={{ display: "inline-block" }} /> <strong>{(p.avis?.length ? (p.avis.reduce((s, a) => s + a.note, 0) / p.avis.length) : (p.noteEtoiles !== undefined && p.noteEtoiles !== null ? Number(p.noteEtoiles) : 5.0)).toFixed(1)}</strong>
                         <span style={{ color: "var(--muted)", fontWeight: 400 }}>({p.avis?.length || 0} avis)</span>
                       </div>
                     </td>
@@ -745,6 +915,40 @@ export default function AdminProduits() {
 
                     <td>
                       <button
+                        type="button"
+                        onClick={() => toggleVisibility(p)}
+                        title={p.masquerSurSite ? "Produit masqué sur le site. Cliquez pour l'afficher sur la boutique." : "Produit visible sur le site. Cliquez pour le masquer."}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          padding: "4px 9px",
+                          borderRadius: 20,
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          border: p.masquerSurSite ? "1px solid #F59E0B" : "1px solid #10B981",
+                          background: p.masquerSurSite ? "#FEF3C7" : "#ECFDF5",
+                          color: p.masquerSurSite ? "#92400E" : "#065F46",
+                          cursor: "pointer",
+                          whiteSpace: "nowrap"
+                        }}
+                      >
+                        {p.masquerSurSite ? (
+                          <>
+                            <EyeOff size={13} color="#D97706" />
+                            <span>Masqué (Stock)</span>
+                          </>
+                        ) : (
+                          <>
+                            <Eye size={13} color="#059669" />
+                            <span>Visible</span>
+                          </>
+                        )}
+                      </button>
+                    </td>
+
+                    <td>
+                      <button
                         className="bs-icon-btn"
                         title="Approvisionner (Réappro stock)"
                         style={{ color: "var(--forest)", marginRight: 4 }}
@@ -785,6 +989,50 @@ export default function AdminProduits() {
           </h3>
 
           <form onSubmit={handleSubmit} className="bs-auth-form" style={{ gap: 16 }}>
+            {/* OPTION DE VISIBILITÉ DU PRODUIT SUR LE SITE (STOCK EN ATTENTE) */}
+            <div style={{
+              background: form.masquerSurSite ? "#FFFBEB" : "#F8FAFC",
+              padding: "16px 18px",
+              borderRadius: 12,
+              border: form.masquerSurSite ? "1.5px solid #F59E0B" : "1.5px solid #CBD5E1",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              transition: "all 0.2s ease"
+            }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <input
+                  type="checkbox"
+                  id="masquerSurSite"
+                  checked={Boolean(form.masquerSurSite)}
+                  onChange={(e) => set("masquerSurSite", e.target.checked)}
+                  style={{ width: 20, height: 20, accentColor: "#D97706", cursor: "pointer", marginTop: 2, flexShrink: 0 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <label htmlFor="masquerSurSite" style={{ fontWeight: 800, fontSize: 14.5, color: form.masquerSurSite ? "#92400E" : "#1E293B", cursor: "pointer", margin: 0 }}>
+                      Ne pas afficher sur le site (Gérer le stock en attente)
+                    </label>
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      padding: "2px 8px",
+                      borderRadius: 12,
+                      background: form.masquerSurSite ? "#FDE68A" : "#DCFCE7",
+                      color: form.masquerSurSite ? "#78350F" : "#166534"
+                    }}>
+                      {form.masquerSurSite ? "Coché : Masqué sur le site" : "Décoché : Visible sur le site"}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: form.masquerSurSite ? "#78350F" : "#64748B", marginTop: 5, lineHeight: 1.45 }}>
+                    {form.masquerSurSite
+                      ? "Ce produit sera enregistré dans votre application pour gérer le stock et les ventes internes, mais les clients NE LE VERRONT PAS sur la boutique en ligne. Décochez simplement cette case quand vous souhaiterez le mettre en ligne."
+                      : "Le produit sera immédiatement visible et disponible à l'achat pour vos clients sur la boutique en ligne."}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="bs-input-group">
               <label>Nom du produit *</label>
               <input
@@ -796,41 +1044,196 @@ export default function AdminProduits() {
               />
             </div>
 
-            <div className="bs-form-row-2" style={{ marginBottom: 4 }}>
-              {/* COMPATIBILITÉ SMARTPHONE */}
-              <div className="bs-input-group">
-                <label style={{ fontWeight: 800, color: "var(--forest-dark)" }}>
-                  Modèles de téléphones compatibles
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: iPhone 11 à 15 Pro, Samsung S21-S24, Tecno Camon..."
-                  value={form.compatibilite || ""}
-                  onChange={(e) => set("compatibilite", e.target.value)}
-                  style={{ height: 42 }}
-                />
+            {/* MARQUE DU PRODUIT */}
+            <div className="bs-input-group" style={{ marginBottom: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <label style={{ fontWeight: 700 }}>Marque du produit</label>
+                <a href="/admin/marques" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--forest)", fontWeight: 700, textDecoration: "none" }}>
+                  + Gérer les marques
+                </a>
               </div>
+              <select
+                className="bs-select"
+                value={form.marqueId}
+                onChange={(e) => set("marqueId", e.target.value)}
+                style={{ height: 42 }}
+              >
+                <option value="">-- Sans marque spécifique / Générique --</option>
+                {marques.map((m) => (
+                  <option key={m.id} value={m.id}>{m.nom}</option>
+                ))}
+              </select>
+            </div>
 
-              {/* MARQUE DU PRODUIT */}
-              <div className="bs-input-group">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <label style={{ fontWeight: 700 }}>Marque du produit</label>
-                  <a href="/admin/marques" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--forest)", fontWeight: 700, textDecoration: "none" }}>
-                    + Gérer les marques
+            {/* SÉLECTEUR DYNAMIQUE DE MODÈLES DE TÉLÉPHONES COMPATIBLES */}
+            <div style={{
+              background: "var(--paper)",
+              border: "1.5px solid var(--line)",
+              borderRadius: 14,
+              padding: 16,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <label style={{ fontWeight: 800, fontSize: 14, color: "var(--forest-dark)", display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
+                    <Smartphone size={18} color="var(--forest)" />
+                    Modèles de Téléphones Compatibles (Gamme iPhone, Samsung, Tecno...)
+                  </label>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                    Cochez les téléphones compatibles avec cet article. Les clients pourront choisir leur modèle précis lors de la commande.
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    padding: "3px 10px",
+                    borderRadius: 12,
+                    background: (form.modelesCompatibles || []).length > 0 ? "#DCFCE7" : "#F1F5F9",
+                    color: (form.modelesCompatibles || []).length > 0 ? "#166534" : "#64748B"
+                  }}>
+                    {(form.modelesCompatibles || []).length} modèle(s) sélectionné(s)
+                  </span>
+                  <a
+                    href="/admin/telephones"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: 12, color: "var(--forest)", fontWeight: 700, textDecoration: "none" }}
+                  >
+                    + Gérer les téléphones
                   </a>
                 </div>
-                <select
-                  className="bs-select"
-                  value={form.marqueId}
-                  onChange={(e) => set("marqueId", e.target.value)}
-                  style={{ height: 42 }}
-                >
-                  <option value="">-- Sans marque spécifique / Générique --</option>
-                  {marques.map((m) => (
-                    <option key={m.id} value={m.id}>{m.nom}</option>
-                  ))}
-                </select>
               </div>
+
+              {phoneBrands.length === 0 ? (
+                <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, background: "rgba(0,0,0,0.02)", borderRadius: 10 }}>
+                  Aucune marque de téléphone enregistrée. <a href="/admin/telephones" target="_blank" rel="noopener noreferrer" style={{ color: "var(--forest)", fontWeight: 700 }}>Créer des modèles de téléphones</a>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {phoneBrands.map(brand => {
+                    const brandModels = brand.modeles || [];
+                    const selectedForThisBrand = (form.modelesCompatibles || []).filter(m => Number(m.brandId) === Number(brand.id));
+                    const isAllSelected = brandModels.length > 0 && selectedForThisBrand.length === brandModels.length;
+                    const isExpanded = Boolean(expandedPhoneBrands[brand.id]);
+
+                    return (
+                      <div
+                        key={brand.id}
+                        style={{
+                          border: selectedForThisBrand.length > 0 ? "1.5px solid var(--forest)" : "1px solid var(--line)",
+                          borderRadius: 10,
+                          overflow: "hidden",
+                          background: selectedForThisBrand.length > 0 ? "#F8FCFA" : "#fff"
+                        }}
+                      >
+                        {/* Header de la marque */}
+                        <div
+                          style={{
+                            padding: "10px 14px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            background: selectedForThisBrand.length > 0 ? "var(--forest-light)" : "#F8FAFC",
+                            cursor: "pointer"
+                          }}
+                          onClick={() => setExpandedPhoneBrands(prev => ({ ...prev, [brand.id]: !prev[brand.id] }))}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                            <span style={{ fontWeight: 800, fontSize: 14, color: "var(--forest-dark)" }}>
+                              {brand.nom}
+                            </span>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)" }}>
+                              ({selectedForThisBrand.length}/{brandModels.length} cochés)
+                            </span>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }} onClick={e => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => toggleAllModelsForBrand(brand, !isAllSelected)}
+                              style={{
+                                background: isAllSelected ? "#FEE2E2" : "#DCFCE7",
+                                color: isAllSelected ? "#991B1B" : "#166534",
+                                border: "none",
+                                borderRadius: 6,
+                                padding: "4px 10px",
+                                fontSize: 11.5,
+                                fontWeight: 800,
+                                cursor: "pointer"
+                              }}
+                            >
+                              {isAllSelected ? "Tout décocher" : `Tout cocher (${brand.nom})`}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Modèles de la marque */}
+                        {isExpanded && (
+                          <div style={{ padding: "14px", display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid var(--line)" }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+                              {brandModels.map(model => {
+                                const isChecked = (form.modelesCompatibles || []).some(m => Number(m.modelId) === Number(model.id) || m.nom === model.nom);
+                                const modelItem = (form.modelesCompatibles || []).find(m => Number(m.modelId) === Number(model.id) || m.nom === model.nom) || {};
+
+                                return (
+                                  <div
+                                    key={model.id}
+                                    style={{
+                                      border: isChecked ? "1.5px solid var(--forest)" : "1px solid var(--line)",
+                                      borderRadius: 8,
+                                      padding: "8px 10px",
+                                      background: isChecked ? "#ECFDF5" : "#fff",
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      gap: 6
+                                    }}
+                                  >
+                                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", margin: 0, fontSize: 12.5, fontWeight: 700, color: isChecked ? "var(--forest-dark)" : "var(--ink)" }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => togglePhoneModel(brand, model)}
+                                        style={{ accentColor: "var(--forest)", width: 16, height: 16, cursor: "pointer" }}
+                                      />
+                                      <span>{model.nomComplet || model.nom}</span>
+                                    </label>
+
+                                    {/* Prix spécifique par modèle (optionnel) */}
+                                    {isChecked && (
+                                      <div style={{ display: "flex", gap: 6, marginTop: 4, paddingTop: 4, borderTop: "1px dashed #A7F3D0" }}>
+                                        <input
+                                          type="number"
+                                          placeholder="Prix KMF (opt)"
+                                          title="Prix spécifique Comores pour ce modèle"
+                                          value={modelItem.prixKMF || ""}
+                                          onChange={(e) => updateModelPrice(model.id, "prixKMF", e.target.value)}
+                                          style={{ width: "50%", height: 26, fontSize: 11, padding: "2px 6px", borderRadius: 4, border: "1px solid #CBD5E1" }}
+                                        />
+                                        <input
+                                          type="number"
+                                          placeholder="Prix FCFA (opt)"
+                                          title="Prix spécifique Sénégal pour ce modèle"
+                                          value={modelItem.prixFCFA || ""}
+                                          onChange={(e) => updateModelPrice(model.id, "prixFCFA", e.target.value)}
+                                          style={{ width: "50%", height: 26, fontSize: 11, padding: "2px 6px", borderRadius: 4, border: "1px solid #CBD5E1" }}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="bs-form-row-3">
@@ -842,31 +1245,34 @@ export default function AdminProduits() {
                   value={form.categoryId}
                   onChange={(e) => {
                     const catId = Number(e.target.value);
-                    const selectedCat = categories.find(c => c.id === catId);
                     set("categoryId", catId);
-                    if (selectedCat && selectedCat.famille) {
-                      set("famille", selectedCat.famille);
+                    const availableForCat = familles.filter(f => Number(f.categoryId) === catId);
+                    if (availableForCat.length > 0 && !availableForCat.some(f => f.nom === form.famille)) {
+                      set("famille", availableForCat[0].nom);
                     }
                   }}
                 >
-                  <option value="">-- Sélectionner --</option>
+                  <option value="">-- Sélectionner la catégorie --</option>
                   {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.nom} ({c.famille || "Général"})</option>
+                    <option key={c.id} value={c.id}>{c.nom}</option>
                   ))}
                 </select>
               </div>
 
               <div className="bs-input-group">
-                <label>Famille *</label>
+                <label>Sous-catégorie *</label>
                 <select
                   className="bs-select"
                   required
                   value={form.famille}
                   onChange={(e) => set("famille", e.target.value)}
                 >
-                  {familles.map((f) => (
-                    <option key={f.id} value={f.nom}>{f.nom}</option>
-                  ))}
+                  <option value="">-- Sélectionner la sous-catégorie --</option>
+                  {familles
+                    .filter(f => !form.categoryId || Number(f.categoryId) === Number(form.categoryId) || !f.categoryId)
+                    .map((f) => (
+                      <option key={f.id} value={f.nom}>{f.nom}</option>
+                    ))}
                   {!familles.some(f => f.nom === form.famille) && form.famille && (
                     <option value={form.famille}>{form.famille}</option>
                   )}
@@ -915,28 +1321,28 @@ export default function AdminProduits() {
 
               <div style={{ borderTop: "1px solid var(--line)", paddingTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
                 <div>
-                  <label htmlFor="noteEtoiles" style={{ fontWeight: 700, fontSize: 13.5, color: "var(--forest-dark)", display: "block" }}>
-                    ⭐ Étoiles du produit (Note par défaut)
+                  <label htmlFor="noteEtoiles" style={{ fontWeight: 700, fontSize: 13.5, color: "var(--forest-dark)", display: "flex", alignItems: "center", gap: 6 }}>
+                    <Star size={15} fill="#F59E0B" color="#F59E0B" /> Note du produit (Qualité par défaut)
                   </label>
                   <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                    Attribuez une note initiale entre 1 et 5 étoiles (ex: 5 étoiles pour une qualité maximale).
+                    Attribuez une note initiale entre 1 et 5 (ex: 5.0 / 5 pour une note maximale).
                   </div>
                 </div>
                 <select
                   id="noteEtoiles"
                   className="bs-select"
-                  style={{ width: 150, fontWeight: 700 }}
+                  style={{ width: 170, fontWeight: 700 }}
                   value={form.noteEtoiles}
                   onChange={(e) => set("noteEtoiles", e.target.value)}
                 >
-                  <option value="5">⭐⭐⭐⭐⭐ (5.0 / 5)</option>
-                  <option value="4.5">⭐⭐⭐⭐½ (4.5 / 5)</option>
-                  <option value="4">⭐⭐⭐⭐ (4.0 / 5)</option>
-                  <option value="3.5">⭐⭐⭐½ (3.5 / 5)</option>
-                  <option value="3">⭐⭐⭐ (3.0 / 5)</option>
-                  <option value="2.5">⭐⭐½ (2.5 / 5)</option>
-                  <option value="2">⭐⭐ (2.0 / 5)</option>
-                  <option value="1">⭐ (1.0 / 5)</option>
+                  <option value="5">5.0 / 5 (Excellent)</option>
+                  <option value="4.5">4.5 / 5 (Très bon)</option>
+                  <option value="4">4.0 / 5 (Très bon)</option>
+                  <option value="3.5">3.5 / 5 (Bon)</option>
+                  <option value="3">3.0 / 5 (Moyen)</option>
+                  <option value="2.5">2.5 / 5</option>
+                  <option value="2">2.0 / 5</option>
+                  <option value="1">1.0 / 5</option>
                 </select>
               </div>
             </div>
@@ -1096,7 +1502,7 @@ export default function AdminProduits() {
                   </div>
                   <div>
                     <h4 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#fff" }}>
-                      Assistant IA Soilihitech (Groq ⚡ • Gemini 💎 • Cohere 🌐)
+                      Assistant IA Soilihitech (Groq • Gemini • Cohere)
                     </h4>
                     <span style={{ fontSize: 11.5, color: "#94A3B8" }}>
                       Génération automatique de photo studio & description vendeuse avec basculement automatique en cas de panne
@@ -1157,7 +1563,7 @@ export default function AdminProduits() {
                     {aiLoading ? (
                       <>
                         <Loader2 size={16} className="animate-spin" />
-                        Génération IA en cours (Groq ➔ Gemini ➔ Cohere)...
+                        Génération IA en cours (Groq -&gt; Gemini -&gt; Cohere)...
                       </>
                     ) : (
                       <>
@@ -1168,7 +1574,7 @@ export default function AdminProduits() {
                   </button>
 
                   <span style={{ fontSize: 11.5, color: "#64748B" }}>
-                    {form.imageUrl ? "✓ Photo détectée : l'IA va générer une version studio et optimiser la fiche" : "💡 Uploadez d'abord une photo ci-dessous pour un rendu studio encore plus précis"}
+                    {form.imageUrl ? "Photo détectée : l'IA va générer une version studio et optimiser la fiche" : "Astuce : Uploadez d'abord une photo ci-dessous pour un rendu studio encore plus précis"}
                   </span>
                 </div>
               </div>
@@ -1211,6 +1617,238 @@ export default function AdminProduits() {
                 categorie: categories.find(c => String(c.id) === String(form.categoryId))?.nom || ""
               }}
             />
+
+            {/* SECTION VARIANTES DE COULEURS */}
+            <div style={{
+              background: "var(--paper)",
+              border: "1.5px solid var(--line)",
+              borderRadius: 14,
+              padding: 16,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <label style={{ fontWeight: 800, fontSize: 14, color: "var(--forest-dark)", display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
+                    <Palette size={18} color="var(--forest)" />
+                    Variantes de Couleurs (Photos & Prix spécifiques par couleur)
+                  </label>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                    Ajoutez les coloris disponibles. Le client pourra cliquer sur chaque couleur sur le site pour voir la photo correspondante et le prix adapté.
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addColorVariant}
+                  style={{
+                    background: "var(--forest)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "7px 14px",
+                    fontSize: 12.5,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6
+                  }}
+                >
+                  <Plus size={14} /> + Ajouter une couleur
+                </button>
+              </div>
+
+              {(form.couleurs || []).length === 0 ? (
+                <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, background: "rgba(0,0,0,0.02)", borderRadius: 10 }}>
+                  Aucune variante de couleur définie. Cliquez sur "+ Ajouter une couleur" si ce produit existe en plusieurs coloris (ex: Bleu Royal, Noir Titane, etc.).
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {(form.couleurs || []).map((couleur, cIdx) => (
+                    <div
+                      key={cIdx}
+                      style={{
+                        background: "#F8FAFC",
+                        border: "1px solid var(--line)",
+                        borderRadius: 10,
+                        padding: 12,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 10
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="color"
+                            value={couleur.codeHex || "#1E40AF"}
+                            onChange={(e) => updateColorVariant(cIdx, "codeHex", e.target.value)}
+                            title="Choisir la teinte de couleur"
+                            style={{ width: 34, height: 34, border: "none", borderRadius: 6, cursor: "pointer", padding: 0 }}
+                          />
+                        </div>
+
+                        <input
+                          type="text"
+                          className="bs-input"
+                          placeholder="Nom de la couleur (ex: Bleu Royal, Noir, Transparent...)"
+                          value={couleur.nom || ""}
+                          onChange={(e) => updateColorVariant(cIdx, "nom", e.target.value)}
+                          style={{ flex: 2, minWidth: 160, height: 36, fontSize: 13 }}
+                        />
+
+                        <input
+                          type="text"
+                          className="bs-input"
+                          placeholder="Lien photo pour cette couleur (URL ou upload)"
+                          value={couleur.imageUrl || ""}
+                          onChange={(e) => updateColorVariant(cIdx, "imageUrl", e.target.value)}
+                          style={{ flex: 3, minWidth: 200, height: 36, fontSize: 13 }}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => removeColorVariant(cIdx)}
+                          className="bs-icon-btn"
+                          title="Supprimer cette couleur"
+                          style={{ color: "#B4483A" }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12 }}>
+                        <span style={{ color: "var(--muted)", fontWeight: 700 }}>Prix spécifique pour cette couleur (optionnel) :</span>
+                        <input
+                          type="number"
+                          placeholder="Prix Comores KMF"
+                          value={couleur.prixKMF || ""}
+                          onChange={(e) => updateColorVariant(cIdx, "prixKMF", e.target.value)}
+                          style={{ width: 140, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
+                        />
+                        <input
+                          type="number"
+                          placeholder="Prix Sénégal FCFA"
+                          value={couleur.prixFCFA || ""}
+                          onChange={(e) => updateColorVariant(cIdx, "prixFCFA", e.target.value)}
+                          style={{ width: 140, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
+                        />
+                        {couleur.imageUrl && (
+                          <img
+                            src={couleur.imageUrl}
+                            alt=""
+                            style={{ width: 30, height: 30, borderRadius: 6, objectFit: "cover", border: "1px solid var(--line)" }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* SECTION GALERIE MULTI-PHOTOS ADDITIONNELLES */}
+            <div style={{
+              background: "var(--paper)",
+              border: "1.5px solid var(--line)",
+              borderRadius: 14,
+              padding: 16,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <label style={{ fontWeight: 800, fontSize: 14, color: "var(--forest-dark)", display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
+                    <Layers size={18} color="var(--forest)" />
+                    Galerie Multi-Photos Additionnelles (Bouton + Ajouter une photo)
+                  </label>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                    Ajoutez autant de photos que vous le souhaitez pour enrichir la fiche produit et permettre aux clients de faire défiler toutes les vues.
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addGalleryImage}
+                  style={{
+                    background: "var(--forest)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "7px 14px",
+                    fontSize: 12.5,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6
+                  }}
+                >
+                  <Plus size={14} /> + Ajouter une photo
+                </button>
+              </div>
+
+              {(form.images || []).length === 0 ? (
+                <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, background: "rgba(0,0,0,0.02)", borderRadius: 10 }}>
+                  Aucune photo additionnelle. Les 2 photos principales ci-dessus s'appliqueront par défaut. Cliquez sur "+ Ajouter une photo" pour créer votre carrousel complet.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {(form.images || []).map((imgUrl, imgIdx) => (
+                    <div
+                      key={imgIdx}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        background: "#F8FAFC",
+                        border: "1px solid var(--line)",
+                        borderRadius: 10,
+                        padding: "8px 12px"
+                      }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 800, color: "var(--muted)", minWidth: 70 }}>
+                        Photo #{imgIdx + 3} :
+                      </span>
+
+                      {imgUrl ? (
+                        <img
+                          src={imgUrl}
+                          alt=""
+                          style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover", border: "1px solid var(--line)" }}
+                        />
+                      ) : (
+                        <div style={{ width: 40, height: 40, borderRadius: 6, background: "#E2E8F0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "var(--muted)" }}>
+                          Vide
+                        </div>
+                      )}
+
+                      <input
+                        type="text"
+                        className="bs-input"
+                        placeholder="Collez l'URL de l'image..."
+                        value={imgUrl || ""}
+                        onChange={(e) => updateGalleryImage(imgIdx, e.target.value)}
+                        style={{ flex: 1, height: 36, fontSize: 13 }}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => removeGalleryImage(imgIdx)}
+                        className="bs-icon-btn"
+                        title="Supprimer cette photo"
+                        style={{ color: "#B4483A" }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
               <button

@@ -9,7 +9,7 @@ import { useData } from "../../context/DataContext.jsx";
 const DEFAULT_SLIDES = [
   {
     id: 1,
-    tag: "⚡ CHARGE ULTRA RAPIDE GaN",
+    tag: "CHARGE ULTRA RAPIDE GaN",
     title: "Chargeurs 20W à 65W & Câbles Renforcés",
     subtitle: "Rechargez votre iPhone, Samsung, Tecno ou Xiaomi en un temps record avec notre sélection haute performance certifiée anti-surchauffe.",
     imageUrl: "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=1200&q=80",
@@ -20,7 +20,7 @@ const DEFAULT_SLIDES = [
   },
   {
     id: 2,
-    tag: "🛡️ PROTECTION TOTALE 9D",
+    tag: "PROTECTION TOTALE 9D",
     title: "Glaces Trempées & Coques Antichocs",
     subtitle: "Verres antiespion et pochettes antichocs en silicone renforcé pour préserver l'écran et les caméras de votre smartphone.",
     imageUrl: "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?auto=format&fit=crop&w=1200&q=80",
@@ -31,7 +31,7 @@ const DEFAULT_SLIDES = [
   },
   {
     id: 3,
-    tag: "🎵 EXPÉRIENCE AUDIO & POWERBANKS",
+    tag: "EXPERIENCE AUDIO & POWERBANKS",
     title: "AirPods, Écouteurs & Batteries 20 000mAh",
     subtitle: "Ne tombez plus jamais à court de batterie et profitez d'une qualité sonore cristalline avec notre sélection Oraimo, Apple et JBL.",
     imageUrl: "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=1200&q=80",
@@ -355,9 +355,9 @@ export default function Home() {
       "Ne tombez plus jamais à court de batterie et profitez d'une qualité sonore cristalline avec notre sélection Oraimo, Apple et JBL."
     ];
     const defaultTags = [
-      "⚡ CHARGE ULTRA RAPIDE GaN",
-      "🛡️ PROTECTION TOTALE 9D",
-      "🎵 EXPÉRIENCE AUDIO & POWERBANKS"
+      "CHARGE ULTRA RAPIDE GaN",
+      "PROTECTION TOTALE 9D",
+      "EXPERIENCE AUDIO & POWERBANKS"
     ];
     const defaultCtas = [
       "Voir les chargeurs",

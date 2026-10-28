@@ -1,7 +1,7 @@
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 import React, { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { PlusCircle, List, Pencil, Trash2, CheckCircle, Image as ImageIcon, Layers } from "lucide-react";
+import { PlusCircle, List, Pencil, Trash2, Image as ImageIcon, Layers } from "lucide-react";
 import api from "../../api";
 import ImageUploader from "../../components/ImageUploader.jsx";
 import TablePagination from "../../components/TablePagination.jsx";
@@ -19,13 +19,13 @@ export default function AdminCategories() {
 
   const initialCategoryForm = {
     nom: "",
-    famille: "",
     imageUrl: ""
   };
   const [categoryForm, setCategoryForm] = useState(initialCategoryForm);
 
   const initialFamilleForm = {
     nom: "",
+    categoryId: "",
     description: "",
     imageUrl: ""
   };
@@ -47,11 +47,12 @@ export default function AdminCategories() {
       api.get("/admin/categories"),
       api.get("/admin/familles")
     ]).then(([resCats, resFams]) => {
-      setCategories(resCats.data || []);
+      const cats = resCats.data || [];
       const fams = resFams.data || [];
+      setCategories(cats);
       setFamilles(fams);
-      if (fams.length > 0) {
-        setCategoryForm(f => ({ ...f, famille: f.famille || fams[0].nom }));
+      if (cats.length > 0 && !familleForm.categoryId) {
+        setFamilleForm(f => ({ ...f, categoryId: f.categoryId || cats[0].id }));
       }
     }).finally(() => setLoading(false));
   }
@@ -79,7 +80,6 @@ export default function AdminCategories() {
     setEditingId(cat.id);
     setCategoryForm({
       nom: cat.nom || "",
-      famille: cat.famille || (familles[0]?.nom || "Cosmétique"),
       imageUrl: cat.imageUrl || ""
     });
     setActiveTab("ajout");
@@ -87,16 +87,13 @@ export default function AdminCategories() {
 
   function cancelEditCategory() {
     setEditingId(null);
-    setCategoryForm({
-      ...initialCategoryForm,
-      famille: familles[0]?.nom || "Cosmétique"
-    });
+    setCategoryForm(initialCategoryForm);
     setActiveTab("liste");
   }
 
   async function handleCategorySubmit(e) {
     e.preventDefault();
-    if (!categoryForm.nom) return;
+    if (!categoryForm.nom.trim()) return;
 
     try {
       if (editingId) {
@@ -123,7 +120,7 @@ export default function AdminCategories() {
       silentSyncCategories();
     } catch (err) {
       const msg = err.response?.data?.message || err.message || "Erreur inconnue.";
-      showToast("Erreur : " + msg);
+      showToast("Erreur : " + msg, "error");
     }
   }
 
@@ -135,15 +132,16 @@ export default function AdminCategories() {
       await api.delete(`/admin/categories/${id}`);
       silentSyncCategories();
     } catch (err) {
-      load(); // Revert on failure
+      load();
     }
   }
 
-  // --- FAMILLE ACTIONS ---
+  // --- SOUS-CATÉGORIES (FAMILLES) ACTIONS ---
   function startEditFamille(fam) {
     setEditingFamilleId(fam.id);
     setFamilleForm({
       nom: fam.nom || "",
+      categoryId: fam.categoryId || fam.category?.id || (categories[0]?.id || ""),
       description: fam.description || "",
       imageUrl: fam.imageUrl || ""
     });
@@ -151,45 +149,58 @@ export default function AdminCategories() {
 
   function cancelEditFamille() {
     setEditingFamilleId(null);
-    setFamilleForm(initialFamilleForm);
+    setFamilleForm({
+      ...initialFamilleForm,
+      categoryId: categories[0]?.id || ""
+    });
   }
 
   async function handleFamilleSubmit(e) {
     e.preventDefault();
-    if (!familleForm.nom) return;
+    if (!familleForm.nom.trim()) return;
+
+    const payload = {
+      nom: familleForm.nom.trim(),
+      categoryId: familleForm.categoryId ? Number(familleForm.categoryId) : null,
+      description: familleForm.description,
+      imageUrl: familleForm.imageUrl
+    };
 
     try {
       if (editingFamilleId) {
-        const res = await api.put(`/admin/familles/${editingFamilleId}`, familleForm);
+        const res = await api.put(`/admin/familles/${editingFamilleId}`, payload);
         const updatedFam = res.data;
         setFamilles((prev) =>
           prev.map((f) =>
             f.id === editingFamilleId
-              ? (updatedFam && updatedFam.id ? updatedFam : { ...f, ...familleForm })
+              ? (updatedFam && updatedFam.id ? updatedFam : { ...f, ...payload })
               : f
           )
         );
-        showToast("Famille de produit modifiée !");
+        showToast("Sous-catégorie modifiée !");
       } else {
-        const res = await api.post("/admin/familles", familleForm);
+        const res = await api.post("/admin/familles", payload);
         const newFam = res.data;
-        const newFamItem = newFam && newFam.id ? newFam : { ...familleForm, id: Date.now() };
+        const newFamItem = newFam && newFam.id ? newFam : { ...payload, id: Date.now() };
         setFamilles((prev) => [...prev, newFamItem]);
-        showToast("Nouvelle famille de produit créée !");
+        showToast("Nouvelle sous-catégorie créée !");
       }
       setEditingFamilleId(null);
-      setFamilleForm(initialFamilleForm);
+      setFamilleForm({
+        ...initialFamilleForm,
+        categoryId: categories[0]?.id || ""
+      });
       silentSyncCategories();
     } catch (err) {
       const msg = err.response?.data?.message || err.message || "Erreur inconnue.";
-      showToast("Erreur : " + msg);
+      showToast("Erreur : " + msg, "error");
     }
   }
 
   async function deleteFamille(id) {
-    if (!confirm("Voulez-vous vraiment supprimer cette famille de produit ?")) return;
+    if (!confirm("Voulez-vous vraiment supprimer cette sous-catégorie ?")) return;
     setFamilles((prev) => prev.filter((f) => f.id !== id));
-    showToast("Famille de produit supprimée.");
+    showToast("Sous-catégorie supprimée.");
     try {
       await api.delete(`/admin/familles/${id}`);
       silentSyncCategories();
@@ -216,11 +227,11 @@ export default function AdminCategories() {
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 26, margin: 0, color: "var(--forest-dark)" }}>Gestion des Catégories & Familles</h1>
+          <h1 style={{ fontSize: 26, margin: 0, color: "var(--forest-dark)" }}>Gestion des Catégories & Sous-catégories</h1>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 14 }}>
-            Organisez vos produits en créant des catégories et des familles de produits.
+            Créez vos catégories principales et associez-y leurs sous-catégories respectives.
           </p>
         </div>
 
@@ -262,12 +273,10 @@ export default function AdminCategories() {
             }}
             onClick={() => setActiveTab("familles")}
           >
-            <Layers size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Familles de produits ({familles.length})
+            <Layers size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Sous-catégories ({familles.length})
           </button>
         </div>
       </div>
-
-
 
       {/* ONGLET 1: LISTE DES CATÉGORIES */}
       {activeTab === "liste" && (
@@ -300,10 +309,10 @@ export default function AdminCategories() {
           <table className="bs-table" style={{ minWidth: 600 }}>
             <thead>
               <tr>
-                <th>Image</th>
-                <th>Nom de la catégorie</th>
-                <th>Famille de produit</th>
-                <th>Actions</th>
+                <th style={{ width: 70 }}>Image</th>
+                <th style={{ width: 220 }}>Nom de la catégorie</th>
+                <th>Sous-catégories associées</th>
+                <th style={{ width: 100, textAlign: "center" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -317,33 +326,96 @@ export default function AdminCategories() {
                   </td>
                 </tr>
               )}
-              {!loading && paginatedCategories.map((c) => (
-                <tr key={c.id}>
-                  <td style={{ width: 60 }}>
-                    {c.imageUrl ? (
-                      <img
-                        src={c.imageUrl}
-                        alt={c.nom}
-                        style={{ width: 46, height: 46, borderRadius: 8, objectFit: "cover", border: "1px solid var(--line)" }}
-                      />
-                    ) : (
-                      <div style={{ width: 46, height: 46, borderRadius: 8, background: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", color: "var(--muted)" }}>
-                        <ImageIcon size={20} />
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ fontWeight: 700, color: "var(--ink)" }}>{c.nom}</td>
-                  <td>
-                    <span style={{ background: "var(--forest-light)", color: "var(--forest-dark)", padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, border: "1px solid var(--line)" }}>
-                      {c.famille || "Cosmétique"}
-                    </span>
-                  </td>
-                  <td>
-                    <button className="bs-icon-btn" title="Modifier" onClick={() => startEditCategory(c)}><Pencil size={15} /></button>{" "}
-                    <button className="bs-icon-btn" title="Supprimer" style={{ color: "#B4483A" }} onClick={() => deleteCategory(c.id)}><Trash2 size={15} /></button>
-                  </td>
-                </tr>
-              ))}
+              {!loading && paginatedCategories.map((c) => {
+                const subs = familles.filter(f => Number(f.categoryId) === Number(c.id));
+                return (
+                  <tr key={c.id}>
+                    <td>
+                      {c.imageUrl ? (
+                        <img
+                          src={c.imageUrl}
+                          alt={c.nom}
+                          style={{ width: 46, height: 46, borderRadius: 8, objectFit: "cover", border: "1px solid var(--line)" }}
+                        />
+                      ) : (
+                        <div style={{ width: 46, height: 46, borderRadius: 8, background: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", color: "var(--muted)" }}>
+                          <ImageIcon size={20} />
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ fontWeight: 800, color: "var(--forest-dark)", fontSize: 15 }}>{c.nom}</td>
+                    <td>
+                      {subs.length > 0 ? (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          {subs.map(s => (
+                            <span 
+                              key={s.id} 
+                              style={{ 
+                                background: "var(--forest-light)", 
+                                color: "var(--forest-dark)", 
+                                padding: "4px 10px", 
+                                borderRadius: 12, 
+                                fontSize: 12, 
+                                fontWeight: 700, 
+                                border: "1px solid var(--line)" 
+                              }}
+                            >
+                              {s.nom}
+                            </span>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFamilleForm({ ...initialFamilleForm, categoryId: c.id });
+                              setActiveTab("familles");
+                            }}
+                            style={{
+                              background: "none",
+                              border: "1px dashed var(--forest)",
+                              color: "var(--forest)",
+                              padding: "3px 8px",
+                              borderRadius: 12,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: "pointer"
+                            }}
+                            title="Ajouter une sous-catégorie à cette catégorie"
+                          >
+                            + Ajouter
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>Aucune sous-catégorie</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFamilleForm({ ...initialFamilleForm, categoryId: c.id });
+                              setActiveTab("familles");
+                            }}
+                            style={{
+                              background: "none",
+                              border: "1px dashed var(--forest)",
+                              color: "var(--forest)",
+                              padding: "3px 8px",
+                              borderRadius: 12,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: "pointer"
+                            }}
+                          >
+                            + Ajouter
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <button className="bs-icon-btn" title="Modifier" onClick={() => startEditCategory(c)}><Pencil size={15} /></button>{" "}
+                      <button className="bs-icon-btn" title="Supprimer" style={{ color: "#B4483A" }} onClick={() => deleteCategory(c.id)}><Trash2 size={15} /></button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           </div>
@@ -358,7 +430,7 @@ export default function AdminCategories() {
         </div>
       )}
 
-      {/* ONGLET 2: CREER OU MODIFIER UNE CATÉGRIE */}
+      {/* ONGLET 2: CREER OU MODIFIER UNE CATÉGORIE */}
       {activeTab === "ajout" && (
         <div className="bs-panel" style={{ maxWidth: 600, margin: "0 auto" }}>
           <h3 style={{ marginTop: 0, fontSize: 20, color: "var(--forest-dark)", borderBottom: "1px solid var(--line)", paddingBottom: 12, marginBottom: 20 }}>
@@ -371,36 +443,10 @@ export default function AdminCategories() {
               <input
                 className="bs-input"
                 required
-                placeholder="ex: Soins Visage & Corps, Cheveux, Broches..."
+                placeholder="ex: Électroniques, Cosmétique, Téléphonie & Accessoires..."
                 value={categoryForm.nom}
                 onChange={(e) => setCategoryForm(f => ({ ...f, nom: e.target.value }))}
               />
-            </div>
-
-            <div className="bs-input-group">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <label style={{ margin: 0 }}>Famille de produits *</label>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("familles")}
-                  style={{ background: "none", border: "none", color: "var(--forest)", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
-                >
-                  + Gérer / Ajouter des familles
-                </button>
-              </div>
-              <select
-                className="bs-select"
-                required
-                value={categoryForm.famille}
-                onChange={(e) => setCategoryForm(f => ({ ...f, famille: e.target.value }))}
-              >
-                {familles.map((fam) => (
-                  <option key={fam.id} value={fam.nom}>{fam.nom}</option>
-                ))}
-                {!familles.some(fam => fam.nom === categoryForm.famille) && categoryForm.famille && (
-                  <option value={categoryForm.famille}>{categoryForm.famille}</option>
-                )}
-              </select>
             </div>
 
             <ImageUploader
@@ -431,7 +477,7 @@ export default function AdminCategories() {
                 type="submit"
                 className="bs-btn-primary"
                 style={{ flex: 2 }}
-                disabled={!categoryForm.nom}
+                disabled={!categoryForm.nom.trim()}
               >
                 {editingId ? "Enregistrer les modifications" : "Créer la catégorie"}
               </button>
@@ -440,22 +486,37 @@ export default function AdminCategories() {
         </div>
       )}
 
-      {/* ONGLET 3: GESTION DES FAMILLES DE PRODUITS */}
+      {/* ONGLET 3: GESTION DES SOUS-CATÉGORIES */}
       {activeTab === "familles" && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-          {/* FORMULAIRE D'AJOUT / MODIFICATION DE FAMILLE */}
+          {/* FORMULAIRE D'AJOUT / MODIFICATION DE SOUS-CATÉGORIE */}
           <div className="bs-panel">
             <h3 style={{ marginTop: 0, fontSize: 18, color: "var(--forest-dark)", borderBottom: "1px solid var(--line)", paddingBottom: 10, marginBottom: 16 }}>
-              {editingFamilleId ? "Modifier la famille" : "Ajouter une famille de produit"}
+              {editingFamilleId ? "Modifier la sous-catégorie" : "Ajouter une sous-catégorie"}
             </h3>
 
             <form onSubmit={handleFamilleSubmit} className="bs-auth-form" style={{ gap: 14 }}>
               <div className="bs-input-group">
-                <label>Nom de la famille *</label>
+                <label>Catégorie parente *</label>
+                <select
+                  className="bs-select"
+                  required
+                  value={familleForm.categoryId}
+                  onChange={(e) => setFamilleForm(f => ({ ...f, categoryId: e.target.value }))}
+                >
+                  <option value="">-- Choisir la catégorie parente --</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nom}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="bs-input-group">
+                <label>Nom de la sous-catégorie *</label>
                 <input
                   className="bs-input"
                   required
-                  placeholder="ex: Cosmétique, Parfumerie, Peignes & Brosses, Bijoux..."
+                  placeholder="ex: Chargeurs & Blocs Rapides, Câbles USB-C, Écouteurs..."
                   value={familleForm.nom}
                   onChange={(e) => setFamilleForm(f => ({ ...f, nom: e.target.value }))}
                 />
@@ -465,14 +526,14 @@ export default function AdminCategories() {
                 <label>Description (optionnel)</label>
                 <input
                   className="bs-input"
-                  placeholder="ex: Soins capillaires, crèmes et accessoires de coiffure"
+                  placeholder="ex: Chargeurs rapides, adaptateurs secteur..."
                   value={familleForm.description}
                   onChange={(e) => setFamilleForm(f => ({ ...f, description: e.target.value }))}
                 />
               </div>
 
               <ImageUploader
-                label="Image de couverture (optionnel)"
+                label="Image d'illustration (optionnel)"
                 value={familleForm.imageUrl}
                 onChange={(url) => setFamilleForm(f => ({ ...f, imageUrl: url }))}
               />
@@ -492,47 +553,62 @@ export default function AdminCategories() {
                   type="submit"
                   className="bs-btn-primary"
                   style={{ flex: 2 }}
-                  disabled={!familleForm.nom}
+                  disabled={!familleForm.nom.trim() || !familleForm.categoryId}
                 >
-                  {editingFamilleId ? "Enregistrer" : "Créer la famille"}
+                  {editingFamilleId ? "Enregistrer" : "Créer la sous-catégorie"}
                 </button>
               </div>
             </form>
           </div>
 
-          {/* LISTE DES FAMILLES */}
+          {/* LISTE DES SOUS-CATÉGORIES */}
           <div className="bs-panel" style={{ padding: 0 }}>
             <div style={{ background: "var(--paper)", padding: "14px 18px", borderBottom: "1px solid var(--line)", fontWeight: 800, color: "var(--forest-dark)", fontSize: 16 }}>
-              Liste des familles créées ({familles.length})
+              Liste des sous-catégories créées ({familles.length})
             </div>
 
             <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%" }}>
             <table className="bs-table" style={{ minWidth: 500 }}>
               <thead>
                 <tr>
-                  <th>Famille</th>
-                  <th>Description</th>
-                  <th>Actions</th>
+                  <th>Sous-catégorie</th>
+                  <th>Catégorie parente</th>
+                  <th style={{ width: 80, textAlign: "center" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {familles.length === 0 ? (
                   <tr>
                     <td colSpan={3} style={{ textAlign: "center", padding: 30, color: "var(--muted)" }}>
-                      Aucune famille de produit définie.
+                      Aucune sous-catégorie définie.
                     </td>
                   </tr>
                 ) : (
-                  familles.map((fam) => (
-                    <tr key={fam.id}>
-                      <td style={{ fontWeight: 700, color: "var(--ink)" }}>{fam.nom}</td>
-                      <td style={{ fontSize: 12.5, color: "var(--muted)" }}>{fam.description || "—"}</td>
-                      <td>
-                        <button className="bs-icon-btn" title="Modifier" onClick={() => startEditFamille(fam)}><Pencil size={15} /></button>{" "}
-                        <button className="bs-icon-btn" title="Supprimer" style={{ color: "#B4483A" }} onClick={() => deleteFamille(fam.id)}><Trash2 size={15} /></button>
-                      </td>
-                    </tr>
-                  ))
+                  familles.map((fam) => {
+                    const parentCat = categories.find(c => Number(c.id) === Number(fam.categoryId));
+                    return (
+                      <tr key={fam.id}>
+                        <td style={{ fontWeight: 700, color: "var(--ink)" }}>{fam.nom}</td>
+                        <td>
+                          <span style={{ 
+                            background: "#EFF6FF", 
+                            color: "#1D4ED8", 
+                            padding: "3px 10px", 
+                            borderRadius: 12, 
+                            fontSize: 12, 
+                            fontWeight: 700, 
+                            border: "1px solid #BFDBFE" 
+                          }}>
+                            {parentCat ? parentCat.nom : (fam.category?.nom || "Non assignée")}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <button className="bs-icon-btn" title="Modifier" onClick={() => startEditFamille(fam)}><Pencil size={15} /></button>{" "}
+                          <button className="bs-icon-btn" title="Supprimer" style={{ color: "#B4483A" }} onClick={() => deleteFamille(fam.id)}><Trash2 size={15} /></button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

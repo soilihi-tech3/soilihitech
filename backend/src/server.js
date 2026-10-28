@@ -13,6 +13,7 @@ const superadminRoutes = require("./routes/superadmin.routes");
 const notificationRoutes = require("./routes/notification.routes");
 const uploadRoutes = require("./routes/upload.routes");
 const iconsRoutes = require("./routes/icons.routes");
+const phoneRoutes = require("./routes/phone.routes");
 const resolveBoutique = require("./middleware/resolveBoutique");
 const path = require("path");
 const runSeed = require("./seed");
@@ -205,6 +206,7 @@ app.use((req, res, next) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/store", storeRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/admin/phones", phoneRoutes);
 app.use("/api/superadmin", superadminRoutes);
 app.use("/api/admin", uploadRoutes);
 app.use("/api/notifications", notificationRoutes);
@@ -296,6 +298,10 @@ async function ensureColumns() {
       console.log("[MIGRATION] Ajout colonne marque_id sur products");
       await sequelize.query(`ALTER TABLE products ADD COLUMN marque_id INT NULL;`);
     }
+    if (!tableProducts["masquer_sur_site"]) {
+      console.log("[MIGRATION] Ajout colonne masquer_sur_site sur products");
+      await sequelize.query(`ALTER TABLE products ADD COLUMN masquer_sur_site TINYINT(1) NOT NULL DEFAULT 0;`);
+    }
 
     const tableOrders = await queryInterface.describeTable("orders");
     if (!tableOrders["stripe_session_id"]) {
@@ -353,6 +359,14 @@ async function ensureColumns() {
       "ALTER TABLE custom_order_requests MODIFY COLUMN photo_url LONGTEXT NULL;",
       "ALTER TABLE products ADD COLUMN prix_senegal DECIMAL(10, 2) NULL;",
       "ALTER TABLE products ADD COLUMN prix_promo_senegal DECIMAL(10, 2) NULL;",
+      "ALTER TABLE products ADD COLUMN masquer_sur_site TINYINT(1) NOT NULL DEFAULT 0;",
+      "ALTER TABLE products ADD COLUMN images LONGTEXT NULL;",
+      "ALTER TABLE products ADD COLUMN couleurs LONGTEXT NULL;",
+      "ALTER TABLE products ADD COLUMN modeles_compatibles LONGTEXT NULL;",
+      "ALTER TABLE order_items ADD COLUMN marque_telephone VARCHAR(100) NULL;",
+      "ALTER TABLE order_items ADD COLUMN modele VARCHAR(150) NULL;",
+      "ALTER TABLE order_items ADD COLUMN couleur VARCHAR(100) NULL;",
+      "ALTER TABLE order_items ADD COLUMN image_url LONGTEXT NULL;",
       "ALTER TABLE orders ADD COLUMN devise VARCHAR(10) DEFAULT 'KMF';"
     ];
 

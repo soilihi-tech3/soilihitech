@@ -123,18 +123,26 @@ export default function CartDrawer({ onClose }) {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {cart.map((l) => {
+                const itemKey = l.cartKey || (l.product ? `${l.product.id}_${l.selectedModele || ''}_${l.selectedCouleur || ''}` : String(l.id));
                 const isSenegal = activeCurrency === "FCFA";
-                const prix = getProductPrice(l.product, activeCurrency);
+                
+                let prix = getProductPrice(l.product, activeCurrency);
+                if (isSenegal && l.selectedPriceFCFA && Number(l.selectedPriceFCFA) > 0) {
+                  prix = Number(l.selectedPriceFCFA);
+                } else if (!isSenegal && l.selectedPriceKMF && Number(l.selectedPriceKMF) > 0) {
+                  prix = Number(l.selectedPriceKMF);
+                }
+
                 const lineTotal = prix * l.quantite;
-                const regularPrice = isSenegal && l.product.prixSenegal && Number(l.product.prixSenegal) > 0
+                const regularPrice = isSenegal && l.product?.prixSenegal && Number(l.product.prixSenegal) > 0
                   ? Number(l.product.prixSenegal)
-                  : Number(l.product.prix);
-                const hasPromo = isSenegal 
-                  ? (l.product.prixPromoSenegal && Number(l.product.prixPromoSenegal) > 0)
-                  : (l.product.prixPromo && Number(l.product.prixPromo) > 0);
+                  : Number(l.product?.prix || 0);
+                const hasPromo = !l.selectedPriceFCFA && !l.selectedPriceKMF && (isSenegal 
+                  ? (l.product?.prixPromoSenegal && Number(l.product.prixPromoSenegal) > 0)
+                  : (l.product?.prixPromo && Number(l.product.prixPromo) > 0));
 
                 return (
-                  <div key={l.product.id} style={{
+                  <div key={itemKey} style={{
                     display: "flex", gap: 14, padding: "14px",
                     background: "var(--paper)", borderRadius: 14,
                     border: "1px solid var(--line)",
@@ -146,8 +154,8 @@ export default function CartDrawer({ onClose }) {
                       flexShrink: 0, border: "1px solid var(--line)", background: "#fff"
                     }}>
                       <img 
-                        src={l.product.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=100&q=80"} 
-                        alt={l.product.nom} 
+                        src={l.selectedImageUrl || l.product?.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=100&q=80"} 
+                        alt={l.product?.nom} 
                         style={{ width: "100%", height: "100%", objectFit: "cover" }}
                       />
                     </div>
@@ -158,10 +166,35 @@ export default function CartDrawer({ onClose }) {
                         fontWeight: 700, fontSize: 13.5, color: "var(--ink)",
                         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
                       }}>
-                        {l.product.nom}
+                        {l.product?.nom}
                       </div>
+
+                      {/* Variant badges */}
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4, marginBottom: 4 }}>
+                        {l.selectedModele && (
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, background: "#EFF6FF", color: "#1D4ED8",
+                            padding: "2px 7px", borderRadius: 6, border: "1px solid #BFDBFE"
+                          }}>
+                            {l.selectedModele}
+                          </span>
+                        )}
+                        {l.selectedCouleur && (
+                          <span style={{
+                            fontSize: 11, fontWeight: 600, background: "#F3F4F6", color: "#374151",
+                            padding: "2px 7px", borderRadius: 6, border: "1px solid #E5E7EB",
+                            display: "inline-flex", alignItems: "center", gap: 4
+                          }}>
+                            {l.selectedCouleurHex && (
+                              <span style={{ width: 8, height: 8, borderRadius: "50%", background: l.selectedCouleurHex, border: "1px solid rgba(0,0,0,0.2)" }} />
+                            )}
+                            {l.selectedCouleur}
+                          </span>
+                        )}
+                      </div>
+
                       <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                        {fcfa(prix, activeCurrency)} / {l.product.unite}
+                        {fcfa(prix, activeCurrency)} {l.product?.unite ? `/ ${l.product.unite}` : ""}
                       </div>
                       {hasPromo && (
                         <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600, marginTop: 2 }}>
@@ -177,7 +210,7 @@ export default function CartDrawer({ onClose }) {
                           background: "#fff"
                         }}>
                           <button 
-                            onClick={() => updateQuantite(l.product.id, -1)}
+                            onClick={() => updateQuantite(itemKey, -1)}
                             style={{
                               width: 28, height: 28, background: "none", border: "none",
                               cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
@@ -189,9 +222,9 @@ export default function CartDrawer({ onClose }) {
                           <input
                             type="number"
                             min="1"
-                            max={l.product.stock || 999}
+                            max={l.product?.stock || 999}
                             value={l.quantite}
-                            onChange={(e) => setExactQuantite(l.product.id, e.target.value)}
+                            onChange={(e) => setExactQuantite(itemKey, e.target.value)}
                             style={{
                               width: 34, textAlign: "center", fontWeight: 700, fontSize: 13,
                               border: "none", background: "transparent", color: "var(--ink)", outline: "none",
@@ -199,7 +232,7 @@ export default function CartDrawer({ onClose }) {
                             }}
                           />
                           <button 
-                            onClick={() => updateQuantite(l.product.id, 1)}
+                            onClick={() => updateQuantite(itemKey, 1)}
                             style={{
                               width: 28, height: 28, background: "none", border: "none",
                               cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
@@ -215,7 +248,7 @@ export default function CartDrawer({ onClose }) {
                             {fcfa(lineTotal, activeCurrency)}
                           </span>
                           <button 
-                            onClick={() => removeFromCart(l.product.id)}
+                            onClick={() => removeFromCart(itemKey)}
                             title="Retirer du panier"
                             style={{
                               width: 28, height: 28, borderRadius: "50%", border: "none",

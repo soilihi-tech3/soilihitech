@@ -163,14 +163,11 @@ export default function Catalogue() {
   if (famille) {
     const fClean = stripAccents(famille);
     displayedProducts = displayedProducts.filter((p) => {
-      const pFam = stripAccents(p.Category?.famille || p.famille);
-      const pCatNom = stripAccents(p.Category?.nom);
+      const pFam = stripAccents(p.famille);
       const pNom = stripAccents(p.nom);
       return (
         pFam.includes(fClean) ||
         fClean.includes(pFam) ||
-        pCatNom.includes(fClean) ||
-        fClean.includes(pCatNom) ||
         pNom.includes(fClean)
       );
     });
@@ -233,6 +230,51 @@ export default function Catalogue() {
     // Sinon, retourner les articles les plus populaires / bien notés
     return allFallbackProducts.slice(0, 6);
   }, [displayedProducts.length, allFallbackProducts, smartAnalysis, products]);
+
+  // Sous-catégories dynamiques pour la catégorie active ou catalogue général
+  const availableSubcategories = useMemo(() => {
+    const map = new Map();
+
+    // 1. Si une catégorie est sélectionnée, inclure ses sous-catégories déclarées
+    if (categoryId) {
+      const activeCat = categories.find(c => String(c.id) === String(categoryId));
+      if (activeCat?.sousCategories && Array.isArray(activeCat.sousCategories)) {
+        activeCat.sousCategories.forEach(s => {
+          if (s.nom) {
+            const clean = s.nom.trim();
+            map.set(clean.toLowerCase(), {
+              nom: clean,
+              count: 0,
+              imageUrl: s.imageUrl || activeCat.imageUrl || null
+            });
+          }
+        });
+      }
+    }
+
+    // 2. Découvrir et compter depuis les produits de la catégorie active
+    const pool = categoryId
+      ? allFallbackProducts.filter(p => String(p.categoryId) === String(categoryId))
+      : allFallbackProducts;
+
+    pool.forEach(p => {
+      const fam = p.famille;
+      if (fam && typeof fam === "string") {
+        const clean = fam.trim();
+        if (clean && !clean.toLowerCase().startsWith("section")) {
+          const key = clean.toLowerCase();
+          const existing = map.get(key);
+          map.set(key, {
+            nom: existing?.nom || clean,
+            count: (existing?.count || 0) + 1,
+            imageUrl: existing?.imageUrl || p.imageUrl || null
+          });
+        }
+      }
+    });
+
+    return Array.from(map.values());
+  }, [categoryId, allFallbackProducts, categories]);
 
   function handleSearchSubmit(e) {
     e.preventDefault();
@@ -298,13 +340,13 @@ export default function Catalogue() {
         </div>
       )}
 
-      {/* ── BANDEAU CATÉGORIES & FAMILLES ── */}
+      {/* ── BANDEAU CATÉGORIES ── */}
       <div className="bs-cats">
         <div
           className={"bs-cat-card" + (!categoryId && !famille && !onlyFavoris ? " on" : "")}
           onClick={() => setParams({})}
         >
-          <div className="bs-cat-name" style={{ padding: "20px 0" }}>⚡ Tout le catalogue</div>
+          <div className="bs-cat-name" style={{ padding: "20px 0" }}>Tout le catalogue</div>
         </div>
 
         <div
@@ -340,7 +382,12 @@ export default function Catalogue() {
           <div
             key={c.id}
             className={"bs-cat-card" + (categoryId == c.id && !onlyFavoris ? " on" : "")}
-            onClick={() => setParams({ categoryId: c.id })}
+            onClick={() => {
+              const next = new URLSearchParams(params);
+              next.set("categoryId", c.id);
+              next.delete("famille");
+              setParams(next);
+            }}
           >
             <img
               src={c.imageUrl || "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=300&q=80"}
@@ -353,6 +400,145 @@ export default function Catalogue() {
           </div>
         ))}
       </div>
+
+      {/* ── SOUS-CATÉGORIES / FAMILLES STYLE SHEIN (BULLES RONDES) ── */}
+      {availableSubcategories.length > 0 && (
+        <div style={{
+          margin: "18px 0 20px",
+          background: "var(--card)",
+          padding: "16px 20px",
+          borderRadius: 18,
+          border: "1px solid var(--line)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: "var(--forest-dark)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              {categoryId ? "Sous-catégories disponibles :" : "Familles d'accessoires :"}
+            </span>
+            {famille && (
+              <button
+                onClick={() => {
+                  const next = new URLSearchParams(params);
+                  next.delete("famille");
+                  setParams(next);
+                }}
+                style={{ background: "none", border: "none", color: "#B4483A", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+              >
+                Effacer le filtre
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 6, scrollbarWidth: "none" }}>
+            {/* "Tout" bubble */}
+            <button
+              onClick={() => {
+                const next = new URLSearchParams(params);
+                next.delete("famille");
+                setParams(next);
+              }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 6,
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                flexShrink: 0,
+                minWidth: 70
+              }}
+            >
+              <div style={{
+                width: 58,
+                height: 58,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: !famille ? "var(--forest-dark)" : "var(--paper)",
+                color: !famille ? "#fff" : "var(--forest-dark)",
+                border: !famille ? "2.5px solid var(--forest)" : "1.5px solid var(--line)",
+                fontWeight: 800,
+                fontSize: 13,
+                boxShadow: !famille ? "0 4px 12px rgba(22, 52, 36, 0.2)" : "none",
+                transition: "all 0.15s"
+              }}>
+                Tout
+              </div>
+              <span style={{
+                fontSize: 12,
+                fontWeight: !famille ? 800 : 600,
+                color: !famille ? "var(--forest-dark)" : "var(--muted)",
+                textAlign: "center"
+              }}>
+                Tous
+              </span>
+            </button>
+
+            {/* Dynamic subcategory bubbles */}
+            {availableSubcategories.map((sub, sIdx) => {
+              const isSelected = stripAccents(famille) === stripAccents(sub.nom);
+              return (
+                <button
+                  key={sIdx}
+                  onClick={() => {
+                    const next = new URLSearchParams(params);
+                    if (isSelected) next.delete("famille");
+                    else next.set("famille", sub.nom);
+                    setParams(next);
+                  }}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 6,
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                    minWidth: 76,
+                    maxWidth: 96
+                  }}
+                >
+                  <div style={{
+                    width: 58,
+                    height: 58,
+                    borderRadius: "50%",
+                    overflow: "hidden",
+                    border: isSelected ? "2.5px solid var(--forest)" : "1.5px solid var(--line)",
+                    padding: 2,
+                    background: "#fff",
+                    boxShadow: isSelected ? "0 4px 12px rgba(22, 52, 36, 0.2)" : "none",
+                    transition: "all 0.15s"
+                  }}>
+                    {sub.imageUrl ? (
+                      <img src={sub.imageUrl} alt={sub.nom} style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
+                    ) : (
+                      <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: isSelected ? "var(--forest-light)" : "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <Smartphone size={22} color={isSelected ? "var(--forest)" : "var(--muted)"} />
+                      </div>
+                    )}
+                  </div>
+                  <span style={{
+                    fontSize: 11.5,
+                    fontWeight: isSelected ? 800 : 600,
+                    color: isSelected ? "var(--forest-dark)" : "var(--ink)",
+                    textAlign: "center",
+                    lineHeight: 1.2,
+                    overflow: "hidden",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical"
+                  }}>
+                    {sub.nom}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── FILTRES PAR MARQUE (TOUJOURS VISIBLES SUR CATALOGUE) ── */}
       <div style={{

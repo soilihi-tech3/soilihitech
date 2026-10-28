@@ -3,7 +3,7 @@ import { NavLink, Link, Outlet, useLocation, useNavigate } from "react-router-do
 import { 
   LayoutDashboard, Package, ShoppingCart, Users, Store, LogOut, Layers, 
   PanelLeftClose, PanelLeftOpen, User, Image, LayoutGrid, CreditCard, 
-  ShoppingBag, Truck, Scale, History, Menu, X, ExternalLink, ArrowLeft, Clock, Lock, UserCheck, Sun, Moon, PhoneCall, Award, MessageCircle, ClipboardList
+  ShoppingBag, Truck, Scale, History, Menu, X, ExternalLink, ArrowLeft, Clock, Lock, UserCheck, Sun, Moon, PhoneCall, Award, MessageCircle, ClipboardList, Smartphone
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useCart } from "../../context/CartContext.jsx";
@@ -20,6 +20,7 @@ const ROUTE_MODULE_MAP = {
   "/admin/fournisseurs": { key: "fournisseurs", label: "Fournisseurs" },
   "/admin/unites": { key: "unites", label: "Unités de vente" },
   "/admin/marques": { key: "marques", label: "Marques" },
+  "/admin/telephones": { key: "telephones", label: "Modèles Téléphones" },
   "/admin/avis": { key: "avis", label: "Avis Clients WhatsApp" },
   "/admin/home-banners": { key: "homeBanners", label: "Home Banners" },
   "/admin/side-banners": { key: "sideBanners", label: "Home Side Banners" },
@@ -59,6 +60,7 @@ export default function AdminLayout() {
     { to: "/admin/fournisseurs", label: "Fournisseurs", icon: Truck, permKey: ["achats_stocks", "gerer_produits", "gerer_parametres"], moduleKey: "fournisseurs" },
     { to: "/admin/unites", label: "Unités de vente", icon: Scale, permKey: ["gerer_produits", "gerer_categories"], moduleKey: "unites" },
     { to: "/admin/marques", label: "Marques", icon: Award, permKey: ["gerer_categories", "gerer_produits"] },
+    { to: "/admin/telephones", label: "Modèles Téléphones", icon: Smartphone, permKey: ["gerer_categories", "gerer_produits"], moduleKey: "telephones" },
     { to: "/admin/categories", label: "Catégories", icon: Layers, permKey: "gerer_categories", moduleKey: "categories" },
     { to: "/admin/produits", label: "Produits", icon: Package, permKey: ["voir_produits", "ajouter_modifier_produit", "supprimer_produit", "gerer_produits"], moduleKey: "produits" },
     { to: "/admin/avis", label: "Avis Clients WhatsApp", icon: MessageCircle, permKey: ["gerer_produits", "voir_dashboard"] },

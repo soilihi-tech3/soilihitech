@@ -517,7 +517,12 @@ export default function AdminOrders() {
                 const timeFormatted = dateObj.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
                 
                 const isRecharge = o.typeVente === "recharge_mobile" || o.notes?.includes("recharge_mobile");
-                const productNames = isRecharge ? "Recharge de crédit" : (o.items?.map(it => it.product?.nom).filter(Boolean).join(", ") || "Produit(s)");
+                const productNames = isRecharge ? "Recharge de crédit" : (o.items?.map(it => {
+                  const parts = [it.product?.nom];
+                  if (it.modele) parts.push(`(${it.modele})`);
+                  if (it.couleur) parts.push(`[${it.couleur}]`);
+                  return parts.filter(Boolean).join(" ");
+                }).filter(Boolean).join(", ") || "Produit(s)");
                 const itemSubtitle = isRecharge ? "Crédit" : `${o.items?.length || 0} article(s)`;
 
                 return (
@@ -875,16 +880,28 @@ export default function AdminOrders() {
                 ) : selectedOrder.items?.map((it, idx) => (
                   <div key={idx} style={{ display: "flex", alignItems: "center", gap: 12, padding: 10, background: "var(--paper)", borderRadius: 10, border: "1px solid var(--line)" }}>
                     <img
-                      src={it.product?.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=60&q=80"}
+                      src={it.imageUrl || it.product?.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=60&q=80"}
                       alt={it.product?.nom}
                       style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover", border: "1px solid var(--line)" }}
                     />
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)" }}>{it.product?.nom}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{fcfa(it.prixUnitaire)} x {it.quantite}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "4px 0" }}>
+                        {it.modele && (
+                          <span style={{ fontSize: 11, fontWeight: 700, background: "#EFF6FF", color: "#1D4ED8", padding: "1px 6px", borderRadius: 4, border: "1px solid #BFDBFE" }}>
+                            Modèle : {it.modele}
+                          </span>
+                        )}
+                        {it.couleur && (
+                          <span style={{ fontSize: 11, fontWeight: 600, background: "#F3F4F6", color: "#374151", padding: "1px 6px", borderRadius: 4, border: "1px solid #E5E7EB" }}>
+                            Couleur : {it.couleur}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{fcfa(it.prixUnitaire, selectedOrder.devise)} x {it.quantite}</div>
                     </div>
                     <div style={{ fontWeight: 800, fontSize: 14, color: "var(--forest-dark)" }}>
-                      {fcfa(it.prixUnitaire * it.quantite)}
+                      {fcfa(it.prixUnitaire * it.quantite, selectedOrder.devise)}
                     </div>
                   </div>
                 ))}
