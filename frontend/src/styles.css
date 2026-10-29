@@ -1475,7 +1475,7 @@ html[data-theme="dark"] .bs-testimonial-card span[style*="color: var(--ink)"] {
   min-width: 0;
   box-sizing: border-box;
   position: relative;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .bs-sidebar {
@@ -2532,14 +2532,15 @@ div[style*="overflowX: auto"]::-webkit-scrollbar-thumb:hover {
   align-items: center;
   justify-content: space-between;
   padding: 14px 24px;
-  background: #fff;
+  background: #ffffff;
   border-radius: 16px;
   border: 1px solid var(--line);
   margin-bottom: 24px;
-  box-shadow: 0 2px 12px rgba(22, 52, 36, 0.04);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   position: sticky;
-  top: 12px;
+  top: 10px;
   z-index: 100;
+  backdrop-filter: blur(8px);
 }
 
 .bs-pos-mobile-float-cart {
@@ -2732,7 +2733,7 @@ div[style*="overflowX: auto"]::-webkit-scrollbar-thumb:hover {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
-    overflow-x: hidden !important;
+    overflow-x: clip !important;
     padding: 14px 12px !important;
     box-sizing: border-box !important;
   }
@@ -2741,6 +2742,9 @@ div[style*="overflowX: auto"]::-webkit-scrollbar-thumb:hover {
     padding: 8px 12px !important;
     margin-bottom: 14px !important;
     border-radius: 12px !important;
+    position: sticky !important;
+    top: 56px !important;
+    z-index: 90 !important;
   }
 
   .bs-admin-topbar-role {

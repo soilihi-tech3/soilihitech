@@ -30,6 +30,8 @@ const Product = sequelize.define("Product", {
   masquerSurSite: { type: DataTypes.BOOLEAN, defaultValue: false, field: "masquer_sur_site" },
   images: { type: DataTypes.JSON, allowNull: true },
   couleurs: { type: DataTypes.JSON, allowNull: true },
+  senteurs: { type: DataTypes.JSON, allowNull: true },
+  typeVarianteNom: { type: DataTypes.STRING(50), defaultValue: "Senteur", field: "type_variante_nom" },
   modelesCompatibles: { type: DataTypes.JSON, allowNull: true, field: "modeles_compatibles" },
 }, { tableName: "products" });
 

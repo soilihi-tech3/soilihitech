@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Truck, Store, CreditCard, Banknote, Smartphone, ArrowLeft, Minus, Plus, Trash2, CheckCircle, MapPin, ShoppingBag, ArrowRight, Lock, AlertCircle, ChevronDown, ChevronUp, MessageCircle } from "lucide-react";
+import { Truck, Store, CreditCard, Banknote, Smartphone, ArrowLeft, Minus, Plus, Trash2, CheckCircle, MapPin, ShoppingBag, ArrowRight, Lock, AlertCircle, ChevronDown, ChevronUp, MessageCircle, Upload } from "lucide-react";
 import api, { SLUG } from "../../api";
 import { useCart } from "../../context/CartContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -32,6 +32,54 @@ export default function Checkout() {
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentModalData, setPaymentModalData] = useState(null);
+  const [modalCapture, setModalCapture] = useState(null);
+  const [uploadingModalCapture, setUploadingModalCapture] = useState(false);
+
+  const handleModalCaptureChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !paymentModalData?.order?.id) return;
+    setUploadingModalCapture(true);
+    try {
+      const reader = new FileReader();
+      const base64Data = await new Promise((resolve, reject) => {
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            let width = img.width;
+            let height = img.height;
+            const maxDim = 1200;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", 0.8));
+          };
+          img.onerror = reject;
+          img.src = event.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      await api.patch(`/store/${SLUG}/orders/${paymentModalData.order.id}/capture`, { captureUrl: base64Data });
+      setModalCapture(base64Data);
+      showToast("Capture enregistrée avec succès !", "success");
+    } catch (err) {
+      console.error(err);
+      showToast("Erreur lors de l'enregistrement de la capture.", "error");
+    } finally {
+      setUploadingModalCapture(false);
+    }
+  };
 
   // Gestion de l'affichage dépliable (Accordéon) pour libérer de l'espace à l'écran
   const [openSteps, setOpenSteps] = useState({ 1: true, 2: true, 3: true });
@@ -723,6 +771,25 @@ export default function Checkout() {
             </div>
 
             <div style={{ padding: 24, background: "var(--paper)", display: "flex", flexDirection: "column", gap: 12 }}>
+              <label style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                padding: "11px 14px", background: modalCapture ? "#EBF7F0" : "#fff",
+                border: modalCapture ? "1.5px solid #2D8653" : "1.5px dashed var(--muted)",
+                borderRadius: 8, cursor: uploadingModalCapture ? "wait" : "pointer",
+                fontSize: 13, fontWeight: 700, color: modalCapture ? "#2D8653" : "var(--forest-dark)",
+                textAlign: "center"
+              }}>
+                {modalCapture ? <CheckCircle size={16} /> : <Upload size={16} />}
+                {uploadingModalCapture ? "Enregistrement..." : modalCapture ? "Capture jointe avec succès" : "Joindre la capture maintenant (optionnel)"}
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  disabled={uploadingModalCapture} 
+                  onChange={handleModalCaptureChange} 
+                  style={{ display: "none" }} 
+                />
+              </label>
+
               <button 
                 onClick={() => {
                   const waNum = boutique?.whatsappNumber || boutique?.telephone;

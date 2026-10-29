@@ -48,6 +48,9 @@ const STATUT_STYLE = {
 const MOYEN_LABEL = {
   cash: "Paiement à la livraison",
   mvola: "Mvola",
+  wave: "Wave",
+  orange_money: "Orange Money",
+  orange: "Orange Money",
   holam: "Wero",
   carte: "Carte bancaire",
   whatsapp: "Commande via WhatsApp"
@@ -937,6 +940,21 @@ export default function AdminOrders() {
                   <a href={selectedOrder.receiptUrl} target="_blank" rel="noopener noreferrer" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 10, padding: "10px", textDecoration: "none", color: "var(--forest-dark)", fontWeight: 700, fontSize: 13 }}>
                     Voir le reçu du paiement
                   </a>
+                </div>
+              )}
+
+              {selectedOrder.captureUrl && (
+                <div style={{ marginTop: 12 }}>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      const win = window.open();
+                      win.document.write(`<img src="${selectedOrder.captureUrl}" style="max-width:100%;height:auto;display:block;margin:20px auto;" />`);
+                    }}
+                    style={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, background: "#EBF7F0", border: "1px solid #A7F3D0", borderRadius: 10, padding: "10px", color: "#065F46", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+                  >
+                    Voir la capture de paiement client
+                  </button>
                 </div>
               )}
             </div>

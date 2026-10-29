@@ -821,7 +821,7 @@ router.delete("/employees/:id", requireRole("admin"), async (req, res, next) => 
 
 /* ---------------------- GESTION DES CLIENTS ---------------------- */
 
-router.get("/clients", async (req, res, next) => {
+router.get("/clients", requireRole("admin"), async (req, res, next) => {
   try {
     const clients = await User.findAll({
       where: { role: "client", isEmailVerified: true },
@@ -832,7 +832,7 @@ router.get("/clients", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post("/clients", async (req, res, next) => {
+router.post("/clients", requireRole("admin"), async (req, res, next) => {
   try {
     const { nom, email, telephone, motDePasse } = req.body;
     const cleanEmail = email ? String(email).trim().toLowerCase() : null;
@@ -865,7 +865,7 @@ router.post("/clients", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.put("/clients/:id", async (req, res, next) => {
+router.put("/clients/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const client = await User.findOne({ where: { id: req.params.id, role: "client" } });
     if (!client) return res.status(404).json({ message: "Client introuvable." });
@@ -888,7 +888,7 @@ router.put("/clients/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.patch("/clients/:id/status", async (req, res, next) => {
+router.patch("/clients/:id/status", requireRole("admin"), async (req, res, next) => {
   try {
     const client = await User.findOne({ where: { id: req.params.id, role: "client" } });
     if (!client) return res.status(404).json({ message: "Client introuvable." });
@@ -899,7 +899,7 @@ router.patch("/clients/:id/status", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.delete("/clients/:id", async (req, res, next) => {
+router.delete("/clients/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const client = await User.findOne({ where: { id: req.params.id, role: "client" } });
     if (!client) return res.status(404).json({ message: "Client introuvable." });
@@ -1339,7 +1339,7 @@ router.delete("/marques/:id", requireRole("admin"), async (req, res, next) => {
 
 /* ---------------------- AVIS CLIENTS & RETOURS WHATSAPP ---------------------- */
 
-router.get("/testimonials", async (req, res, next) => {
+router.get("/testimonials", requireRole("admin"), async (req, res, next) => {
   try {
     const list = await Testimonial.findAll({
       where: { boutiqueId: req.boutiqueId },
@@ -1349,7 +1349,7 @@ router.get("/testimonials", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post("/testimonials", requireRole("admin", "employe"), async (req, res, next) => {
+router.post("/testimonials", requireRole("admin"), async (req, res, next) => {
   try {
     const { nom, photoUrl, genre, type, message, captureUrl, note, actif, ordre } = req.body;
     if (!nom || !nom.trim()) {
@@ -1373,7 +1373,7 @@ router.post("/testimonials", requireRole("admin", "employe"), async (req, res, n
   } catch (err) { next(err); }
 });
 
-router.put("/testimonials/:id", requireRole("admin", "employe"), async (req, res, next) => {
+router.put("/testimonials/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const testimonial = await Testimonial.findOne({
       where: { id: req.params.id, boutiqueId: req.boutiqueId }
@@ -1466,8 +1466,8 @@ const {
   quoteCustomRequest
 } = require("../controllers/customOrder.controller");
 
-router.get("/custom-requests", listAdminCustomRequests);
-router.put("/custom-requests/:id/quote", quoteCustomRequest);
+router.get("/custom-requests", requireRole("admin"), listAdminCustomRequests);
+router.put("/custom-requests/:id/quote", requireRole("admin"), quoteCustomRequest);
 
 module.exports = router;
 

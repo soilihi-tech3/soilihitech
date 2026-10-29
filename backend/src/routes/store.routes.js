@@ -317,7 +317,7 @@ router.post("/:slug/products/:id/reviews", loadBoutique, authenticate, requireRo
 router.post("/:slug/orders", loadBoutique, authenticate, requireRole("client"), async (req, res, next) => {
   const t = await sequelize.transaction();
   try {
-    const { items, modeLivraison, adresseLivraison, moyenPaiement, devise } = req.body;
+    const { items, modeLivraison, adresseLivraison, moyenPaiement, devise, captureUrl } = req.body;
     if (!items || !items.length) {
       await t.rollback();
       return res.status(400).json({ message: "Le panier est vide." });
@@ -430,6 +430,7 @@ router.post("/:slug/orders", loadBoutique, authenticate, requireRole("client"), 
       modeLivraison, adresseLivraison, moyenPaiement, sousTotal, fraisLivraison,
       total: sousTotal + fraisLivraison,
       devise: devise || "KMF",
+      captureUrl: captureUrl || null,
     }, { transaction: t });
 
     for (const ligne of lignesAvecPrix) {
@@ -687,6 +688,37 @@ router.patch("/:slug/orders/:id/switch-to-cash", loadBoutique, authenticate, asy
     // car il n'avait peut-être pas été averti du succès du paiement.
 
     res.json(order);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/store/:slug/orders/:id/capture (upload / enregistrement de la capture de paiement)
+router.patch("/:slug/orders/:id/capture", loadBoutique, authenticate, async (req, res, next) => {
+  try {
+    const { captureUrl } = req.body;
+    if (!captureUrl) return res.status(400).json({ message: "Capture de paiement manquante." });
+
+    const order = await Order.findOne({
+      where: { id: req.params.id, boutiqueId: req.boutique.id, clientId: req.user.id }
+    });
+
+    if (!order) return res.status(404).json({ message: "Commande introuvable" });
+
+    await order.update({ captureUrl });
+
+    const cmdNum = "COM-B" + String(order.id).padStart(3, "0");
+    Notification.create({
+      userId: null, boutiqueId: order.boutiqueId, orderId: order.id,
+      title: "Capture de paiement reçue",
+      message: `Une capture de paiement a été transmise pour la commande #${cmdNum}.`,
+      type: "order"
+    }).catch(() => {});
+
+    clearCachePattern("/api/store").catch(() => {});
+    broadcast("order_updated", { orderId: order.id, clientId: order.clientId, boutiqueId: order.boutiqueId });
+
+    res.json({ success: true, captureUrl: order.captureUrl });
   } catch (err) {
     next(err);
   }

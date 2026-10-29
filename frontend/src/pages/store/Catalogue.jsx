@@ -60,9 +60,13 @@ export default function Catalogue() {
 
   const [favIds, setFavIds] = useState([]);
 
-  // Scroll to top on filter change
+  // Scroll to top on filter change & remember catalogue query state
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
+    try {
+      const activeUrl = window.location.pathname + window.location.search;
+      sessionStorage.setItem("last_catalogue_url", activeUrl);
+    } catch (e) {}
   }, [categoryId, famille, search, marqueId, onlyFavoris]);
 
   useEffect(() => {
@@ -230,6 +234,20 @@ export default function Catalogue() {
     // Sinon, retourner les articles les plus populaires / bien notés
     return allFallbackProducts.slice(0, 6);
   }, [displayedProducts.length, allFallbackProducts, smartAnalysis, products]);
+
+  // Déterminer les marques pertinentes pour la catégorie ou sélection actuelle
+  const relevantMarques = useMemo(() => {
+    const sourceProducts = (allFallbackProducts && allFallbackProducts.length > 0) ? allFallbackProducts : products;
+    if (categoryId) {
+      const prodsInCat = sourceProducts.filter(p => String(p.categoryId) === String(categoryId));
+      const marqueIds = new Set(prodsInCat.map(p => p.marqueId).filter(Boolean).map(id => String(id)));
+      if (marqueIds.size === 0) return [];
+      return marques.filter(m => marqueIds.has(String(m.id)));
+    }
+    const allMarqueIds = new Set(sourceProducts.map(p => p.marqueId).filter(Boolean).map(id => String(id)));
+    if (allMarqueIds.size === 0) return [];
+    return marques.filter(m => allMarqueIds.has(String(m.id)));
+  }, [categoryId, products, allFallbackProducts, marques]);
 
   // Sous-catégories dynamiques pour la catégorie active ou catalogue général
   const availableSubcategories = useMemo(() => {
@@ -540,77 +558,79 @@ export default function Catalogue() {
         </div>
       )}
 
-      {/* ── FILTRES PAR MARQUE (TOUJOURS VISIBLES SUR CATALOGUE) ── */}
-      <div style={{
-        margin: "18px 0 24px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-        background: "var(--card)",
-        padding: "16px 20px",
-        borderRadius: 18,
-        border: "1px solid var(--line)",
-        boxShadow: "0 2px 10px rgba(0,0,0,0.03)"
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, fontWeight: 800, color: "#1E3A8A", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: 6 }}>
-            <Smartphone size={15} color="#2563EB" /> Marques & Téléphones :
-          </span>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            <button
-              onClick={() => {
-                const next = new URLSearchParams(params);
-                next.delete("marqueId");
-                setParams(next);
-              }}
-              style={{
-                padding: "6px 14px",
-                borderRadius: 16,
-                fontSize: 12.5,
-                fontWeight: 700,
-                border: !marqueId ? "2px solid #2563EB" : "1px solid var(--line)",
-                background: !marqueId ? "#EFF6FF" : "var(--paper)",
-                color: !marqueId ? "#1D4ED8" : "var(--muted)",
-                cursor: "pointer",
-                transition: "all 0.15s"
-              }}
-            >
-              Toutes les marques
-            </button>
+      {/* ── FILTRES PAR MARQUE (VISIBLES UNIQUEMENT SI DES MARQUES SONT ASSOCIÉES) ── */}
+      {relevantMarques.length > 0 && (
+        <div style={{
+          margin: "18px 0 24px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          background: "var(--card)",
+          padding: "16px 20px",
+          borderRadius: 18,
+          border: "1px solid var(--line)",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.03)"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: "#1E3A8A", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: 6 }}>
+              <Smartphone size={15} color="#2563EB" /> Marques & Téléphones :
+            </span>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                onClick={() => {
+                  const next = new URLSearchParams(params);
+                  next.delete("marqueId");
+                  setParams(next);
+                }}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 16,
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  border: !marqueId ? "2px solid #2563EB" : "1px solid var(--line)",
+                  background: !marqueId ? "#EFF6FF" : "var(--paper)",
+                  color: !marqueId ? "#1D4ED8" : "var(--muted)",
+                  cursor: "pointer",
+                  transition: "all 0.15s"
+                }}
+              >
+                Toutes les marques
+              </button>
 
-            {marques.map((m) => {
-              const isSelected = String(marqueId) === String(m.id);
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => {
-                    const next = new URLSearchParams(params);
-                    if (isSelected) next.delete("marqueId");
-                    else next.set("marqueId", m.id);
-                    setParams(next);
-                  }}
-                  style={{
-                    padding: "6px 14px",
-                    borderRadius: 16,
-                    fontSize: 12.5,
-                    fontWeight: 700,
-                    border: isSelected ? "2px solid #2563EB" : "1px solid var(--line)",
-                    background: isSelected ? "#EFF6FF" : "var(--paper)",
-                    color: isSelected ? "#1D4ED8" : "var(--ink)",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    transition: "all 0.15s"
-                  }}
-                >
-                  {m.nom}
-                </button>
-              );
-            })}
+              {relevantMarques.map((m) => {
+                const isSelected = String(marqueId) === String(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      const next = new URLSearchParams(params);
+                      if (isSelected) next.delete("marqueId");
+                      else next.set("marqueId", m.id);
+                      setParams(next);
+                    }}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 16,
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      border: isSelected ? "2px solid #2563EB" : "1px solid var(--line)",
+                      background: isSelected ? "#EFF6FF" : "var(--paper)",
+                      color: isSelected ? "#1D4ED8" : "var(--ink)",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      transition: "all 0.15s"
+                    }}
+                  >
+                    {m.nom}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ── TITRE DE SECTION ET COMPTEUR ── */}
       <div

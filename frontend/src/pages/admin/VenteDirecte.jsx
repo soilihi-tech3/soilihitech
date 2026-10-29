@@ -23,11 +23,26 @@ export default function VenteDirecte() {
   const [mobileTab, setMobileTab] = useState("produits"); // 'produits' | 'panier'
   const [activeCurrency, setActiveCurrency] = useState(() => getActiveCurrency());
 
+  const paymentMethods = activeCurrency === "FCFA" ? [
+    { value: "cash", label: "Espèces / Cash" },
+    { value: "wave", label: "Wave" },
+    { value: "orange_money", label: "Orange Money" }
+  ] : [
+    { value: "cash", label: "Espèces / Cash" },
+    { value: "mvola", label: "Mvola" }
+  ];
+
   useEffect(() => {
     const handleCurr = (e) => setActiveCurrency(e.detail);
     window.addEventListener("currency_changed", handleCurr);
     return () => window.removeEventListener("currency_changed", handleCurr);
   }, []);
+
+  useEffect(() => {
+    if (!paymentMethods.some(pm => pm.value === moyenPaiement)) {
+      setMoyenPaiement("cash");
+    }
+  }, [activeCurrency]);
 
   function getEffectivePrice(p, curr = activeCurrency) {
     if (!p) return 0;
@@ -334,10 +349,9 @@ export default function VenteDirecte() {
                 onChange={(e) => setMoyenPaiement(e.target.value)}
                 style={{ fontSize: 13, height: 38 }}
               >
-                <option value="cash">Espèces / Cash</option>
-                <option value="mvola">Mvola</option>
-                <option value="holam">Holam</option>
-                <option value="carte">Carte Bancaire (TPE)</option>
+                {paymentMethods.map(pm => (
+                  <option key={pm.value} value={pm.value}>{pm.label}</option>
+                ))}
               </select>
             </div>
 

@@ -3,10 +3,11 @@ import { toast } from "react-hot-toast";
 import { SkeletonOrdersPage } from "../../components/Skeleton.jsx";
 import { readCache, writeCache } from "../../utils/swrCache.js";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Package, Truck, CheckCircle, XCircle, Clock, ShoppingBag, Search, ChevronRight, MapPin, CreditCard, ArrowLeft, PackageOpen, TrendingUp, RefreshCw, Receipt, Star, Smartphone, MessageCircle, ClipboardList, ExternalLink, Sparkles } from "lucide-react";
+import { Package, Truck, CheckCircle, XCircle, Clock, ShoppingBag, Search, ChevronRight, MapPin, CreditCard, ArrowLeft, PackageOpen, TrendingUp, RefreshCw, Receipt, Star, Smartphone, MessageCircle, ClipboardList, ExternalLink, Sparkles, Upload, Eye, Image as ImageIcon, X } from "lucide-react";
 import api, { SLUG } from "../../api";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useCart } from "../../context/CartContext.jsx";
+import { formatWhatsAppOrderMessage } from "../../utils/whatsappOrder.js";
 
 import { formatPrice as fcfa } from "../../utils/currency.js";
 
@@ -81,6 +82,8 @@ export default function MyOrders() {
   const [reviewError, setReviewError] = useState("");
   const [reviewSuccess, setReviewSuccess] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [uploadingCapture, setUploadingCapture] = useState(false);
+  const [previewCaptureModal, setPreviewCaptureModal] = useState(null);
 
   const openReviewModal = (product, orderId) => {
     const validId = product?.id || product?.productId || product?.product_id;
@@ -151,6 +154,64 @@ export default function MyOrders() {
     }
   };
 
+  const handleCaptureFile = async (e, orderId) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Veuillez sélectionner une image valide (PNG, JPG, etc.).");
+      return;
+    }
+
+    setUploadingCapture(true);
+    try {
+      const reader = new FileReader();
+      const base64Data = await new Promise((resolve, reject) => {
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            let width = img.width;
+            let height = img.height;
+            const maxDim = 1200;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", 0.8));
+          };
+          img.onerror = reject;
+          img.src = event.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      await api.patch(`/store/${SLUG}/orders/${orderId}/capture`, { captureUrl: base64Data });
+
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, captureUrl: base64Data } : o));
+      if (selected && selected.id === orderId) {
+        setSelected(prev => ({ ...prev, captureUrl: base64Data }));
+      }
+      toast.success("Capture de paiement enregistrée avec succès !");
+    } catch (err) {
+      console.error("Erreur enregistrement capture:", err);
+      toast.error(err.response?.data?.message || "Impossible d'enregistrer la capture.");
+    } finally {
+      setUploadingCapture(false);
+      e.target.value = "";
+    }
+  };
+
   const sendWhatsAppCapture = (order) => {
     const waNum = boutique?.whatsappNumber || boutique?.telephone;
     const cleanWaNum = waNum ? waNum.replace(/[^0-9]/g, "") : "";
@@ -158,12 +219,33 @@ export default function MyOrders() {
       toast.error("Numéro WhatsApp de la boutique non configuré.");
       return;
     }
-    const methode = (order.moyenPaiement === "mvola") ? "MVola" : "Wero";
     const orderNumber = "COM-B" + String(order.id).padStart(3, "0");
-    const totalMsg = fcfa(order.total);
-    const msg = `Bonjour, voici ma commande *${orderNumber}* d'un montant de *${totalMsg}* payée par *${methode}*.\nJe vous joins la capture d'écran de la transaction pour validation !`;
-    
-    window.open(`https://wa.me/${cleanWaNum}?text=${encodeURIComponent(msg)}`, "_blank");
+    const cartItems = (order.items || []).map((it) => ({
+      product: it.product || { 
+        nom: it.nomProduit || `Article #${it.productId}`, 
+        prix: it.prixUnitaire, 
+        unite: "article(s)" 
+      },
+      quantite: it.quantite,
+      prixUnitaire: it.prixUnitaire,
+      selectedModele: it.modele || it.selectedModele || null,
+      selectedCouleur: it.couleur || it.selectedCouleur || null
+    }));
+    const message = formatWhatsAppOrderMessage({
+      boutique,
+      user: user || { nom: order.clientNom, telephone: order.clientTelephone, email: order.clientEmail, adresse: order.adresseLivraison },
+      cart: cartItems,
+      subtotal: order.sousTotal || (order.total - (order.fraisLivraison || 0)),
+      fraisLivraison: order.fraisLivraison || 0,
+      total: order.total,
+      orderNumber,
+      form: {
+        modeLivraison: order.modeLivraison,
+        adresseLivraison: order.adresseLivraison,
+        moyenPaiement: order.moyenPaiement
+      }
+    });
+    window.open(`https://wa.me/${cleanWaNum}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
   const fetchOrders = () => {
@@ -510,6 +592,70 @@ export default function MyOrders() {
               ))}
             </div>
 
+            {/* JUSTIFICATIF / CAPTURE DE PAIEMENT MVOLA / WERO */}
+            {(selected.moyenPaiement === "mvola" || selected.moyenPaiement === "wero" || selected.moyenPaiement === "holam") && (
+              <div style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 16, padding: "16px 18px", marginBottom: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 6 }}>
+                    <ImageIcon size={14} color="var(--forest)" /> Capture de transaction ({selected.moyenPaiement === "mvola" ? "MVola" : "Wero"})
+                  </div>
+                  {selected.captureUrl && (
+                    <span style={{ fontSize: 11, fontWeight: 700, background: "#EBF7F0", color: "#2D8653", padding: "3px 8px", borderRadius: 12 }}>
+                      Enregistrée
+                    </span>
+                  )}
+                </div>
+
+                {selected.captureUrl ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                    <div 
+                      onClick={() => setPreviewCaptureModal(selected.captureUrl)}
+                      style={{ cursor: "pointer", position: "relative", width: 68, height: 68, borderRadius: 10, overflow: "hidden", border: "1.5px solid var(--line)", flexShrink: 0 }}
+                      title="Cliquer pour agrandir"
+                    >
+                      <img src={selected.captureUrl} alt="Capture de paiement" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+                        <Eye size={18} />
+                      </div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>Capture de paiement transmise</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>La boutique dispose de votre justificatif pour valider la commande.</div>
+                    </div>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 700, color: "var(--forest-dark)", cursor: uploadingCapture ? "wait" : "pointer" }}>
+                      <Upload size={14} />
+                      {uploadingCapture ? "Envoi..." : "Remplacer"}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        disabled={uploadingCapture} 
+                        onChange={(e) => handleCaptureFile(e, selected.id)} 
+                        style={{ display: "none" }} 
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap", background: "#F8FAFC", border: "1.5px dashed #CBD5E1", borderRadius: 12, padding: "14px 16px" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>Vous n'avez pas encore joint la capture d'écran ?</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Vous pouvez l'ajouter ici directement ou l'envoyer sur WhatsApp ci-contre.</div>
+                    </div>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--forest)", color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontSize: 12.5, fontWeight: 700, cursor: uploadingCapture ? "wait" : "pointer", flexShrink: 0 }}>
+                      <Upload size={14} />
+                      {uploadingCapture ? "Téléchargement..." : "Ajouter la capture"}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        disabled={uploadingCapture} 
+                        onChange={(e) => handleCaptureFile(e, selected.id)} 
+                        style={{ display: "none" }} 
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ARTICLES */}
             <div style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 20, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
               <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--line)", background: "var(--paper)" }}>
@@ -609,6 +755,22 @@ export default function MyOrders() {
               </button>
             )}
 
+            {/* DIRECTEMENT EN BAS DE 'VOIR MON REÇU' : BOUTON ENVOYER LA CAPTURE SUR WHATSAPP */}
+            {(selected.moyenPaiement === "mvola" || selected.moyenPaiement === "wero" || selected.moyenPaiement === "holam" || selected.moyenPaiement === "whatsapp") && selected.statut !== "annulee" && (
+              <button
+                type="button"
+                onClick={() => sendWhatsAppCapture(selected)}
+                style={{
+                  display: "flex", justifyContent: "center", alignItems: "center", gap: 8,
+                  marginTop: 10, width: "100%", background: "#25D366", border: "none",
+                  borderRadius: 12, padding: "12px", color: "#fff", fontWeight: 800, fontSize: 13.5,
+                  cursor: "pointer", boxShadow: "0 4px 14px rgba(37,211,102,0.25)"
+                }}
+              >
+                <MessageCircle size={18} /> Envoyer la capture sur WhatsApp
+              </button>
+            )}
+
             {selected.receiptUrl && (
               <a href={selected.receiptUrl} target="_blank" rel="noopener noreferrer" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginTop: 10, background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 12, padding: "12px", textDecoration: "none", color: "var(--forest-dark)", fontWeight: 700, fontSize: 13.5 }}>
                 <Receipt size={18} /> Reçu Stripe sécurisé
@@ -617,19 +779,9 @@ export default function MyOrders() {
 
             {selected.statut === "en_attente_paiement" && (
               <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-                {selected.moyenPaiement === "carte" ? (
-                  <button onClick={() => payNow(selected.id)} style={{ width: "100%", background: "var(--forest)", border: "none", borderRadius: 12, padding: "12px", color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
-                    <CreditCard size={18} /> Reprendre le paiement
-                  </button>
-                ) : (selected.moyenPaiement === "wero" || selected.moyenPaiement === "holam" || selected.moyenPaiement === "mvola") ? (
-                  <button onClick={() => sendWhatsAppCapture(selected)} style={{ width: "100%", background: "#25D366", border: "none", borderRadius: 12, padding: "12px", color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
-                    <MessageCircle size={18} /> Envoyer la capture sur WhatsApp
-                  </button>
-                ) : (
-                  <button onClick={() => payNow(selected.id)} style={{ width: "100%", background: "var(--forest)", border: "none", borderRadius: 12, padding: "12px", color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
-                    <CreditCard size={18} /> Payer la commande
-                  </button>
-                )}
+                <button onClick={() => payNow(selected.id)} style={{ width: "100%", background: "var(--forest)", border: "none", borderRadius: 12, padding: "12px", color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
+                  <CreditCard size={18} /> Reprendre le paiement
+                </button>
                 
                 <button onClick={() => switchToCash(selected)} style={{ width: "100%", background: "#fff", border: "1px solid var(--line)", borderRadius: 12, padding: "12px", color: "var(--ink)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
                   <Package size={18} /> Passer en Paiement à la livraison
@@ -883,6 +1035,29 @@ export default function MyOrders() {
           boutique={boutique}
           onClose={() => setReceiptOrder(null)}
         />
+      )}
+
+      {/* APERÇU DE LA CAPTURE DE TRANSACTION */}
+      {previewCaptureModal && (
+        <div 
+          onClick={() => setPreviewCaptureModal(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()} 
+            style={{ position: "relative", maxWidth: "90vw", maxHeight: "90vh", background: "#fff", borderRadius: 16, overflow: "hidden", display: "flex", flexDirection: "column" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 18px", borderBottom: "1px solid var(--line)" }}>
+              <span style={{ fontWeight: 800, fontSize: 14, color: "var(--forest-dark)" }}>Capture de paiement transmise</span>
+              <button onClick={() => setPreviewCaptureModal(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)" }}>
+                <X size={20} />
+              </button>
+            </div>
+            <div style={{ padding: 12, overflow: "auto", display: "flex", justifyContent: "center" }}>
+              <img src={previewCaptureModal} alt="Capture de paiement" style={{ maxWidth: "100%", maxHeight: "75vh", objectFit: "contain", borderRadius: 8 }} />
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

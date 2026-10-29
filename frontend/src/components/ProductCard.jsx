@@ -79,7 +79,16 @@ export default function ProductCard({ product, isFavorisPage }) {
   const weightUnitText = product.unite ? `/ ${product.unite}` : "";
 
   return (
-    <div className="bs-card" onClick={() => navigate(`/produit/${product.id}`, { state: { product } })} style={{ opacity: isOutOfStock ? 0.75 : 1, position: "relative" }}>
+    <div 
+      className="bs-card" 
+      onClick={() => navigate(`/produit/${product.id}`, { 
+        state: { 
+          product, 
+          from: window.location.pathname + window.location.search 
+        } 
+      })} 
+      style={{ opacity: isOutOfStock ? 0.75 : 1, position: "relative" }}
+    >
       <div className="bs-thumb-container">
         <img 
           src={mainImage} 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { NavLink, Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Link, Outlet, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { 
   LayoutDashboard, Package, ShoppingCart, Users, Store, LogOut, Layers, 
   PanelLeftClose, PanelLeftOpen, User, Image, LayoutGrid, CreditCard, 
@@ -52,6 +52,15 @@ export default function AdminLayout() {
   const perms = Array.isArray(user?.permissions) ? user.permissions : [];
   const storeName = boutique?.nom || "Boutique";
 
+  const isEmploye = user?.role === "employe";
+  const forbiddenForEmploye = [
+    "/admin/avis",
+    "/admin/demandes",
+    "/admin/clients",
+    "/admin/employes",
+    "/admin/utilisateurs"
+  ];
+
   const allLinks = [
     { to: "/admin", label: "Tableau de bord", icon: LayoutDashboard, exact: true, permKey: "voir_dashboard" },
     { to: "/admin/vente", label: "Vente Directe (POS)", icon: CreditCard, permKey: ["vente_directe", "gerer_commandes"], moduleKey: "vente" },
@@ -63,24 +72,28 @@ export default function AdminLayout() {
     { to: "/admin/telephones", label: "Modèles Téléphones", icon: Smartphone, permKey: ["gerer_categories", "gerer_produits"], moduleKey: "telephones" },
     { to: "/admin/categories", label: "Catégories", icon: Layers, permKey: "gerer_categories", moduleKey: "categories" },
     { to: "/admin/produits", label: "Produits", icon: Package, permKey: ["voir_produits", "ajouter_modifier_produit", "supprimer_produit", "gerer_produits"], moduleKey: "produits" },
-    { to: "/admin/avis", label: "Avis Clients WhatsApp", icon: MessageCircle, permKey: ["gerer_produits", "voir_dashboard"] },
+    { to: "/admin/avis", label: "Avis Clients WhatsApp", icon: MessageCircle, adminOnly: true, moduleKey: "avis" },
     { to: "/admin/commandes", label: "Commandes", icon: ShoppingCart, permKey: ["gerer_commandes", "valider_commande", "changer_statut_commande", "assigner_commande"], moduleKey: "commandes" },
-    { to: "/admin/demandes", label: "Demandes & Devis", icon: ClipboardList, permKey: ["gerer_commandes", "voir_dashboard"] },
-    { to: "/admin/clients", label: "Clients", icon: UserCheck, permKey: ["gerer_commandes", "gerer_utilisateurs", "voir_dashboard"] },
+    { to: "/admin/demandes", label: "Demandes & Devis", icon: ClipboardList, adminOnly: true, moduleKey: "demandes" },
+    { to: "/admin/clients", label: "Clients", icon: UserCheck, adminOnly: true, moduleKey: "clients" },
     { to: "/admin/employes", label: "Équipe & Rôles", icon: Users, adminOnly: true, moduleKey: "employes" },
     { to: "/admin/parametres", label: "Paramètres Boutique", icon: Store, permKey: "gerer_parametres", moduleKey: "parametres" },
   ];
 
-
   const links = allLinks.filter(item => {
     if (user?.role === "admin" || user?.role === "super_admin") return true;
     if (item.adminOnly) return false;
+    if (isEmploye && forbiddenForEmploye.includes(item.to)) return false;
     if (!item.permKey) return true;
     if (Array.isArray(item.permKey)) {
       return item.permKey.some(pk => perms.includes(pk));
     }
     return perms.includes(item.permKey);
   });
+
+  if (isEmploye && forbiddenForEmploye.some(p => location.pathname === p || location.pathname.startsWith(p + "/"))) {
+    return <Navigate to="/admin" replace />;
+  }
 
   const currentModule = ROUTE_MODULE_MAP[location.pathname];
   const isModuleDisabled = currentModule && boutique?.modulesActifs && boutique.modulesActifs[currentModule.key] === false;

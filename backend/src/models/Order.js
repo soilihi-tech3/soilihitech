@@ -20,6 +20,7 @@ const Order = sequelize.define("Order", {
   fraisLivraison: { type: DataTypes.STRING(255), defaultValue: "0" },
   total: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   devise: { type: DataTypes.STRING(10), defaultValue: "KMF" },
+  captureUrl: { type: DataTypes.TEXT("long"), allowNull: true, field: "capture_url" },
   notes: { type: DataTypes.TEXT, allowNull: true },
 }, { tableName: "orders" });
 

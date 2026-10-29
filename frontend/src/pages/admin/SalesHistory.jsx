@@ -92,9 +92,11 @@ export default function SalesHistory() {
 
     // Paiement filter
     if (filterPaiement !== "tous") {
-      const p = o.moyenPaiement;
+      const p = (o.moyenPaiement || "").toLowerCase();
       if (filterPaiement === "cash" && p !== "cash" && p !== "especes") return false;
       if (filterPaiement === "mvola" && p !== "mvola") return false;
+      if (filterPaiement === "wave" && p !== "wave") return false;
+      if (filterPaiement === "orange_money" && p !== "orange_money" && p !== "orange" && p !== "om") return false;
       if (filterPaiement === "wero" && p !== "wero" && p !== "holam") return false;
       if (filterPaiement === "carte" && p !== "carte") return false;
     }
@@ -278,7 +280,9 @@ export default function SalesHistory() {
             <option value="tous">Tous les paiements</option>
             <option value="cash">Espèces / Cash</option>
             <option value="mvola">MVola</option>
-            <option value="wero">Wero</option>
+            <option value="wave">Wave</option>
+            <option value="orange_money">Orange Money</option>
+            <option value="wero">Wero / Holam</option>
             <option value="carte">Carte Bancaire</option>
           </select>
 
@@ -419,6 +423,8 @@ export default function SalesHistory() {
 
               const isCash = o.moyenPaiement === "cash" || o.moyenPaiement === "especes";
               const isMvola = o.moyenPaiement === "mvola";
+              const isWave = o.moyenPaiement === "wave";
+              const isOrange = o.moyenPaiement === "orange_money" || o.moyenPaiement === "orange" || o.moyenPaiement === "om";
               const isWero = o.moyenPaiement === "wero" || o.moyenPaiement === "holam";
 
               return (
@@ -471,10 +477,10 @@ export default function SalesHistory() {
                   <td>
                     <span style={{
                       padding: "4px 10px", borderRadius: 12, fontSize: 11.5, fontWeight: 800,
-                      background: isCash ? "#FEF3C7" : isMvola ? "#DCFCE7" : isWero ? "#FEF9C3" : "#F3E8FF",
-                      color: isCash ? "#92400E" : isMvola ? "#15803D" : isWero ? "#854D0E" : "#6B21A8"
+                      background: isCash ? "#FEF3C7" : isMvola ? "#DCFCE7" : isWave ? "#E0F2FE" : isOrange ? "#FFEDD5" : isWero ? "#FEF9C3" : "#F3E8FF",
+                      color: isCash ? "#92400E" : isMvola ? "#15803D" : isWave ? "#0284C7" : isOrange ? "#C2410C" : isWero ? "#854D0E" : "#6B21A8"
                     }}>
-                      {isCash ? "Cash / Espèces" : isMvola ? "MVola" : isWero ? "Wero" : "Carte"}
+                      {isCash ? "Cash / Espèces" : isMvola ? "MVola" : isWave ? "Wave" : isOrange ? "Orange Money" : isWero ? "Wero" : "Carte"}
                     </span>
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>

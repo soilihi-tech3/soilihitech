@@ -302,6 +302,14 @@ async function ensureColumns() {
       console.log("[MIGRATION] Ajout colonne masquer_sur_site sur products");
       await sequelize.query(`ALTER TABLE products ADD COLUMN masquer_sur_site TINYINT(1) NOT NULL DEFAULT 0;`);
     }
+    if (!tableProducts["senteurs"]) {
+      console.log("[MIGRATION] Ajout colonne senteurs sur products");
+      await sequelize.query(`ALTER TABLE products ADD COLUMN senteurs JSON NULL;`);
+    }
+    if (!tableProducts["type_variante_nom"]) {
+      console.log("[MIGRATION] Ajout colonne type_variante_nom sur products");
+      await sequelize.query(`ALTER TABLE products ADD COLUMN type_variante_nom VARCHAR(50) DEFAULT 'Senteur';`);
+    }
 
     const tableOrders = await queryInterface.describeTable("orders");
     if (!tableOrders["stripe_session_id"]) {
@@ -367,7 +375,8 @@ async function ensureColumns() {
       "ALTER TABLE order_items ADD COLUMN modele VARCHAR(150) NULL;",
       "ALTER TABLE order_items ADD COLUMN couleur VARCHAR(100) NULL;",
       "ALTER TABLE order_items ADD COLUMN image_url LONGTEXT NULL;",
-      "ALTER TABLE orders ADD COLUMN devise VARCHAR(10) DEFAULT 'KMF';"
+      "ALTER TABLE orders ADD COLUMN devise VARCHAR(10) DEFAULT 'KMF';",
+      "ALTER TABLE orders ADD COLUMN capture_url LONGTEXT NULL;"
     ];
 
     for (const q of alterQueries) {

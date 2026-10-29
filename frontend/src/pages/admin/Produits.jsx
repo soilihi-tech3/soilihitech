@@ -1,7 +1,7 @@
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 import React, { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { PlusCircle, List, Pencil, Trash2, AlertTriangle, CheckCircle, Package, X, Wand2, Sparkles, Loader2, Smartphone, Shield, Zap, Eye, EyeOff, CheckCircle2, Printer, Star, ChevronDown, ChevronRight, Plus, Palette, Layers } from "lucide-react";
+import { PlusCircle, List, Pencil, Trash2, AlertTriangle, CheckCircle, Package, X, Wand2, Sparkles, Loader2, Smartphone, Shield, Zap, Eye, EyeOff, CheckCircle2, Printer, Star, ChevronDown, ChevronRight, Plus, Palette, Layers, Upload, Link as LinkIcon } from "lucide-react";
 import api from "../../api";
 import ImageUploader from "../../components/ImageUploader.jsx";
 import TablePagination from "../../components/TablePagination.jsx";
@@ -89,8 +89,11 @@ export default function AdminProduits() {
     seuilAlerte: 5,
     imageUrl: "",
     imageUrl2: "",
+    hasMarque: false,
     images: [],
     couleurs: [],
+    senteurs: [],
+    typeVarianteNom: "Senteur",
     modelesCompatibles: []
   };
   const [form, setForm] = useState(initialForm);
@@ -213,10 +216,13 @@ export default function AdminProduits() {
       coutAchat: product.coutAchat ?? "",
       stock: product.stock ?? "",
       seuilAlerte: product.seuilAlerte ?? 5,
+      hasMarque: Boolean(product.marqueId),
       imageUrl: product.imageUrl || "",
       imageUrl2: product.imageUrl2 || "",
       images: parseJsonField(product.images),
       couleurs: parseJsonField(product.couleurs),
+      senteurs: parseJsonField(product.senteurs),
+      typeVarianteNom: product.typeVarianteNom || "Senteur",
       modelesCompatibles: parseJsonField(product.modelesCompatibles)
     });
     setActiveTab("ajout");
@@ -268,6 +274,67 @@ export default function AdminProduits() {
       ...f,
       couleurs: (f.couleurs || []).filter((_, i) => i !== index)
     }));
+  }
+
+  // Helpers Senteurs / Fragrances
+  function addSenteurVariant() {
+    setForm(f => ({
+      ...f,
+      senteurs: [
+        ...(f.senteurs || []),
+        { nom: "", imageUrl: "", prixKMF: "", prixFCFA: "", stock: "" }
+      ]
+    }));
+  }
+  function updateSenteurVariant(index, field, value) {
+    setForm(f => {
+      const arr = [...(f.senteurs || [])];
+      arr[index] = { ...arr[index], [field]: value };
+      return { ...f, senteurs: arr };
+    });
+  }
+  function removeSenteurVariant(index) {
+    setForm(f => ({
+      ...f,
+      senteurs: (f.senteurs || []).filter((_, i) => i !== index)
+    }));
+  }
+
+  // Helper compression d'image pour variante (téléphone ou ordinateur)
+  function handleVariantImageUpload(file, onDone) {
+    if (!file) return;
+    try {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 1000;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          const base64 = canvas.toDataURL("image/jpeg", 0.82);
+          onDone(base64);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      toast.error("Erreur lors de l'import de la photo.");
+    }
   }
 
   // Helpers Modèles de Téléphones
@@ -367,12 +434,14 @@ export default function AdminProduits() {
       stock: form.stock !== "" ? Number(form.stock) : 0,
       seuilAlerte: form.seuilAlerte !== "" ? Number(form.seuilAlerte) : 5,
       categoryId: Number(form.categoryId),
-      marqueId: form.marqueId ? Number(form.marqueId) : null,
+      marqueId: form.hasMarque && form.marqueId ? Number(form.marqueId) : null,
       etat: form.etat || "neuf",
       poids: form.poids || "",
       famille: form.famille || "Accessoires",
       images: (form.images || []).filter(img => Boolean(img && img.trim())),
       couleurs: (form.couleurs || []).filter(c => Boolean(c.nom && c.nom.trim())),
+      senteurs: (form.senteurs || []).filter(s => Boolean(s.nom && s.nom.trim())),
+      typeVarianteNom: form.typeVarianteNom ? form.typeVarianteNom.trim() : "Senteur",
       modelesCompatibles: form.modelesCompatibles || []
     };
 
@@ -1044,25 +1113,54 @@ export default function AdminProduits() {
               />
             </div>
 
-            {/* MARQUE DU PRODUIT */}
-            <div className="bs-input-group" style={{ marginBottom: 4 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <label style={{ fontWeight: 700 }}>Marque du produit</label>
-                <a href="/admin/marques" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--forest)", fontWeight: 700, textDecoration: "none" }}>
-                  + Gérer les marques
-                </a>
+            {/* MARQUE DU PRODUIT (OPTIONNELLE) */}
+            <div style={{
+              background: form.hasMarque ? "#F0FDF4" : "var(--paper)",
+              border: form.hasMarque ? "1.5px solid #86EFAC" : "1px solid var(--line)",
+              borderRadius: 12,
+              padding: "14px 16px",
+              marginBottom: 4,
+              transition: "all 0.2s"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", margin: 0, fontWeight: 700, fontSize: 13.5, color: "var(--ink)" }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.hasMarque)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setForm(f => ({
+                        ...f,
+                        hasMarque: checked,
+                        marqueId: checked ? (f.marqueId || (marques[0]?.id || "")) : ""
+                      }));
+                    }}
+                    style={{ width: 17, height: 17, accentColor: "var(--forest)", cursor: "pointer" }}
+                  />
+                  <span>Associer une marque à ce produit</span>
+                </label>
+                {form.hasMarque && (
+                  <a href="/admin/marques" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--forest)", fontWeight: 700, textDecoration: "none" }}>
+                    + Gérer les marques
+                  </a>
+                )}
               </div>
-              <select
-                className="bs-select"
-                value={form.marqueId}
-                onChange={(e) => set("marqueId", e.target.value)}
-                style={{ height: 42 }}
-              >
-                <option value="">-- Sans marque spécifique / Générique --</option>
-                {marques.map((m) => (
-                  <option key={m.id} value={m.id}>{m.nom}</option>
-                ))}
-              </select>
+
+              {form.hasMarque && (
+                <div style={{ marginTop: 10 }}>
+                  <select
+                    className="bs-select"
+                    value={form.marqueId}
+                    onChange={(e) => set("marqueId", e.target.value)}
+                    style={{ height: 42, background: "#fff" }}
+                  >
+                    <option value="">-- Sélectionner la marque --</option>
+                    {marques.map((m) => (
+                      <option key={m.id} value={m.id}>{m.nom}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* SÉLECTEUR DYNAMIQUE DE MODÈLES DE TÉLÉPHONES COMPATIBLES */}
@@ -1699,14 +1797,47 @@ export default function AdminProduits() {
                           style={{ flex: 2, minWidth: 160, height: 36, fontSize: 13 }}
                         />
 
-                        <input
-                          type="text"
-                          className="bs-input"
-                          placeholder="Lien photo pour cette couleur (URL ou upload)"
-                          value={couleur.imageUrl || ""}
-                          onChange={(e) => updateColorVariant(cIdx, "imageUrl", e.target.value)}
-                          style={{ flex: 3, minWidth: 200, height: 36, fontSize: 13 }}
-                        />
+                        <div style={{ flex: 3, minWidth: 220, display: "flex", gap: 6, alignItems: "center" }}>
+                          <input
+                            type="text"
+                            className="bs-input"
+                            placeholder="Lien photo (URL)"
+                            value={couleur.imageUrl || ""}
+                            onChange={(e) => updateColorVariant(cIdx, "imageUrl", e.target.value)}
+                            style={{ flex: 1, height: 36, fontSize: 12.5 }}
+                          />
+                          <label
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                              padding: "0 10px",
+                              height: 36,
+                              background: "#fff",
+                              border: "1px solid var(--line)",
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "var(--forest-dark)",
+                              cursor: "pointer",
+                              whiteSpace: "nowrap"
+                            }}
+                            title="Importer depuis l'appareil ou téléphone"
+                          >
+                            <Upload size={14} color="var(--forest)" />
+                            Appareil
+                            <input
+                              type="file"
+                              accept="image/*"
+                              style={{ display: "none" }}
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) handleVariantImageUpload(f, (base64) => updateColorVariant(cIdx, "imageUrl", base64));
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                        </div>
 
                         <button
                           type="button"
@@ -1736,11 +1867,197 @@ export default function AdminProduits() {
                           style={{ width: 140, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
                         />
                         {couleur.imageUrl && (
-                          <img
-                            src={couleur.imageUrl}
-                            alt=""
-                            style={{ width: 30, height: 30, borderRadius: 6, objectFit: "cover", border: "1px solid var(--line)" }}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <img
+                              src={couleur.imageUrl}
+                              alt=""
+                              style={{ width: 30, height: 30, borderRadius: 6, objectFit: "cover", border: "1px solid var(--line)" }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => updateColorVariant(cIdx, "imageUrl", "")}
+                              style={{ border: "none", background: "none", color: "#B4483A", fontSize: 11, cursor: "pointer", padding: 0 }}
+                            >
+                              Retirer photo
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* SECTION VARIANTES DE SENTEURS / FRAGRANCES (POUR PARFUMS, COSMETIQUES, ETC.) */}
+            <div style={{
+              background: "var(--paper)",
+              border: "1.5px solid var(--line)",
+              borderRadius: 14,
+              padding: 16,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <label style={{ fontWeight: 800, fontSize: 14, color: "var(--forest-dark)", display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
+                    <Sparkles size={18} color="var(--forest)" />
+                    Variantes de Senteurs / Fragrances (ou options spécifiques)
+                  </label>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                    Idéal pour les parfums, brumes, cosmétiques ou articles sans couleur. Le client cliquera sur la senteur pour voir sa photo et son prix.
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Titre sur le site :</span>
+                    <input
+                      type="text"
+                      className="bs-input"
+                      value={form.typeVarianteNom || "Senteur"}
+                      onChange={(e) => set("typeVarianteNom", e.target.value)}
+                      placeholder="ex: Senteur, Fragrance, Parfum..."
+                      style={{ width: 130, height: 32, fontSize: 12, padding: "2px 8px" }}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={addSenteurVariant}
+                    style={{
+                      background: "var(--forest)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "7px 14px",
+                      fontSize: 12.5,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6
+                    }}
+                  >
+                    <Plus size={14} /> + Ajouter une senteur
+                  </button>
+                </div>
+              </div>
+
+              {(form.senteurs || []).length === 0 ? (
+                <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, background: "rgba(0,0,0,0.02)", borderRadius: 10 }}>
+                  Aucune variante de senteur définie. Cliquez sur "+ Ajouter une senteur" pour ce produit (ex: Marshmallow Blush, Vanille Gourmande, Oud Royal...).
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {(form.senteurs || []).map((senteur, sIdx) => (
+                    <div
+                      key={sIdx}
+                      style={{
+                        background: "#F8FAFC",
+                        border: "1px solid var(--line)",
+                        borderRadius: 10,
+                        padding: 12,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 10
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <input
+                          type="text"
+                          className="bs-input"
+                          placeholder={`Nom (${form.typeVarianteNom || 'senteur'}) (ex: Marshmallow Blush, Vanille Bourbon, etc.)`}
+                          value={senteur.nom || ""}
+                          onChange={(e) => updateSenteurVariant(sIdx, "nom", e.target.value)}
+                          style={{ flex: 2, minWidth: 180, height: 36, fontSize: 13 }}
+                        />
+
+                        <div style={{ flex: 3, minWidth: 220, display: "flex", gap: 6, alignItems: "center" }}>
+                          <input
+                            type="text"
+                            className="bs-input"
+                            placeholder="Lien photo (URL)"
+                            value={senteur.imageUrl || ""}
+                            onChange={(e) => updateSenteurVariant(sIdx, "imageUrl", e.target.value)}
+                            style={{ flex: 1, height: 36, fontSize: 12.5 }}
                           />
+                          <label
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                              padding: "0 10px",
+                              height: 36,
+                              background: "#fff",
+                              border: "1px solid var(--line)",
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "var(--forest-dark)",
+                              cursor: "pointer",
+                              whiteSpace: "nowrap"
+                            }}
+                            title="Importer depuis l'appareil ou téléphone"
+                          >
+                            <Upload size={14} color="var(--forest)" />
+                            Appareil
+                            <input
+                              type="file"
+                              accept="image/*"
+                              style={{ display: "none" }}
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) handleVariantImageUpload(f, (base64) => updateSenteurVariant(sIdx, "imageUrl", base64));
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => removeSenteurVariant(sIdx)}
+                          className="bs-icon-btn"
+                          title="Supprimer cette senteur"
+                          style={{ color: "#B4483A" }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12 }}>
+                        <span style={{ color: "var(--muted)", fontWeight: 700 }}>Prix spécifique pour cette senteur (optionnel) :</span>
+                        <input
+                          type="number"
+                          placeholder="Prix Comores KMF"
+                          value={senteur.prixKMF || ""}
+                          onChange={(e) => updateSenteurVariant(sIdx, "prixKMF", e.target.value)}
+                          style={{ width: 140, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
+                        />
+                        <input
+                          type="number"
+                          placeholder="Prix Sénégal FCFA"
+                          value={senteur.prixFCFA || ""}
+                          onChange={(e) => updateSenteurVariant(sIdx, "prixFCFA", e.target.value)}
+                          style={{ width: 140, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
+                        />
+                        {senteur.imageUrl && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <img
+                              src={senteur.imageUrl}
+                              alt=""
+                              style={{ width: 30, height: 30, borderRadius: 6, objectFit: "cover", border: "1px solid var(--line)" }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => updateSenteurVariant(sIdx, "imageUrl", "")}
+                              style={{ border: "none", background: "none", color: "#B4483A", fontSize: 11, cursor: "pointer", padding: 0 }}
+                            >
+                              Retirer photo
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>

@@ -49,21 +49,28 @@ export default function ProductDetail() {
   };
 
   const couleursList = useMemo(() => parseJsonSafe(product?.couleurs), [product?.couleurs]);
+  const senteursList = useMemo(() => parseJsonSafe(product?.senteurs), [product?.senteurs]);
   const modelesList = useMemo(() => parseJsonSafe(product?.modelesCompatibles), [product?.modelesCompatibles]);
   const extraImages = useMemo(() => parseJsonSafe(product?.images), [product?.images]);
 
   // Variant states
   const [selectedCouleur, setSelectedCouleur] = useState(null);
+  const [selectedSenteur, setSelectedSenteur] = useState(null);
   const [selectedModele, setSelectedModele] = useState(null);
   const [selectedBrandFilter, setSelectedBrandFilter] = useState("all");
   const [missingSelectionAlert, setMissingSelectionAlert] = useState(false);
 
-  // Sync default color on product load
+  // Sync default color & senteur on product load
   useEffect(() => {
     if (couleursList && couleursList.length > 0) {
       setSelectedCouleur(couleursList[0]);
     } else {
       setSelectedCouleur(null);
+    }
+    if (senteursList && senteursList.length > 0) {
+      setSelectedSenteur(senteursList[0]);
+    } else {
+      setSelectedSenteur(null);
     }
     setSelectedModele(null);
     setMissingSelectionAlert(false);
@@ -197,8 +204,25 @@ export default function ProductDetail() {
   couleursList.forEach(c => {
     if (c.imageUrl && !images.includes(c.imageUrl)) images.push(c.imageUrl);
   });
+  senteursList.forEach(s => {
+    if (s.imageUrl && !images.includes(s.imageUrl)) images.push(s.imageUrl);
+  });
   if (images.length === 0) {
     images.push("https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=800&q=80");
+  }
+
+  function handleSelectSenteur(senteur) {
+    setSelectedSenteur(senteur);
+    if (!senteur) return;
+    if (senteur.imageUrl) {
+      let targetIdx = images.findIndex(img => String(img).trim() === String(senteur.imageUrl).trim());
+      if (targetIdx !== -1) {
+        setSelectedImgIndex(targetIdx);
+      } else {
+        images.push(senteur.imageUrl);
+        setSelectedImgIndex(images.length - 1);
+      }
+    }
   }
 
   function handleSelectColor(color) {
@@ -295,6 +319,11 @@ export default function ProductDetail() {
 
     if (matched) {
       setSelectedCouleur(matched);
+    } else if (senteursList.length > 0) {
+      const matchedSenteur = senteursList.find(s => s.imageUrl && String(s.imageUrl).trim() === String(imgUrl).trim());
+      if (matchedSenteur) {
+        setSelectedSenteur(matchedSenteur);
+      }
     }
   }
 
@@ -320,6 +349,7 @@ export default function ProductDetail() {
 
   const modelePrice = selectedModele ? (isSenegal ? selectedModele.prixFCFA : selectedModele.prixKMF) : null;
   const couleurPrice = selectedCouleur ? (isSenegal ? selectedCouleur.prixFCFA : selectedCouleur.prixKMF) : null;
+  const senteurPrice = selectedSenteur ? (isSenegal ? selectedSenteur.prixFCFA : selectedSenteur.prixKMF) : null;
 
   if (modelePrice && Number(modelePrice) > 0) {
     currentPrice = Number(modelePrice);
@@ -327,6 +357,9 @@ export default function ProductDetail() {
   } else if (couleurPrice && Number(couleurPrice) > 0) {
     currentPrice = Number(couleurPrice);
     isCustomVariantPrice = Number(couleurPrice) !== Number(basePrice);
+  } else if (senteurPrice && Number(senteurPrice) > 0) {
+    currentPrice = Number(senteurPrice);
+    isCustomVariantPrice = Number(senteurPrice) !== Number(basePrice);
   }
 
   // Stock check
@@ -354,15 +387,18 @@ export default function ProductDetail() {
     const modelLabel = selectedModele ? (selectedModele.nomComplet || `${selectedModele.brandNom || ''} ${selectedModele.nom}`.trim()) : null;
     const colorLabel = selectedCouleur?.nom || null;
     const colorHex = selectedCouleur?.codeHex || null;
+    const senteurLabel = selectedSenteur?.nom || null;
     const brandLabel = selectedModele?.brandNom || null;
     const activeImage = images[selectedImgIndex] || product.imageUrl;
 
     const ok = addToCart(product, quantity, {
       selectedModele: modelLabel,
-      selectedCouleur: colorLabel,
+      selectedCouleur: colorLabel || (senteurLabel ? `${product.typeVarianteNom || 'Senteur'}: ${senteurLabel}` : null),
       selectedCouleurHex: colorHex,
+      selectedSenteur: senteurLabel,
+      typeVarianteNom: product.typeVarianteNom || 'Senteur',
       marqueTelephone: brandLabel,
-      selectedImageUrl: selectedCouleur?.imageUrl || activeImage,
+      selectedImageUrl: selectedSenteur?.imageUrl || selectedCouleur?.imageUrl || activeImage,
       selectedPriceKMF: (!isSenegal && isCustomVariantPrice) ? currentPrice : null,
       selectedPriceFCFA: (isSenegal && isCustomVariantPrice) ? currentPrice : null,
     });
@@ -385,10 +421,34 @@ export default function ProductDetail() {
     ? product.avis.reduce((s, a) => s + a.note, 0) / product.avis.length 
     : (product.noteEtoiles !== undefined && product.noteEtoiles !== null ? Number(product.noteEtoiles) : 5.0);
 
+  const handleBack = () => {
+    // 1. URL passée dans le state (ex: /catalogue?categoryId=1&famille=Chargeurs)
+    if (location.state?.from && location.state.from !== location.pathname) {
+      navigate(location.state.from);
+      return;
+    }
+    // 2. Dernier filtre de catalogue enregistré en session
+    const savedUrl = sessionStorage.getItem("last_catalogue_url");
+    if (savedUrl && savedUrl !== location.pathname) {
+      navigate(savedUrl);
+      return;
+    }
+    // 3. Repli dynamique sur la catégorie et sous-catégorie de l'article
+    if (product?.categoryId) {
+      const q = new URLSearchParams();
+      q.set("categoryId", product.categoryId);
+      if (product.famille) q.set("famille", product.famille);
+      navigate(`/catalogue?${q.toString()}`);
+      return;
+    }
+    // 4. Repli catalogue général
+    navigate("/catalogue");
+  };
+
   return (
     <div style={{ minHeight: "75vh" }}>
-      <button className="bs-back" onClick={() => navigate("/catalogue")}>
-        <ArrowLeft size={16} /> Retour au catalogue
+      <button className="bs-back" onClick={handleBack}>
+        <ArrowLeft size={16} /> Retour
       </button>
 
       <div className="bs-detail">
@@ -479,6 +539,54 @@ export default function ProductDetail() {
                       )}
                       <span style={{ fontSize: 13, fontWeight: isSelected ? 800 : 600, color: isSelected ? "var(--forest-dark)" : "var(--ink)" }}>
                         {c.nom}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── SELECTEUR DE SENTEURS / FRAGRANCES (SOUS LES PHOTOS) ── */}
+          {senteursList.length > 0 && (
+            <div style={{ marginTop: 14, padding: "14px 16px", background: "var(--card)", borderRadius: 16, border: "1px solid var(--line)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  {product.typeVarianteNom || "Senteur"} : <strong style={{ color: "var(--forest)", textTransform: "none", fontSize: 14 }}>{selectedSenteur?.nom || `Choisir un(e) ${product.typeVarianteNom || "senteur"}`}</strong>
+                </span>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                {senteursList.map((s, idx) => {
+                  const isSelected = selectedSenteur?.nom === s.nom;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSelectSenteur(s)}
+                      title={s.nom}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: s.imageUrl ? "4px 12px 4px 5px" : "8px 14px",
+                        borderRadius: 24,
+                        border: isSelected ? "2px solid var(--forest)" : "1.5px solid var(--line)",
+                        background: isSelected ? "var(--forest-light)" : "#fff",
+                        cursor: "pointer",
+                        transition: "all 0.15s",
+                        boxShadow: isSelected ? "0 2px 8px rgba(31, 77, 58, 0.15)" : "none"
+                      }}
+                    >
+                      {s.imageUrl && (
+                        <img 
+                          src={s.imageUrl} 
+                          alt={s.nom} 
+                          style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: "1px solid #E5E7EB" }} 
+                        />
+                      )}
+                      <span style={{ fontSize: 13, fontWeight: isSelected ? 800 : 600, color: isSelected ? "var(--forest-dark)" : "var(--ink)" }}>
+                        {s.nom}
                       </span>
                     </button>
                   );
