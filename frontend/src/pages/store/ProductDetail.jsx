@@ -362,15 +362,96 @@ export default function ProductDetail() {
     isCustomVariantPrice = Number(senteurPrice) !== Number(basePrice);
   }
 
-  // Stock check
-  const totalInCart = cart.filter(l => l.product?.id === product.id).reduce((s, l) => s + l.quantite, 0);
-  const stockDisponible = Math.max(0, (product.stock ?? 0) - totalInCart);
-  const isMaxStockReached = product.stock > 0 && stockDisponible <= 0;
+  // Helper pour lire le stock spécifique d'une variante
+  function getVariantStock(v) {
+    if (!v) return null;
+    if (v.quantite !== undefined && v.quantite !== null && v.quantite !== "") return Number(v.quantite);
+    if (v.stock !== undefined && v.stock !== null && v.stock !== "") return Number(v.stock);
+    return null;
+  }
+
+  const selectedColorStock = getVariantStock(selectedCouleur);
+  const isSelectedColorOutOfStock = selectedColorStock !== null && selectedColorStock <= 0;
+
+  const selectedSenteurStock = getVariantStock(selectedSenteur);
+  const isSelectedSenteurOutOfStock = selectedSenteurStock !== null && selectedSenteurStock <= 0;
+
+  const selectedModeleStock = getVariantStock(selectedModele);
+  const isSelectedModeleOutOfStock = selectedModeleStock !== null && selectedModeleStock <= 0;
+
+  const isAnySelectedVariantOutOfStock = isSelectedColorOutOfStock || isSelectedSenteurOutOfStock || isSelectedModeleOutOfStock;
+
+  // Détail du stock spécifique pour la combinaison sélectionnée
+  const activeVariantParts = [];
+  let minVariantStock = null;
+
+  if (selectedModele) {
+    const mName = selectedModele.nomComplet || `${selectedModele.brandNom ? `${selectedModele.brandNom} ` : ''}${selectedModele.nom}`.trim();
+    if (selectedModeleStock !== null) {
+      activeVariantParts.push(mName);
+      minVariantStock = minVariantStock === null ? selectedModeleStock : Math.min(minVariantStock, selectedModeleStock);
+    } else {
+      activeVariantParts.push(mName);
+    }
+  }
+
+  if (selectedCouleur) {
+    if (selectedColorStock !== null) {
+      activeVariantParts.push(selectedCouleur.nom);
+      minVariantStock = minVariantStock === null ? selectedColorStock : Math.min(minVariantStock, selectedColorStock);
+    } else {
+      activeVariantParts.push(selectedCouleur.nom);
+    }
+  }
+
+  if (selectedSenteur) {
+    if (selectedSenteurStock !== null) {
+      activeVariantParts.push(selectedSenteur.nom);
+      minVariantStock = minVariantStock === null ? selectedSenteurStock : Math.min(minVariantStock, selectedSenteurStock);
+    } else {
+      activeVariantParts.push(selectedSenteur.nom);
+    }
+  }
+
+  const isVariantSpecific = minVariantStock !== null;
+  const displayStock = isVariantSpecific
+    ? Math.min(minVariantStock, Number(product.stock ?? 0))
+    : Number(product.stock ?? 0);
+
+  const activeVariantLabel = activeVariantParts.join(" · ");
+
+  // Clé pour vérifier la quantité déjà dans le panier
+  const activeModelLabel = selectedModele ? (selectedModele.nomComplet || `${selectedModele.brandNom || ''} ${selectedModele.nom}`.trim()) : null;
+  const activeColorLabel = selectedCouleur?.nom || null;
+  const activeSenteurLabel = selectedSenteur?.nom || null;
+  const itemKey = `${product.id}_${activeModelLabel || ''}_${activeColorLabel || (activeSenteurLabel ? `${product.typeVarianteNom || 'Senteur'}: ${activeSenteurLabel}` : '')}`;
+
+  const variantInCart = cart
+    .filter(l => (l.cartKey || `${l.product?.id}_${l.selectedModele || ''}_${l.selectedCouleur || ''}`) === itemKey)
+    .reduce((s, l) => s + l.quantite, 0);
+
+  const totalInCart = cart
+    .filter(l => l.product?.id === product.id)
+    .reduce((s, l) => s + l.quantite, 0);
+
+  let stockDisponible = Math.max(0, displayStock - variantInCart);
+  stockDisponible = Math.min(stockDisponible, Math.max(0, (product.stock ?? 0) - totalInCart));
+
+  const isMaxStockReached = displayStock > 0 && stockDisponible <= 0;
 
   function handleAddToCart() {
     if (!product) return;
     if (product.stock <= 0) {
       showToast(`Désolé, le produit "${product.nom}" est actuellement en rupture de stock.`, "warning");
+      return;
+    }
+
+    if (isAnySelectedVariantOutOfStock) {
+      let msg = "Cette variante est actuellement en rupture de stock. Veuillez choisir une autre variante.";
+      if (isSelectedColorOutOfStock) msg = `Le coloris "${selectedCouleur?.nom}" est actuellement épuisé. Veuillez choisir une autre couleur disponible.`;
+      else if (isSelectedSenteurOutOfStock) msg = `${product.typeVarianteNom || 'La senteur'} "${selectedSenteur?.nom}" est actuellement épuisée. Veuillez choisir une autre variante disponible.`;
+      else if (isSelectedModeleOutOfStock) msg = `Le modèle "${selectedModele?.nomComplet || selectedModele?.nom}" est actuellement épuisé. Veuillez choisir un autre modèle disponible.`;
+      showToast(msg, "warning");
       return;
     }
 
@@ -401,6 +482,7 @@ export default function ProductDetail() {
       selectedImageUrl: selectedSenteur?.imageUrl || selectedCouleur?.imageUrl || activeImage,
       selectedPriceKMF: (!isSenegal && isCustomVariantPrice) ? currentPrice : null,
       selectedPriceFCFA: (isSenegal && isCustomVariantPrice) ? currentPrice : null,
+      stockVariante: isVariantSpecific ? displayStock : null
     });
 
     if (ok) {
@@ -491,39 +573,62 @@ export default function ProductDetail() {
           {/* ── SELECTEUR DE COULEURS (SOUS LES PHOTOS) ── */}
           {couleursList.length > 0 && (
             <div style={{ marginTop: 14, padding: "14px 16px", background: "var(--card)", borderRadius: 16, border: "1px solid var(--line)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  Couleur : <strong style={{ color: "var(--forest)", textTransform: "none", fontSize: 14 }}>{selectedCouleur?.nom || "Choisir une couleur"}</strong>
+                  Couleur : <strong style={{ color: isSelectedColorOutOfStock ? "#DC2626" : "var(--forest)", textTransform: "none", fontSize: 14 }}>{selectedCouleur?.nom || "Choisir une couleur"}</strong>
                 </span>
+                {selectedCouleur && selectedColorStock !== null && (
+                  <span style={{
+                    fontSize: 11.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10,
+                    background: isSelectedColorOutOfStock ? "#FEE2E2" : "#ECFDF5",
+                    color: isSelectedColorOutOfStock ? "#DC2626" : "#047857",
+                    border: isSelectedColorOutOfStock ? "1px solid #FCA5A5" : "1px solid #A7F3D0"
+                  }}>
+                    {isSelectedColorOutOfStock ? "Rupture de stock" : `${selectedColorStock} disponible(s)`}
+                  </span>
+                )}
               </div>
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 {couleursList.map((c, idx) => {
                   const isSelected = selectedCouleur?.nom === c.nom;
+                  const cStock = getVariantStock(c);
+                  const isOutOfStock = cStock !== null && cStock <= 0;
+
                   return (
                     <button
                       key={idx}
                       type="button"
-                      onClick={() => handleSelectColor(c)}
-                      title={c.nom}
+                      onClick={() => {
+                        handleSelectColor(c);
+                        if (isOutOfStock) {
+                          showToast(`Le coloris "${c.nom}" est actuellement en rupture de stock. Veuillez choisir un autre coloris disponible.`, "warning");
+                        }
+                      }}
+                      title={isOutOfStock ? `${c.nom} (Épuisé)` : (cStock !== null ? `${c.nom} (${cStock} en stock)` : c.nom)}
                       style={{
                         display: "flex",
                         alignItems: "center",
                         gap: 8,
                         padding: c.imageUrl ? "4px 10px 4px 4px" : "6px 12px",
                         borderRadius: 24,
-                        border: isSelected ? "2px solid var(--forest)" : "1.5px solid var(--line)",
-                        background: isSelected ? "var(--forest-light)" : "#fff",
+                        border: isSelected
+                          ? (isOutOfStock ? "2px solid #EF4444" : "2px solid var(--forest)")
+                          : (isOutOfStock ? "1.5px dashed #CBD5E1" : "1.5px solid var(--line)"),
+                        background: isSelected
+                          ? (isOutOfStock ? "#FEF2F2" : "var(--forest-light)")
+                          : (isOutOfStock ? "#F1F5F9" : "#fff"),
+                        opacity: isOutOfStock ? 0.65 : 1,
                         cursor: "pointer",
                         transition: "all 0.15s",
-                        boxShadow: isSelected ? "0 2px 8px rgba(31, 77, 58, 0.15)" : "none"
+                        boxShadow: isSelected ? (isOutOfStock ? "0 2px 8px rgba(239, 68, 68, 0.2)" : "0 2px 8px rgba(31, 77, 58, 0.15)") : "none"
                       }}
                     >
                       {c.imageUrl ? (
                         <img 
                           src={c.imageUrl} 
                           alt={c.nom} 
-                          style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", border: "1px solid #E5E7EB" }} 
+                          style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", border: "1px solid #E5E7EB", filter: isOutOfStock ? "grayscale(80%)" : "none" }} 
                         />
                       ) : (
                         <span 
@@ -537,9 +642,26 @@ export default function ProductDetail() {
                           {isSelected && <Check size={12} color={c.codeHex && c.codeHex.toLowerCase() === "#ffffff" ? "#000" : "#fff"} strokeWidth={3} />}
                         </span>
                       )}
-                      <span style={{ fontSize: 13, fontWeight: isSelected ? 800 : 600, color: isSelected ? "var(--forest-dark)" : "var(--ink)" }}>
+                      <span style={{ fontSize: 13, fontWeight: isSelected ? 800 : 600, color: isSelected ? (isOutOfStock ? "#B91C1C" : "var(--forest-dark)") : (isOutOfStock ? "#94A3B8" : "var(--ink)"), textDecoration: isOutOfStock ? "line-through" : "none" }}>
                         {c.nom}
                       </span>
+                      {isOutOfStock ? (
+                        <span style={{ fontSize: 10, fontWeight: 800, color: "#DC2626", background: "#FEE2E2", padding: "1px 6px", borderRadius: 10 }}>
+                          Épuisé
+                        </span>
+                      ) : cStock !== null ? (
+                        <span style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          color: isSelected ? "var(--forest-dark)" : "#059669",
+                          background: isSelected ? "rgba(255,255,255,0.85)" : "#ECFDF5",
+                          padding: "1px 6px",
+                          borderRadius: 8,
+                          border: isSelected ? "1px solid rgba(0,0,0,0.1)" : "1px solid #A7F3D0"
+                        }}>
+                          {cStock} dispo
+                        </span>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -550,44 +672,84 @@ export default function ProductDetail() {
           {/* ── SELECTEUR DE SENTEURS / FRAGRANCES (SOUS LES PHOTOS) ── */}
           {senteursList.length > 0 && (
             <div style={{ marginTop: 14, padding: "14px 16px", background: "var(--card)", borderRadius: 16, border: "1px solid var(--line)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  {product.typeVarianteNom || "Senteur"} : <strong style={{ color: "var(--forest)", textTransform: "none", fontSize: 14 }}>{selectedSenteur?.nom || `Choisir un(e) ${product.typeVarianteNom || "senteur"}`}</strong>
+                  {product.typeVarianteNom || "Senteur"} : <strong style={{ color: isSelectedSenteurOutOfStock ? "#DC2626" : "var(--forest)", textTransform: "none", fontSize: 14 }}>{selectedSenteur?.nom || `Choisir un(e) ${product.typeVarianteNom || "senteur"}`}</strong>
                 </span>
+                {selectedSenteur && selectedSenteurStock !== null && (
+                  <span style={{
+                    fontSize: 11.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10,
+                    background: isSelectedSenteurOutOfStock ? "#FEE2E2" : "#ECFDF5",
+                    color: isSelectedSenteurOutOfStock ? "#DC2626" : "#047857",
+                    border: isSelectedSenteurOutOfStock ? "1px solid #FCA5A5" : "1px solid #A7F3D0"
+                  }}>
+                    {isSelectedSenteurOutOfStock ? "Rupture de stock" : `${selectedSenteurStock} disponible(s)`}
+                  </span>
+                )}
               </div>
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 {senteursList.map((s, idx) => {
                   const isSelected = selectedSenteur?.nom === s.nom;
+                  const sStock = getVariantStock(s);
+                  const isOutOfStock = sStock !== null && sStock <= 0;
+
                   return (
                     <button
                       key={idx}
                       type="button"
-                      onClick={() => handleSelectSenteur(s)}
-                      title={s.nom}
+                      onClick={() => {
+                        handleSelectSenteur(s);
+                        if (isOutOfStock) {
+                          showToast(`La variante "${s.nom}" est actuellement en rupture de stock. Veuillez choisir une autre variante disponible.`, "warning");
+                        }
+                      }}
+                      title={isOutOfStock ? `${s.nom} (Épuisé)` : (sStock !== null ? `${s.nom} (${sStock} en stock)` : s.nom)}
                       style={{
                         display: "flex",
                         alignItems: "center",
                         gap: 8,
                         padding: s.imageUrl ? "4px 12px 4px 5px" : "8px 14px",
                         borderRadius: 24,
-                        border: isSelected ? "2px solid var(--forest)" : "1.5px solid var(--line)",
-                        background: isSelected ? "var(--forest-light)" : "#fff",
+                        border: isSelected
+                          ? (isOutOfStock ? "2px solid #EF4444" : "2px solid var(--forest)")
+                          : (isOutOfStock ? "1.5px dashed #CBD5E1" : "1.5px solid var(--line)"),
+                        background: isSelected
+                          ? (isOutOfStock ? "#FEF2F2" : "var(--forest-light)")
+                          : (isOutOfStock ? "#F1F5F9" : "#fff"),
+                        opacity: isOutOfStock ? 0.65 : 1,
                         cursor: "pointer",
                         transition: "all 0.15s",
-                        boxShadow: isSelected ? "0 2px 8px rgba(31, 77, 58, 0.15)" : "none"
+                        boxShadow: isSelected ? (isOutOfStock ? "0 2px 8px rgba(239, 68, 68, 0.2)" : "0 2px 8px rgba(31, 77, 58, 0.15)") : "none"
                       }}
                     >
                       {s.imageUrl && (
                         <img 
                           src={s.imageUrl} 
                           alt={s.nom} 
-                          style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: "1px solid #E5E7EB" }} 
+                          style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: "1px solid #E5E7EB", filter: isOutOfStock ? "grayscale(80%)" : "none" }} 
                         />
                       )}
-                      <span style={{ fontSize: 13, fontWeight: isSelected ? 800 : 600, color: isSelected ? "var(--forest-dark)" : "var(--ink)" }}>
+                      <span style={{ fontSize: 13, fontWeight: isSelected ? 800 : 600, color: isSelected ? (isOutOfStock ? "#B91C1C" : "var(--forest-dark)") : (isOutOfStock ? "#94A3B8" : "var(--ink)"), textDecoration: isOutOfStock ? "line-through" : "none" }}>
                         {s.nom}
                       </span>
+                      {isOutOfStock ? (
+                        <span style={{ fontSize: 10, fontWeight: 800, color: "#DC2626", background: "#FEE2E2", padding: "1px 6px", borderRadius: 10 }}>
+                          Épuisé
+                        </span>
+                      ) : sStock !== null ? (
+                        <span style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          color: isSelected ? "var(--forest-dark)" : "#059669",
+                          background: isSelected ? "rgba(255,255,255,0.85)" : "#ECFDF5",
+                          padding: "1px 6px",
+                          borderRadius: 8,
+                          border: isSelected ? "1px solid rgba(0,0,0,0.1)" : "1px solid #A7F3D0"
+                        }}>
+                          {sStock} dispo
+                        </span>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -639,18 +801,87 @@ export default function ProductDetail() {
             <span style={{ fontSize: 14 }}>· {product.avis?.length || 0} avis client(s)</span>
           </div>
 
-          {/* STOCK BADGES */}
-          {product.stock <= 0 ? (
-            <div style={{ display: "inline-block", padding: "6px 14px", borderRadius: 20, fontSize: 13, fontWeight: 700, marginBottom: 16, background: "#FAD2CD", color: "#B4483A" }}>
-              Rupture de stock
+          {/* STOCK BADGES DYNAMIQUES PAR VARIANTE */}
+          {(product.stock <= 0 || (isVariantSpecific && displayStock <= 0) || isAnySelectedVariantOutOfStock) ? (
+            <div style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "7px 16px",
+              borderRadius: 20,
+              fontSize: 13,
+              fontWeight: 700,
+              marginBottom: 16,
+              background: "#FEE2E2",
+              color: "#DC2626",
+              border: "1.5px solid #FCA5A5"
+            }}>
+              <AlertTriangle size={16} />
+              <span>
+                Rupture de stock
+                {activeVariantLabel ? ` · ${activeVariantLabel} épuisé(e)` : ""}
+              </span>
             </div>
           ) : isMaxStockReached ? (
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 20, fontSize: 13, fontWeight: 700, marginBottom: 16, background: "#FEF3C7", color: "#B45309", border: "1px solid #F59E0B" }}>
-              <AlertTriangle size={15} /> Stock maximal dans votre panier ({totalInCart}/{product.stock} restants)
+            <div style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "7px 16px",
+              borderRadius: 20,
+              fontSize: 13,
+              fontWeight: 700,
+              marginBottom: 16,
+              background: "#FEF3C7",
+              color: "#B45309",
+              border: "1px solid #F59E0B"
+            }}>
+              <AlertTriangle size={15} />
+              <span>
+                Stock maximal dans votre panier ({variantInCart}/{displayStock} restants
+                {activeVariantLabel ? ` pour ${activeVariantLabel}` : ""})
+              </span>
             </div>
           ) : (
-            <div style={{ display: "inline-block", padding: "6px 14px", borderRadius: 20, fontSize: 13, fontWeight: 700, marginBottom: 16, background: "rgba(31, 77, 58, 0.1)", color: "var(--forest)" }}>
-              En stock ({product.stock} {product.unite} restants{totalInCart > 0 ? ` · ${totalInCart} dans le panier` : ""})
+            <div style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "7px 16px",
+              borderRadius: 20,
+              fontSize: 13,
+              fontWeight: 700,
+              marginBottom: 16,
+              background: "rgba(31, 77, 58, 0.08)",
+              color: "var(--forest)",
+              border: "1px solid rgba(31, 77, 58, 0.2)"
+            }}>
+              <span style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#059669",
+                display: "inline-block",
+                boxShadow: "0 0 0 3px rgba(5, 150, 105, 0.2)"
+              }} />
+              <span>
+                En stock : <strong style={{ color: "var(--forest-dark)", fontSize: 14 }}>{displayStock} {product.unite || "pièce(s)"} restante(s)</strong>
+                {activeVariantLabel ? (
+                  <span style={{ marginLeft: 6, color: "var(--forest-dark)", fontWeight: 700 }}>
+                    ({activeVariantLabel})
+                  </span>
+                ) : null}
+                {isVariantSpecific && Number(product.stock) > displayStock ? (
+                  <span style={{ marginLeft: 6, opacity: 0.65, fontWeight: 500, fontSize: 12 }}>
+                    · Stock total boutique : {product.stock}
+                  </span>
+                ) : null}
+                {variantInCart > 0 ? (
+                  <span style={{ marginLeft: 6, color: "var(--ink)", fontWeight: 600 }}>
+                    · {variantInCart} déjà au panier
+                  </span>
+                ) : null}
+              </span>
             </div>
           )}
 
@@ -698,6 +929,19 @@ export default function ProductDetail() {
                     {selectedModele ? (selectedModele.nomComplet || `${selectedModele.brandNom || ''} ${selectedModele.nom}`.trim()) : "Obligatoire"}
                   </strong>
                 </span>
+                {selectedModele && selectedModeleStock !== null && (
+                  <span style={{
+                    fontSize: 11.5,
+                    fontWeight: 800,
+                    padding: "2px 8px",
+                    borderRadius: 10,
+                    background: selectedModeleStock <= 0 ? "#FEE2E2" : "#ECFDF5",
+                    color: selectedModeleStock <= 0 ? "#DC2626" : "#047857",
+                    border: selectedModeleStock <= 0 ? "1px solid #FCA5A5" : "1px solid #A7F3D0"
+                  }}>
+                    {selectedModeleStock <= 0 ? "Rupture de stock" : `${selectedModeleStock} disponible(s)`}
+                  </span>
+                )}
                 {missingSelectionAlert && (
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#DC2626" }}>
                     Veuillez choisir un modèle
@@ -752,6 +996,8 @@ export default function ProductDetail() {
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", maxHeight: 220, overflowY: "auto", paddingRight: 4 }}>
                 {filteredModeles.map((m, idx) => {
                   const isSelected = selectedModele?.nom === m.nom && (!m.brandNom || selectedModele?.brandNom === m.brandNom);
+                  const mStock = getVariantStock(m);
+                  const isOutOfStock = mStock !== null && mStock <= 0;
 
                   return (
                     <button
@@ -760,15 +1006,25 @@ export default function ProductDetail() {
                       onClick={() => {
                         setSelectedModele(m);
                         setMissingSelectionAlert(false);
+                        if (isOutOfStock) {
+                          showToast(`Le modèle "${m.nomComplet || m.nom}" est actuellement en rupture de stock. Veuillez choisir un autre modèle compatible.`, "warning");
+                        }
                       }}
                       style={{
                         padding: "8px 14px",
                         borderRadius: 12,
                         fontSize: 13,
                         fontWeight: isSelected ? 800 : 600,
-                        border: isSelected ? "2px solid var(--forest-dark)" : "1.5px solid var(--line)",
-                        background: isSelected ? "var(--forest-dark)" : "#fff",
-                        color: isSelected ? "#fff" : "var(--ink)",
+                        border: isSelected 
+                          ? (isOutOfStock ? "2px solid #EF4444" : "2px solid var(--forest-dark)") 
+                          : (isOutOfStock ? "1.5px dashed #CBD5E1" : "1.5px solid var(--line)"),
+                        background: isSelected 
+                          ? (isOutOfStock ? "#FEF2F2" : "var(--forest-dark)") 
+                          : (isOutOfStock ? "#F1F5F9" : "#fff"),
+                        color: isSelected 
+                          ? (isOutOfStock ? "#DC2626" : "#fff") 
+                          : (isOutOfStock ? "#94A3B8" : "var(--ink)"),
+                        opacity: isOutOfStock && !isSelected ? 0.65 : 1,
                         cursor: "pointer",
                         display: "inline-flex",
                         alignItems: "center",
@@ -777,7 +1033,34 @@ export default function ProductDetail() {
                         boxShadow: isSelected ? "0 4px 12px rgba(22, 52, 36, 0.2)" : "none"
                       }}
                     >
-                      <span>{m.nomComplet || `${m.brandNom ? `${m.brandNom} ` : ''}${m.nom}`}</span>
+                      <span style={{ textDecoration: isOutOfStock ? "line-through" : "none" }}>
+                        {m.nomComplet || `${m.brandNom ? `${m.brandNom} ` : ''}${m.nom}`}
+                      </span>
+                      {isOutOfStock ? (
+                        <span style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          background: "#EF4444",
+                          color: "#fff",
+                          padding: "1px 5px",
+                          borderRadius: 8,
+                          textDecoration: "none"
+                        }}>
+                          Épuisé
+                        </span>
+                      ) : mStock !== null ? (
+                        <span style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          color: isSelected ? "#fff" : "#059669",
+                          background: isSelected ? "rgba(255,255,255,0.25)" : "#ECFDF5",
+                          padding: "1px 6px",
+                          borderRadius: 8,
+                          border: isSelected ? "1px solid rgba(255,255,255,0.3)" : "1px solid #A7F3D0"
+                        }}>
+                          {mStock} dispo
+                        </span>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -786,12 +1069,41 @@ export default function ProductDetail() {
           )}
 
           <p style={{ color: "var(--muted)", fontSize: 15, maxWidth: 520, lineHeight: 1.6, marginBottom: 24 }}>
-            {product.description || (product.stock > 0 ? `Produit de qualité supérieure disponible en stock (${product.stock} ${product.unite}).` : "Rupture de stock temporaire.")}
+            {product.description || (displayStock > 0 ? `Produit de qualité supérieure disponible en stock (${displayStock} ${product.unite}).` : "Rupture de stock temporaire.")}
           </p>
 
+          {/* ALERTE RUPTURE DE STOCK SUR VARIANTE SÉLECTIONNÉE */}
+          {isAnySelectedVariantOutOfStock && (
+            <div style={{
+              background: "#FEF2F2",
+              border: "1.5px solid #F87171",
+              borderRadius: 14,
+              padding: "12px 16px",
+              marginBottom: 20,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 12,
+              color: "#991B1B"
+            }}>
+              <AlertTriangle size={22} color="#DC2626" style={{ flexShrink: 0, marginTop: 2 }} />
+              <div style={{ fontSize: 13.5, lineHeight: 1.45 }}>
+                <strong style={{ display: "block", marginBottom: 3, fontSize: 14 }}>Variante en rupture de stock</strong>
+                {selectedColorStock !== null && selectedColorStock <= 0 && (
+                  <div>Le coloris <strong>{selectedColor}</strong> est actuellement épuisé. Veuillez choisir un autre coloris disponible.</div>
+                )}
+                {selectedSenteurStock !== null && selectedSenteurStock <= 0 && (
+                  <div>La senteur <strong>{selectedSenteur?.nom}</strong> est actuellement épuisée. Veuillez choisir une autre senteur disponible.</div>
+                )}
+                {selectedModeleStock !== null && selectedModeleStock <= 0 && (
+                  <div>Le modèle <strong>{selectedModele?.nomComplet || selectedModele?.nom}</strong> est actuellement épuisé. Veuillez choisir un autre modèle compatible.</div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 40 }}>
-            <div style={{ display: "flex", alignItems: "center", border: "1px solid var(--line)", borderRadius: 30, overflow: "hidden", height: 48, opacity: isMaxStockReached || product.stock === 0 ? 0.6 : 1 }}>
-              <button onClick={decrementQty} disabled={quantity <= 1} style={{ width: 44, height: "100%", background: "var(--paper)", border: "none", cursor: quantity <= 1 ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", border: "1px solid var(--line)", borderRadius: 30, overflow: "hidden", height: 48, opacity: isMaxStockReached || product.stock === 0 || isAnySelectedVariantOutOfStock ? 0.6 : 1 }}>
+              <button onClick={decrementQty} disabled={quantity <= 1 || isAnySelectedVariantOutOfStock} style={{ width: 44, height: "100%", background: "var(--paper)", border: "none", cursor: quantity <= 1 || isAnySelectedVariantOutOfStock ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <Minus size={18} color="var(--ink)" />
               </button>
               <input
@@ -799,6 +1111,7 @@ export default function ProductDetail() {
                 min="1"
                 max={stockDisponible}
                 value={quantity}
+                disabled={isAnySelectedVariantOutOfStock}
                 onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
                   if (isNaN(val) || val < 1) {
@@ -816,13 +1129,14 @@ export default function ProductDetail() {
                   MozAppearance: "textfield"
                 }}
               />
-              <button onClick={incrementQty} disabled={quantity >= stockDisponible} style={{ width: 44, height: "100%", background: "var(--paper)", border: "none", cursor: quantity >= stockDisponible ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <button onClick={incrementQty} disabled={quantity >= stockDisponible || isAnySelectedVariantOutOfStock} style={{ width: 44, height: "100%", background: "var(--paper)", border: "none", cursor: quantity >= stockDisponible || isAnySelectedVariantOutOfStock ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <Plus size={18} color="var(--ink)" />
               </button>
             </div>
 
             <button 
               className="bs-btn-primary" 
+              disabled={product.stock <= 0 || isAnySelectedVariantOutOfStock}
               style={{ 
                 flex: 1, 
                 height: 48, 
@@ -832,14 +1146,16 @@ export default function ProductDetail() {
                 justifyContent: "center", 
                 gap: 8, 
                 fontSize: 16,
-                background: product.stock <= 0 ? "var(--line)" : isMaxStockReached ? "#D97706" : undefined,
-                color: product.stock <= 0 ? "var(--muted)" : undefined,
-                cursor: "pointer"
+                background: (product.stock <= 0 || isAnySelectedVariantOutOfStock) ? "var(--line)" : isMaxStockReached ? "#D97706" : undefined,
+                color: (product.stock <= 0 || isAnySelectedVariantOutOfStock) ? "var(--muted)" : undefined,
+                cursor: (product.stock <= 0 || isAnySelectedVariantOutOfStock) ? "not-allowed" : "pointer"
               }} 
               onClick={handleAddToCart}
             >
               {added ? (
                 <><CheckCircle size={20} /> Ajouté au panier !</>
+              ) : isAnySelectedVariantOutOfStock ? (
+                <><AlertTriangle size={20} /> Variante épuisée (Choisir une autre)</>
               ) : isMaxStockReached ? (
                 <><AlertTriangle size={20} /> Stock max en panier ({totalInCart}/{product.stock})</>
               ) : (

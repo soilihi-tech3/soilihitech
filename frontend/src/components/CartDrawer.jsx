@@ -210,7 +210,7 @@ export default function CartDrawer({ onClose }) {
                           background: "#fff"
                         }}>
                           <button 
-                            onClick={() => updateQuantite(itemKey, -1)}
+                            onClick={() => updateQuantite(itemKey, -1, index)}
                             style={{
                               width: 28, height: 28, background: "none", border: "none",
                               cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
@@ -224,7 +224,7 @@ export default function CartDrawer({ onClose }) {
                             min="1"
                             max={l.product?.stock || 999}
                             value={l.quantite}
-                            onChange={(e) => setExactQuantite(itemKey, e.target.value)}
+                            onChange={(e) => setExactQuantite(itemKey, e.target.value, index)}
                             style={{
                               width: 34, textAlign: "center", fontWeight: 700, fontSize: 13,
                               border: "none", background: "transparent", color: "var(--ink)", outline: "none",
@@ -232,7 +232,7 @@ export default function CartDrawer({ onClose }) {
                             }}
                           />
                           <button 
-                            onClick={() => updateQuantite(itemKey, 1)}
+                            onClick={() => updateQuantite(itemKey, 1, index)}
                             style={{
                               width: 28, height: 28, background: "none", border: "none",
                               cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
@@ -248,7 +248,7 @@ export default function CartDrawer({ onClose }) {
                             {fcfa(lineTotal, activeCurrency)}
                           </span>
                           <button 
-                            onClick={() => removeFromCart(itemKey)}
+                            onClick={() => removeFromCart(itemKey, index)}
                             title="Retirer du panier"
                             style={{
                               width: 28, height: 28, borderRadius: "50%", border: "none",

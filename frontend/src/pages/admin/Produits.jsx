@@ -359,7 +359,9 @@ export default function AdminProduits() {
               nom: model.nom,
               nomComplet: model.nomComplet || `${brand.nom} ${model.nom}`,
               prixKMF: "",
-              prixFCFA: ""
+              prixFCFA: "",
+              quantite: "",
+              stock: ""
             }
           ]
         };
@@ -386,7 +388,9 @@ export default function AdminProduits() {
             nom: bm.nom,
             nomComplet: bm.nomComplet || `${brand.nom} ${bm.nom}`,
             prixKMF: "",
-            prixFCFA: ""
+            prixFCFA: "",
+            quantite: "",
+            stock: ""
           }));
         return {
           ...f,
@@ -419,6 +423,39 @@ export default function AdminProduits() {
     e.preventDefault();
     if (!form.nom || !form.categoryId) return;
 
+    const generalStock = form.stock !== "" ? Number(form.stock) : 0;
+
+    // Vérifier que la quantité de chaque couleur ne dépasse pas le stock général
+    for (const c of (form.couleurs || [])) {
+      if (c.nom && c.nom.trim()) {
+        const qte = c.quantite !== undefined && c.quantite !== "" ? Number(c.quantite) : (c.stock !== undefined && c.stock !== "" ? Number(c.stock) : null);
+        if (qte !== null && qte > generalStock) {
+          toast.error(`La quantité de la couleur "${c.nom}" (${qte}) ne peut pas dépasser le stock général du produit (${generalStock}).`);
+          return;
+        }
+      }
+    }
+
+    // Vérifier que la quantité de chaque senteur ne dépasse pas le stock général
+    for (const s of (form.senteurs || [])) {
+      if (s.nom && s.nom.trim()) {
+        const qte = s.quantite !== undefined && s.quantite !== "" ? Number(s.quantite) : (s.stock !== undefined && s.stock !== "" ? Number(s.stock) : null);
+        if (qte !== null && qte > generalStock) {
+          toast.error(`La quantité de la variante "${s.nom}" (${qte}) ne peut pas dépasser le stock général du produit (${generalStock}).`);
+          return;
+        }
+      }
+    }
+
+    // Vérifier que la quantité de chaque modèle de smartphone ne dépasse pas le stock général
+    for (const m of (form.modelesCompatibles || [])) {
+      const qte = m.quantite !== undefined && m.quantite !== "" ? Number(m.quantite) : (m.stock !== undefined && m.stock !== "" ? Number(m.stock) : null);
+      if (qte !== null && qte > generalStock) {
+        toast.error(`La quantité du modèle "${m.nomComplet || m.nom}" (${qte}) ne peut pas dépasser le stock général du produit (${generalStock}).`);
+        return;
+      }
+    }
+
     // Sanitize: empty string → 0 or null
     const payload = {
       ...form,
@@ -431,7 +468,7 @@ export default function AdminProduits() {
       masquerSurSite: Boolean(form.masquerSurSite),
       noteEtoiles: form.noteEtoiles !== "" ? Number(form.noteEtoiles) : 5.0,
       coutAchat: form.coutAchat !== "" ? Number(form.coutAchat) : 0,
-      stock: form.stock !== "" ? Number(form.stock) : 0,
+      stock: generalStock,
       seuilAlerte: form.seuilAlerte !== "" ? Number(form.seuilAlerte) : 5,
       categoryId: Number(form.categoryId),
       marqueId: form.hasMarque && form.marqueId ? Number(form.marqueId) : null,
@@ -439,10 +476,19 @@ export default function AdminProduits() {
       poids: form.poids || "",
       famille: form.famille || "Accessoires",
       images: (form.images || []).filter(img => Boolean(img && img.trim())),
-      couleurs: (form.couleurs || []).filter(c => Boolean(c.nom && c.nom.trim())),
-      senteurs: (form.senteurs || []).filter(s => Boolean(s.nom && s.nom.trim())),
+      couleurs: (form.couleurs || []).filter(c => Boolean(c.nom && c.nom.trim())).map(c => {
+        const val = c.quantite !== "" && c.quantite !== undefined && c.quantite !== null ? Number(c.quantite) : (c.stock !== "" && c.stock !== undefined && c.stock !== null ? Number(c.stock) : null);
+        return { ...c, quantite: val, stock: val };
+      }),
+      senteurs: (form.senteurs || []).filter(s => Boolean(s.nom && s.nom.trim())).map(s => {
+        const val = s.quantite !== "" && s.quantite !== undefined && s.quantite !== null ? Number(s.quantite) : (s.stock !== "" && s.stock !== undefined && s.stock !== null ? Number(s.stock) : null);
+        return { ...s, quantite: val, stock: val };
+      }),
       typeVarianteNom: form.typeVarianteNom ? form.typeVarianteNom.trim() : "Senteur",
-      modelesCompatibles: form.modelesCompatibles || []
+      modelesCompatibles: (form.modelesCompatibles || []).map(m => {
+        const val = m.quantite !== "" && m.quantite !== undefined && m.quantite !== null ? Number(m.quantite) : (m.stock !== "" && m.stock !== undefined && m.stock !== null ? Number(m.stock) : null);
+        return { ...m, quantite: val, stock: val };
+      })
     };
 
     try {
@@ -1300,25 +1346,42 @@ export default function AdminProduits() {
                                       <span>{model.nomComplet || model.nom}</span>
                                     </label>
 
-                                    {/* Prix spécifique par modèle (optionnel) */}
+                                    {/* Prix spécifique et Stock par modèle (optionnel) */}
                                     {isChecked && (
-                                      <div style={{ display: "flex", gap: 6, marginTop: 4, paddingTop: 4, borderTop: "1px dashed #A7F3D0" }}>
-                                        <input
-                                          type="number"
-                                          placeholder="Prix KMF (opt)"
-                                          title="Prix spécifique Comores pour ce modèle"
-                                          value={modelItem.prixKMF || ""}
-                                          onChange={(e) => updateModelPrice(model.id, "prixKMF", e.target.value)}
-                                          style={{ width: "50%", height: 26, fontSize: 11, padding: "2px 6px", borderRadius: 4, border: "1px solid #CBD5E1" }}
-                                        />
-                                        <input
-                                          type="number"
-                                          placeholder="Prix FCFA (opt)"
-                                          title="Prix spécifique Sénégal pour ce modèle"
-                                          value={modelItem.prixFCFA || ""}
-                                          onChange={(e) => updateModelPrice(model.id, "prixFCFA", e.target.value)}
-                                          style={{ width: "50%", height: 26, fontSize: 11, padding: "2px 6px", borderRadius: 4, border: "1px solid #CBD5E1" }}
-                                        />
+                                      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 4, paddingTop: 4, borderTop: "1px dashed #A7F3D0" }}>
+                                        <div style={{ display: "flex", gap: 6 }}>
+                                          <input
+                                            type="number"
+                                            placeholder="Prix KMF"
+                                            title="Prix spécifique Comores pour ce modèle"
+                                            value={modelItem.prixKMF || ""}
+                                            onChange={(e) => updateModelPrice(model.id, "prixKMF", e.target.value)}
+                                            style={{ width: "50%", height: 26, fontSize: 11, padding: "2px 6px", borderRadius: 4, border: "1px solid #CBD5E1" }}
+                                          />
+                                          <input
+                                            type="number"
+                                            placeholder="Prix FCFA"
+                                            title="Prix spécifique Sénégal pour ce modèle"
+                                            value={modelItem.prixFCFA || ""}
+                                            onChange={(e) => updateModelPrice(model.id, "prixFCFA", e.target.value)}
+                                            style={{ width: "50%", height: 26, fontSize: 11, padding: "2px 6px", borderRadius: 4, border: "1px solid #CBD5E1" }}
+                                          />
+                                        </div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                          <span style={{ fontSize: 10, fontWeight: 700, color: "var(--forest-dark)", whiteSpace: "nowrap" }}>Stock dispo :</span>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            placeholder="Quantité"
+                                            title="Quantité en stock pour ce modèle (ne doit pas dépasser le stock général)"
+                                            value={modelItem.quantite ?? modelItem.stock ?? ""}
+                                            onChange={(e) => {
+                                              updateModelPrice(model.id, "quantite", e.target.value);
+                                              updateModelPrice(model.id, "stock", e.target.value);
+                                            }}
+                                            style={{ width: "100%", height: 24, fontSize: 11, padding: "1px 6px", borderRadius: 4, border: "1px solid #CBD5E1", background: "#fff", fontWeight: 700 }}
+                                          />
+                                        </div>
                                       </div>
                                     )}
                                   </div>
@@ -1851,21 +1914,36 @@ export default function AdminProduits() {
                       </div>
 
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12 }}>
-                        <span style={{ color: "var(--muted)", fontWeight: 700 }}>Prix spécifique pour cette couleur (optionnel) :</span>
+                        <span style={{ color: "var(--muted)", fontWeight: 700 }}>Prix (optionnel) :</span>
                         <input
                           type="number"
                           placeholder="Prix Comores KMF"
                           value={couleur.prixKMF || ""}
                           onChange={(e) => updateColorVariant(cIdx, "prixKMF", e.target.value)}
-                          style={{ width: 140, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
+                          style={{ width: 130, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
                         />
                         <input
                           type="number"
                           placeholder="Prix Sénégal FCFA"
                           value={couleur.prixFCFA || ""}
                           onChange={(e) => updateColorVariant(cIdx, "prixFCFA", e.target.value)}
-                          style={{ width: 140, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
+                          style={{ width: 130, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
                         />
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ color: "var(--forest-dark)", fontWeight: 700 }}>Stock dispo :</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="Quantité"
+                            title="Quantité en stock pour cette couleur (ne doit pas dépasser le stock général)"
+                            value={couleur.quantite ?? couleur.stock ?? ""}
+                            onChange={(e) => {
+                              updateColorVariant(cIdx, "quantite", e.target.value);
+                              updateColorVariant(cIdx, "stock", e.target.value);
+                            }}
+                            style={{ width: 100, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)", background: "#fff", fontWeight: 700 }}
+                          />
+                        </div>
                         {couleur.imageUrl && (
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <img
@@ -2028,21 +2106,36 @@ export default function AdminProduits() {
                       </div>
 
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12 }}>
-                        <span style={{ color: "var(--muted)", fontWeight: 700 }}>Prix spécifique pour cette senteur (optionnel) :</span>
+                        <span style={{ color: "var(--muted)", fontWeight: 700 }}>Prix (optionnel) :</span>
                         <input
                           type="number"
                           placeholder="Prix Comores KMF"
                           value={senteur.prixKMF || ""}
                           onChange={(e) => updateSenteurVariant(sIdx, "prixKMF", e.target.value)}
-                          style={{ width: 140, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
+                          style={{ width: 130, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
                         />
                         <input
                           type="number"
                           placeholder="Prix Sénégal FCFA"
                           value={senteur.prixFCFA || ""}
                           onChange={(e) => updateSenteurVariant(sIdx, "prixFCFA", e.target.value)}
-                          style={{ width: 140, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
+                          style={{ width: 130, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)" }}
                         />
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ color: "var(--forest-dark)", fontWeight: 700 }}>Stock dispo :</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="Quantité"
+                            title={`Quantité en stock pour cette ${form.typeVarianteNom || 'senteur'} (ne doit pas dépasser le stock général)`}
+                            value={senteur.quantite ?? senteur.stock ?? ""}
+                            onChange={(e) => {
+                              updateSenteurVariant(sIdx, "quantite", e.target.value);
+                              updateSenteurVariant(sIdx, "stock", e.target.value);
+                            }}
+                            style={{ width: 100, height: 30, fontSize: 12, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)", background: "#fff", fontWeight: 700 }}
+                          />
+                        </div>
                         {senteur.imageUrl && (
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <img

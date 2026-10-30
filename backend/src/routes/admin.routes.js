@@ -668,6 +668,75 @@ router.patch("/orders/:id/assign", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+router.put("/orders/:id", requireRole("admin"), async (req, res, next) => {
+  try {
+    const order = await Order.findOne({
+      where: { id: req.params.id, boutiqueId: req.boutiqueId },
+      include: [{ model: OrderItem, as: "items" }]
+    });
+    if (!order) return res.status(404).json({ message: "Vente / commande introuvable." });
+
+    const { moyenPaiement, statut, notes, clientNom, clientTelephone, adresseLivraison } = req.body;
+
+    const updates = {};
+    if (moyenPaiement !== undefined) updates.moyenPaiement = moyenPaiement;
+    if (notes !== undefined) updates.notes = notes;
+    if (clientNom !== undefined) updates.clientNom = clientNom;
+    if (clientTelephone !== undefined) updates.clientTelephone = clientTelephone;
+    if (adresseLivraison !== undefined) updates.adresseLivraison = adresseLivraison;
+    if (statut !== undefined) updates.statut = statut;
+
+    await order.update(updates);
+    purgeCache();
+    broadcast("order_updated", { orderId: order.id, boutiqueId: req.boutiqueId });
+
+    res.json(order);
+  } catch (err) { next(err); }
+});
+
+router.delete("/orders/:id", requireRole("admin"), async (req, res, next) => {
+  const t = await sequelize.transaction();
+  try {
+    const order = await Order.findOne({
+      where: { id: req.params.id, boutiqueId: req.boutiqueId },
+      include: [{ model: OrderItem, as: "items" }],
+      transaction: t
+    });
+    if (!order) {
+      await t.rollback();
+      return res.status(404).json({ message: "Vente / commande introuvable." });
+    }
+
+    // Réintégrer le stock si la commande n'était pas déjà annulée
+    if (order.statut !== "annulee" && order.items && order.items.length > 0) {
+      for (const item of order.items) {
+        if (item.productId) {
+          const prod = await Product.findByPk(item.productId, { transaction: t });
+          if (prod) {
+            await prod.update({
+              stock: (prod.stock || 0) + item.quantite,
+              ventesCount: Math.max(0, (prod.ventesCount || 0) - item.quantite)
+            }, { transaction: t });
+          }
+        }
+      }
+    }
+
+    await OrderItem.destroy({ where: { orderId: order.id }, transaction: t });
+    await order.destroy({ transaction: t });
+
+    await t.commit();
+    purgeCache();
+    broadcast("order_deleted", { orderId: req.params.id, boutiqueId: req.boutiqueId });
+    broadcast("product_updated", { boutiqueId: req.boutiqueId });
+
+    res.json({ message: "Vente supprimée avec succès et stock réajusté." });
+  } catch (err) {
+    if (t && !t.finished) await t.rollback();
+    next(err);
+  }
+});
+
 /* ---------------------- GESTION DES UTILISATEURS (ADMINS & EMPLOYÉS) ---------------------- */
 
 router.get("/employees", requireRole("admin"), async (req, res, next) => {
@@ -1283,6 +1352,95 @@ router.post("/achats", requireRole("admin", "employe"), async (req, res, next) =
 
     res.status(201).json(fullAchat);
   } catch (err) { next(err); }
+});
+
+router.put("/achats/:id", requireRole("admin"), async (req, res, next) => {
+  const t = await sequelize.transaction();
+  try {
+    const achat = await Achat.findOne({
+      where: { id: req.params.id, boutiqueId: req.boutiqueId },
+      transaction: t
+    });
+    if (!achat) {
+      await t.rollback();
+      return res.status(404).json({ message: "Achat introuvable." });
+    }
+
+    const { quantite, prixAchatUnitaire, fournisseurId, notes } = req.body;
+    const oldQty = Number(achat.quantite || 0);
+    const newQty = quantite !== undefined ? (Number(quantite) || 0) : oldQty;
+    const newUnitPrice = prixAchatUnitaire !== undefined ? (Number(prixAchatUnitaire) || 0) : Number(achat.prixAchatUnitaire || 0);
+
+    const diffQty = newQty - oldQty;
+
+    // Réajuster le stock du produit associé
+    if (achat.productId) {
+      const prod = await Product.findByPk(achat.productId, { transaction: t });
+      if (prod) {
+        prod.stock = Math.max(0, (prod.stock || 0) + diffQty);
+        if (newUnitPrice > 0) prod.coutAchat = newUnitPrice;
+        await prod.save({ transaction: t });
+      }
+    }
+
+    await achat.update({
+      quantite: newQty,
+      prixAchatUnitaire: newUnitPrice,
+      totalAchat: newQty * newUnitPrice,
+      fournisseurId: fournisseurId !== undefined ? (fournisseurId || null) : achat.fournisseurId,
+      notes: notes !== undefined ? notes : achat.notes
+    }, { transaction: t });
+
+    await t.commit();
+    purgeCache();
+    broadcast("product_updated", { productId: achat.productId, boutiqueId: req.boutiqueId });
+
+    const updatedAchat = await Achat.findByPk(achat.id, {
+      include: [
+        { model: Product, as: "product" },
+        { model: Fournisseur, as: "fournisseur" }
+      ]
+    });
+
+    res.json(updatedAchat);
+  } catch (err) {
+    if (t && !t.finished) await t.rollback();
+    next(err);
+  }
+});
+
+router.delete("/achats/:id", requireRole("admin"), async (req, res, next) => {
+  const t = await sequelize.transaction();
+  try {
+    const achat = await Achat.findOne({
+      where: { id: req.params.id, boutiqueId: req.boutiqueId },
+      transaction: t
+    });
+    if (!achat) {
+      await t.rollback();
+      return res.status(404).json({ message: "Achat introuvable." });
+    }
+
+    // Déduire la quantité du stock produit
+    if (achat.productId) {
+      const prod = await Product.findByPk(achat.productId, { transaction: t });
+      if (prod) {
+        prod.stock = Math.max(0, (prod.stock || 0) - (Number(achat.quantite) || 0));
+        await prod.save({ transaction: t });
+      }
+    }
+
+    await achat.destroy({ transaction: t });
+    await t.commit();
+
+    purgeCache();
+    broadcast("product_updated", { productId: achat.productId, boutiqueId: req.boutiqueId });
+
+    res.json({ message: "Approvisionnement supprimé avec succès et stock réajusté." });
+  } catch (err) {
+    if (t && !t.finished) await t.rollback();
+    next(err);
+  }
 });
 
 /* ---------------------- GESTION DES MARQUES ---------------------- */

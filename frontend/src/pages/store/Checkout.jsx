@@ -404,11 +404,11 @@ export default function Checkout() {
                         <div style={{ fontWeight: 800, fontSize: 16, color: "var(--forest-dark)" }}>{fcfa(prix * l.quantite, activeCurrency)}</div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <div style={{ display: "flex", alignItems: "center", border: "1.5px solid var(--line)", borderRadius: 24, overflow: "hidden", background: "var(--paper)" }}>
-                            <button onClick={() => updateQuantite(itemKey, -1)} style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink)" }}><Minus size={13} /></button>
+                            <button onClick={() => updateQuantite(itemKey, -1, idx)} style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink)" }}><Minus size={13} /></button>
                             <span style={{ width: 28, textAlign: "center", fontWeight: 700, fontSize: 14 }}>{l.quantite}</span>
-                            <button onClick={() => updateQuantite(itemKey, 1)} style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink)" }}><Plus size={13} /></button>
+                            <button onClick={() => updateQuantite(itemKey, 1, idx)} style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink)" }}><Plus size={13} /></button>
                           </div>
-                          <button onClick={() => removeFromCart(itemKey)} style={{ width: 32, height: 32, borderRadius: "50%", border: "none", background: "#FEF0EF", color: "#B4483A", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Trash2 size={13} /></button>
+                          <button onClick={() => removeFromCart(itemKey, idx)} style={{ width: 32, height: 32, borderRadius: "50%", border: "none", background: "#FEF0EF", color: "#B4483A", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Trash2 size={13} /></button>
                         </div>
                       </div>
                     </div>

@@ -4,16 +4,61 @@ import { getProductPrice } from "../utils/currency.js";
 
 const CartContext = createContext(null);
 
+function normalizeCartItem(l, index) {
+  if (!l) return null;
+  const p = l.product || (l.nom ? l : { id: l.id || `item_${index}`, nom: l.nom || "Article" });
+  const pId = p?.id || l.productId || l.id || `item_${index}`;
+  const modele = l.selectedModele || null;
+  const couleur = typeof l.selectedCouleur === "object" ? l.selectedCouleur?.nom : (l.selectedCouleur || null);
+  const cartKey = l.cartKey || `${pId}_${modele || ''}_${couleur || ''}`;
+
+  return {
+    ...l,
+    cartKey,
+    product: p,
+    quantite: Math.max(1, Number(l.quantite || 1)),
+    selectedModele: modele,
+    selectedCouleur: couleur
+  };
+}
+
+function isItemMatch(l, keyOrId, i) {
+  if (!l) return false;
+  if (typeof keyOrId === "number" && keyOrId === i) return true;
+  if (l.cartKey && String(l.cartKey) === String(keyOrId)) return true;
+  
+  const lineKey = l.cartKey || (l.product ? `${l.product.id}_${l.selectedModele || ''}_${l.selectedCouleur || ''}` : String(l.id || i));
+  if (lineKey && String(lineKey) === String(keyOrId)) return true;
+  
+  if (l.product?.id && (String(l.product.id) === String(keyOrId) || Number(l.product.id) === Number(keyOrId))) return true;
+  if (l.id && (String(l.id) === String(keyOrId) || Number(l.id) === Number(keyOrId))) return true;
+
+  const keyStr = String(keyOrId || "");
+  const parts = keyStr.split("_");
+  if (parts.length > 1 && l.product?.id && String(l.product.id) === parts[0]) {
+    const lModele = String(l.selectedModele || "");
+    const lCouleur = String(typeof l.selectedCouleur === "object" ? l.selectedCouleur?.nom : (l.selectedCouleur || ""));
+    const targetModele = parts[1] || "";
+    const targetCouleur = parts.slice(2).join("_") || "";
+    if (lModele === targetModele && lCouleur === targetCouleur) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function CartProvider({ children }) {
   const [cart, setCart] = useState(() => {
     try {
       const saved = localStorage.getItem("easymarket_cart");
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((l, idx) => normalizeCartItem(l, idx)).filter(Boolean);
     } catch (e) {
       return [];
     }
   });
-
 
   useEffect(() => {
     try {
@@ -44,14 +89,20 @@ export function CartProvider({ children }) {
 
     const itemKey = `${product.id}_${selectedModele || ''}_${selectedCouleur || ''}`;
 
-    const stockMax = Number(product.stock ?? 0);
+    const variantStockLimit = options.stockVariante !== undefined && options.stockVariante !== null && !isNaN(Number(options.stockVariante))
+      ? Number(options.stockVariante)
+      : null;
+    const stockMax = variantStockLimit !== null ? Math.min(variantStockLimit, Number(product.stock ?? 0)) : Number(product.stock ?? 0);
     const itemExistant = cart.find((l) => (l.cartKey || `${l.product?.id}_${l.selectedModele || ''}_${l.selectedCouleur || ''}`) === itemKey);
     const dejaEnPanier = itemExistant ? itemExistant.quantite : 0;
 
-    // Case 1: Product out of stock completely
+    const variantLabel = [selectedModele, selectedCouleur].filter(Boolean).join(" · ");
+    const nomAffiche = variantLabel ? `"${product.nom} (${variantLabel})"` : `"${product.nom}"`;
+
+    // Case 1: Product or variant out of stock completely
     if (stockMax <= 0) {
       showToast(
-        `Désolé, le produit "${product.nom}" est actuellement en rupture de stock.`,
+        `Désolé, ${nomAffiche} est actuellement en rupture de stock.`,
         "error"
       );
       return false;
@@ -60,7 +111,7 @@ export function CartProvider({ children }) {
     // Case 2: Cart already has total available stock
     if (dejaEnPanier >= stockMax) {
       showToast(
-        `Stock épuisé pour "${product.nom}" ! Il reste ${stockMax} article(s) en stock et vous l'avez déjà dans votre panier. Impossible d'en ajouter plus.`,
+        `Stock épuisé pour ${nomAffiche} ! Il reste ${stockMax} article(s) en stock et vous l'avez déjà dans votre panier. Impossible d'en ajouter plus.`,
         "warning"
       );
       return false;
@@ -79,7 +130,7 @@ export function CartProvider({ children }) {
         )
       );
       showToast(
-        `Quantité ajustée au stock disponible (${stockMax} restants). ${qteAjoutee} article(s) supplémentaire(s) ajouté(s) à votre panier.`,
+        `Quantité ajustée au stock disponible (${stockMax} restants pour ${nomAffiche}). ${qteAjoutee} article(s) supplémentaire(s) ajouté(s) à votre panier.`,
         "warning"
       );
       return true;
@@ -111,7 +162,6 @@ export function CartProvider({ children }) {
       ];
     });
 
-    const variantLabel = [selectedModele, selectedCouleur].filter(Boolean).join(" · ");
     const nomComplet = variantLabel ? `${product.nom} (${variantLabel})` : product.nom;
 
     if (stockMax === nouvelleQuantite) {
@@ -126,64 +176,75 @@ export function CartProvider({ children }) {
     return true;
   }
 
-  function updateQuantite(keyOrId, delta) {
+  function updateQuantite(keyOrId, delta, index) {
     setCart((prev) => {
-      const item = prev.find((l) => (l.cartKey === keyOrId || String(l.product?.id) === String(keyOrId)));
-      if (!item) return prev;
+      let targetIndex = -1;
+      if (typeof index === "number" && index >= 0 && index < prev.length) {
+        targetIndex = index;
+      } else {
+        targetIndex = prev.findIndex((l, i) => isItemMatch(l, keyOrId, i));
+      }
 
-      const stockMax = Number(item.product?.stock ?? 0);
+      if (targetIndex === -1) return prev;
+      const item = prev[targetIndex];
+      const stockMax = Number(item.product?.stock ?? 999);
       const nouvelleQte = item.quantite + delta;
 
       if (delta > 0 && nouvelleQte > stockMax) {
         showToast(
-          `Stock limité ! Impossible d'ajouter plus de ${stockMax} article(s) pour "${item.product?.nom}".`,
+          `Stock limité ! Impossible d'ajouter plus de ${stockMax} article(s) pour "${item.product?.nom || 'ce produit'}".`,
           "warning"
         );
         return prev;
       }
 
-      return prev
-        .map((l) =>
-          (l.cartKey === keyOrId || String(l.product?.id) === String(keyOrId))
-            ? { ...l, quantite: nouvelleQte }
-            : l
-        )
-        .filter((l) => l.quantite > 0);
+      if (nouvelleQte <= 0) {
+        return prev.filter((_, i) => i !== targetIndex);
+      }
+
+      return prev.map((l, i) => i === targetIndex ? { ...l, quantite: nouvelleQte } : l);
     });
   }
 
-  function setExactQuantite(keyOrId, targetValue) {
+  function setExactQuantite(keyOrId, targetValue, index) {
     const parsed = parseInt(targetValue, 10);
     if (isNaN(parsed) || parsed < 1) {
-      removeFromCart(keyOrId);
+      removeFromCart(keyOrId, index);
       return;
     }
 
     setCart((prev) => {
-      const item = prev.find((l) => (l.cartKey === keyOrId || String(l.product?.id) === String(keyOrId)));
-      if (!item) return prev;
+      let targetIndex = -1;
+      if (typeof index === "number" && index >= 0 && index < prev.length) {
+        targetIndex = index;
+      } else {
+        targetIndex = prev.findIndex((l, i) => isItemMatch(l, keyOrId, i));
+      }
 
-      const stockMax = Number(item.product?.stock ?? 0);
+      if (targetIndex === -1) return prev;
+      const item = prev[targetIndex];
+      const stockMax = Number(item.product?.stock ?? 999);
       let nouvelleQte = parsed;
 
       if (nouvelleQte > stockMax) {
         showToast(
-          `Quantité ajustée à ${stockMax} (maximum en stock pour "${item.product?.nom}").`,
+          `Quantité ajustée à ${stockMax} (maximum en stock pour "${item.product?.nom || 'ce produit'}").`,
           "warning"
         );
         nouvelleQte = stockMax;
       }
 
-      return prev.map((l) =>
-        (l.cartKey === keyOrId || String(l.product?.id) === String(keyOrId))
-          ? { ...l, quantite: nouvelleQte }
-          : l
-      );
+      return prev.map((l, i) => i === targetIndex ? { ...l, quantite: nouvelleQte } : l);
     });
   }
 
-  function removeFromCart(keyOrId) {
-    setCart((prev) => prev.filter((l) => l.cartKey !== keyOrId && String(l.product?.id) !== String(keyOrId)));
+  function removeFromCart(keyOrId, index) {
+    setCart((prev) => {
+      if (typeof index === "number" && index >= 0 && index < prev.length) {
+        return prev.filter((_, i) => i !== index);
+      }
+      return prev.filter((l, i) => !isItemMatch(l, keyOrId, i));
+    });
   }
 
   function clearCart() {

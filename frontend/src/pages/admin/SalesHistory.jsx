@@ -2,8 +2,10 @@ import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 import React, { useEffect, useState } from "react";
 import { 
   Search, FileText, Download, Printer, Eye, Calendar, DollarSign, 
-  CreditCard, Smartphone, CheckCircle, User, ShoppingBag, History, X, Building
+  CreditCard, Smartphone, CheckCircle, User, ShoppingBag, History, X, Building,
+  Pencil, Trash2, AlertTriangle
 } from "lucide-react";
+import { toast } from "react-hot-toast";
 import api from "../../api";
 import TablePagination from "../../components/TablePagination.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -46,6 +48,11 @@ export default function SalesHistory() {
 
   // Detail Modal
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [orderToDelete, setOrderToDelete] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -61,6 +68,43 @@ export default function SalesHistory() {
     api.get("/admin/employees")
       .then((res) => setEmployees(res.data || []))
       .catch(() => setEmployees([]));
+  }
+
+  async function handleConfirmDelete() {
+    if (!orderToDelete) return;
+    setSubmitting(true);
+    try {
+      await api.delete(`/admin/orders/${orderToDelete.id}`);
+      toast.success("Vente supprimée avec succès. Le stock a été réajusté.");
+      setOrderToDelete(null);
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erreur lors de la suppression de la vente.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleSaveEdit(e) {
+    e.preventDefault();
+    if (!editingOrder) return;
+    setSubmitting(true);
+    try {
+      await api.put(`/admin/orders/${editingOrder.id}`, {
+        moyenPaiement: editingOrder.moyenPaiement,
+        statut: editingOrder.statut,
+        clientNom: editingOrder.clientNom,
+        clientTelephone: editingOrder.clientTelephone,
+        notes: editingOrder.notes
+      });
+      toast.success("Vente mise à jour avec succès.");
+      setEditingOrder(null);
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erreur lors de la modification de la vente.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   useEffect(() => {
@@ -492,13 +536,42 @@ export default function SalesHistory() {
                     </span>
                   </td>
                   <td>
-                    <button
-                      className="bs-icon-btn"
-                      title="Voir le reçu / ticket de caisse"
-                      onClick={() => setSelectedOrder(o)}
-                    >
-                      <Eye size={16} />
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <button
+                        className="bs-icon-btn"
+                        title="Voir le reçu / ticket de caisse"
+                        onClick={() => setSelectedOrder(o)}
+                      >
+                        <Eye size={16} />
+                      </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            className="bs-icon-btn"
+                            title="Modifier cette vente (Admin)"
+                            onClick={() => setEditingOrder({
+                              id: o.id,
+                              moyenPaiement: o.moyenPaiement || "cash",
+                              statut: o.statut || "recuperee",
+                              clientNom: o.client?.nom || o.clientNom || "",
+                              clientTelephone: o.client?.telephone || o.clientTelephone || "",
+                              notes: o.notes || ""
+                            })}
+                            style={{ color: "var(--forest-dark)" }}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            className="bs-icon-btn"
+                            title="Supprimer cette vente (Admin)"
+                            onClick={() => setOrderToDelete(o)}
+                            style={{ color: "#B4483A" }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -524,6 +597,192 @@ export default function SalesHistory() {
           boutique={boutique}
           onClose={() => setSelectedOrder(null)}
         />
+      )}
+
+      {/* MODAL MODIFIER UNE VENTE (ADMIN ONLY) */}
+      {editingOrder && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 16
+        }}>
+          <div style={{
+            background: "#fff", borderRadius: 16, width: "100%", maxWidth: 460,
+            boxShadow: "0 20px 40px rgba(0,0,0,0.2)", overflow: "hidden"
+          }}>
+            <div style={{
+              padding: "16px 20px", borderBottom: "1px solid var(--line)",
+              display: "flex", alignItems: "center", justifyContent: "space-between"
+            }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: "var(--forest-dark)" }}>
+                Modifier la vente #COM-B{String(editingOrder.id).padStart(3, "0")}
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingOrder(null)}
+                style={{ border: "none", background: "none", cursor: "pointer", color: "var(--muted)" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5 }}>
+                  Nom du client :
+                </label>
+                <input
+                  type="text"
+                  className="bs-input"
+                  value={editingOrder.clientNom}
+                  onChange={(e) => setEditingOrder({ ...editingOrder, clientNom: e.target.value })}
+                  placeholder="ex: Client comptoir, Amine..."
+                  style={{ width: "100%", height: 38, fontSize: 13 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5 }}>
+                  Téléphone du client :
+                </label>
+                <input
+                  type="text"
+                  className="bs-input"
+                  value={editingOrder.clientTelephone}
+                  onChange={(e) => setEditingOrder({ ...editingOrder, clientTelephone: e.target.value })}
+                  placeholder="ex: +269 ... ou +221 ..."
+                  style={{ width: "100%", height: 38, fontSize: 13 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5 }}>
+                  Moyen de paiement :
+                </label>
+                <select
+                  className="bs-select"
+                  value={editingOrder.moyenPaiement}
+                  onChange={(e) => setEditingOrder({ ...editingOrder, moyenPaiement: e.target.value })}
+                  style={{ width: "100%", height: 38, fontSize: 13 }}
+                >
+                  <option value="cash">Espèces / Cash</option>
+                  <option value="mvola">MVola</option>
+                  <option value="wave">Wave</option>
+                  <option value="orange_money">Orange Money</option>
+                  <option value="wero">Wero / Holam</option>
+                  <option value="carte">Carte Bancaire</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5 }}>
+                  Statut de la commande :
+                </label>
+                <select
+                  className="bs-select"
+                  value={editingOrder.statut}
+                  onChange={(e) => setEditingOrder({ ...editingOrder, statut: e.target.value })}
+                  style={{ width: "100%", height: 38, fontSize: 13 }}
+                >
+                  <option value="recuperee">Récupérée en boutique (POS / Direct)</option>
+                  <option value="livree">Livrée</option>
+                  <option value="en_livraison">En cours de livraison</option>
+                  <option value="en_attente">En attente de paiement</option>
+                  <option value="annulee">Annulée</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5 }}>
+                  Notes / Observations :
+                </label>
+                <input
+                  type="text"
+                  className="bs-input"
+                  value={editingOrder.notes}
+                  onChange={(e) => setEditingOrder({ ...editingOrder, notes: e.target.value })}
+                  placeholder="Notes facultatives..."
+                  style={{ width: "100%", height: 38, fontSize: 13 }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingOrder(null)}
+                  className="bs-btn-secondary"
+                  style={{ padding: "8px 16px", fontSize: 13 }}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="bs-btn-primary"
+                  style={{ padding: "8px 18px", fontSize: 13 }}
+                >
+                  {submitting ? "Enregistrement..." : "Enregistrer les modifications"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL SUPPRESSION D'UNE VENTE (ADMIN ONLY) */}
+      {orderToDelete && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 16
+        }}>
+          <div style={{
+            background: "#fff", borderRadius: 16, width: "100%", maxWidth: 420,
+            boxShadow: "0 20px 40px rgba(0,0,0,0.2)", overflow: "hidden", padding: 24
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: "50%", background: "#FEE2E2",
+                color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+              }}>
+                <AlertTriangle size={24} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: "var(--ink)" }}>
+                  Supprimer la vente #COM-B{String(orderToDelete.id).padStart(3, "0")} ?
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
+                  Action irréversible (Réservée aux Administrateurs)
+                </div>
+              </div>
+            </div>
+
+            <p style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.5, margin: "0 0 20px" }}>
+              Êtes-vous sûr de vouloir supprimer définitivement cette vente ? Les articles vendus seront <strong>automatiquement réintégrés en stock</strong>.
+            </p>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setOrderToDelete(null)}
+                className="bs-btn-secondary"
+                disabled={submitting}
+                style={{ padding: "9px 16px", fontSize: 13 }}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={submitting}
+                style={{
+                  background: "#DC2626", color: "#fff", border: "none", borderRadius: 10,
+                  padding: "9px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer"
+                }}
+              >
+                {submitting ? "Suppression..." : "Confirmer la suppression"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

@@ -1,11 +1,21 @@
 import React, { useEffect, useState } from "react";
-import { ShoppingBag, DollarSign, Calendar, Search, Printer, RotateCcw, TrendingUp } from "lucide-react";
+import { ShoppingBag, DollarSign, Calendar, Search, Printer, RotateCcw, TrendingUp, Pencil, Trash2, AlertTriangle, X } from "lucide-react";
+import { toast } from "react-hot-toast";
 import api from "../../api";
 import TablePagination from "../../components/TablePagination";
 import { formatPrice } from "../../utils/currency.js";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 export default function Achats() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+
   const [achats, setAchats] = useState([]);
+  const [fournisseurs, setFournisseurs] = useState([]);
+  const [editingAchat, setEditingAchat] = useState(null);
+  const [achatToDelete, setAchatToDelete] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
   const [kpis, setKpis] = useState({
     totalDepenses: 0,
     beneficePrevisionnelKMF: 0,
@@ -52,7 +62,46 @@ export default function Achats() {
 
   useEffect(() => {
     load();
+    api.get("/admin/fournisseurs")
+      .then(res => setFournisseurs(res.data || []))
+      .catch(() => setFournisseurs([]));
   }, []);
+
+  async function handleDeleteAchat() {
+    if (!achatToDelete) return;
+    setSubmitting(true);
+    try {
+      await api.delete(`/admin/achats/${achatToDelete.id}`);
+      toast.success("Achat supprimé avec succès. Le stock a été réajusté.");
+      setAchatToDelete(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erreur lors de la suppression de l'achat.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleSaveEditAchat(e) {
+    e.preventDefault();
+    if (!editingAchat) return;
+    setSubmitting(true);
+    try {
+      await api.put(`/admin/achats/${editingAchat.id}`, {
+        quantite: Number(editingAchat.quantite),
+        prixAchatUnitaire: Number(editingAchat.prixAchatUnitaire),
+        fournisseurId: editingAchat.fournisseurId || null,
+        notes: editingAchat.notes || ""
+      });
+      toast.success("Achat modifié avec succès et stock réajusté.");
+      setEditingAchat(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erreur lors de la modification de l'achat.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   const handleFilterDate = (e) => {
     e.preventDefault();
@@ -313,12 +362,15 @@ export default function Achats() {
               <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Quantité</th>
               <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Prix Achat (FCFA)</th>
               <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", textAlign: "right" }}>Coût Total (FCFA)</th>
+              {isAdmin && (
+                <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", textAlign: "center" }}>Actions</th>
+              )}
             </tr>
           </thead>
           <tbody>
             {filteredAchats.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ padding: 36, textAlign: "center", color: "var(--muted)", fontSize: 14 }}>
+                <td colSpan={isAdmin ? 7 : 6} style={{ padding: 36, textAlign: "center", color: "var(--muted)", fontSize: 14 }}>
                   {loading ? "Chargement des achats..." : "Aucun achat / approvisionnement trouvé pour cette période."}
                 </td>
               </tr>
@@ -369,6 +421,39 @@ export default function Achats() {
                         {formatPrice(a.totalAchat, "FCFA")}
                       </div>
                     </td>
+
+                    {isAdmin && (
+                      <td style={{ padding: "14px 18px", textAlign: "center" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                          <button
+                            type="button"
+                            className="bs-icon-btn"
+                            title="Modifier cet achat (Admin)"
+                            onClick={() => setEditingAchat({
+                              id: a.id,
+                              productId: a.productId,
+                              productNom: a.product?.nom || "Produit",
+                              quantite: a.quantite,
+                              prixAchatUnitaire: a.prixAchatUnitaire,
+                              fournisseurId: a.fournisseurId || "",
+                              notes: a.notes || ""
+                            })}
+                            style={{ color: "var(--forest-dark)" }}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="bs-icon-btn"
+                            title="Supprimer cet achat (Admin)"
+                            onClick={() => setAchatToDelete(a)}
+                            style={{ color: "#B4483A" }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })
@@ -384,6 +469,174 @@ export default function Achats() {
           onPageSizeChange={(sz) => { setPageSize(sz); setCurrentPage(1); }}
         />
       </div>
+
+      {/* MODAL MODIFIER UN ACHAT (ADMIN ONLY) */}
+      {editingAchat && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 16
+        }}>
+          <div style={{
+            background: "#fff", borderRadius: 16, width: "100%", maxWidth: 460,
+            boxShadow: "0 20px 40px rgba(0,0,0,0.2)", overflow: "hidden"
+          }}>
+            <div style={{
+              padding: "16px 20px", borderBottom: "1px solid var(--line)",
+              display: "flex", alignItems: "center", justifyContent: "space-between"
+            }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: "var(--forest-dark)" }}>
+                Modifier l'achat - {editingAchat.productNom}
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingAchat(null)}
+                style={{ border: "none", background: "none", cursor: "pointer", color: "var(--muted)" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditAchat} style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5 }}>
+                  Quantité achetée :
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  className="bs-input"
+                  value={editingAchat.quantite}
+                  onChange={(e) => setEditingAchat({ ...editingAchat, quantite: e.target.value })}
+                  style={{ width: "100%", height: 38, fontSize: 13 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5 }}>
+                  Prix d'achat unitaire (FCFA) :
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  required
+                  className="bs-input"
+                  value={editingAchat.prixAchatUnitaire}
+                  onChange={(e) => setEditingAchat({ ...editingAchat, prixAchatUnitaire: e.target.value })}
+                  style={{ width: "100%", height: 38, fontSize: 13 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5 }}>
+                  Fournisseur :
+                </label>
+                <select
+                  className="bs-select"
+                  value={editingAchat.fournisseurId}
+                  onChange={(e) => setEditingAchat({ ...editingAchat, fournisseurId: e.target.value })}
+                  style={{ width: "100%", height: 38, fontSize: 13 }}
+                >
+                  <option value="">Achat direct (Aucun fournisseur)</option>
+                  {fournisseurs.map(f => (
+                    <option key={f.id} value={f.id}>{f.nom}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5 }}>
+                  Notes / Observations :
+                </label>
+                <input
+                  type="text"
+                  className="bs-input"
+                  value={editingAchat.notes}
+                  onChange={(e) => setEditingAchat({ ...editingAchat, notes: e.target.value })}
+                  placeholder="Notes facultatives..."
+                  style={{ width: "100%", height: 38, fontSize: 13 }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingAchat(null)}
+                  className="bs-btn-secondary"
+                  style={{ padding: "8px 16px", fontSize: 13 }}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="bs-btn-primary"
+                  style={{ padding: "8px 18px", fontSize: 13 }}
+                >
+                  {submitting ? "Enregistrement..." : "Enregistrer les modifications"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL SUPPRESSION D'UN ACHAT (ADMIN ONLY) */}
+      {achatToDelete && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 16
+        }}>
+          <div style={{
+            background: "#fff", borderRadius: 16, width: "100%", maxWidth: 420,
+            boxShadow: "0 20px 40px rgba(0,0,0,0.2)", overflow: "hidden", padding: 24
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: "50%", background: "#FEE2E2",
+                color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+              }}>
+                <AlertTriangle size={24} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: "var(--ink)" }}>
+                  Supprimer cet approvisionnement ?
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
+                  Action réservée aux Administrateurs
+                </div>
+              </div>
+            </div>
+
+            <p style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.5, margin: "0 0 20px" }}>
+              Êtes-vous sûr de vouloir supprimer cet achat de <strong>+{achatToDelete.quantite} unité(s)</strong> de {achatToDelete.product?.nom} ? Le stock du produit sera <strong>automatiquement diminué</strong> en conséquence.
+            </p>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setAchatToDelete(null)}
+                className="bs-btn-secondary"
+                disabled={submitting}
+                style={{ padding: "9px 16px", fontSize: 13 }}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAchat}
+                disabled={submitting}
+                style={{
+                  background: "#DC2626", color: "#fff", border: "none", borderRadius: 10,
+                  padding: "9px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer"
+                }}
+              >
+                {submitting ? "Suppression..." : "Confirmer la suppression"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

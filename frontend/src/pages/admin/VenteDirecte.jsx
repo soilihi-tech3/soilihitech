@@ -107,7 +107,7 @@ export default function VenteDirecte() {
   }
 
   function removeFromCart(productId) {
-    setCart(prev => prev.filter(item => item.product.id !== productId));
+    setCart(prev => prev.filter(item => String(item.product?.id) !== String(productId)));
   }
 
   const sousTotal = cart.reduce((sum, item) => {
