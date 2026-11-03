@@ -12,6 +12,8 @@ import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 import { formatPrice as fcfa } from "../../utils/currency";
 import { toast } from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { saveCache, getCache, enqueueAction, saveOfflineQuote, getOfflineQuotes } from "../../utils/offlineStorage.js";
+import { useOffline } from "../../context/OfflineContext.jsx";
 
 export default function DemandesSpeciales() {
   const { user } = useAuth();
@@ -85,26 +87,55 @@ export default function DemandesSpeciales() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [visibleCount, setVisibleCount] = useState(20);
 
+  const { isOnline } = useOffline();
+
   useEffect(() => {
     setVisibleCount(20);
     loadRequests();
+
+    const handleSynced = () => {
+      loadRequests();
+    };
+    window.addEventListener("offline_synced", handleSynced);
+    return () => window.removeEventListener("offline_synced", handleSynced);
   }, [statutFilter]);
 
   async function loadRequests() {
-    setLoading(true);
-    try {
-      const res = await api.get("/admin/custom-requests", {
-        params: {
-          search: search.trim() || undefined,
-          statut: statutFilter !== "all" ? statutFilter : undefined
-        }
-      });
-      setRequests(res.data.requests || []);
-      setPendingCount(res.data.pendingCount || 0);
-    } catch (err) {
-      console.error("Erreur chargement demandes:", err);
-      toast.error("Impossible de charger les demandes sur-mesure.");
-    } finally {
+    // 1. Lire d'abord le cache local pour disponibilite instantanee hors-ligne
+    const cached = await getCache("admin_custom_requests");
+    const offlineQuotes = await getOfflineQuotes();
+    if (cached && Array.isArray(cached)) {
+      const combined = [...(offlineQuotes || []), ...cached];
+      const unique = Array.from(new Map(combined.map(r => [r.code || r.id, r])).values());
+      setRequests(unique);
+      setLoading(false);
+    } else if (offlineQuotes && offlineQuotes.length > 0) {
+      setRequests(offlineQuotes);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    if (navigator.onLine) {
+      try {
+        const res = await api.get("/admin/custom-requests", {
+          params: {
+            search: search.trim() || undefined,
+            statut: statutFilter !== "all" ? statutFilter : undefined
+          }
+        });
+        const serverList = res.data.requests || [];
+        const combined = [...(offlineQuotes || []), ...serverList];
+        const unique = Array.from(new Map(combined.map(r => [r.code || r.id, r])).values());
+        setRequests(unique);
+        setPendingCount(res.data.pendingCount || 0);
+        saveCache("admin_custom_requests", serverList).catch(() => {});
+      } catch (err) {
+        console.warn("Chargement distant des demandes impossible, conservation du cache:", err);
+      } finally {
+        setLoading(false);
+      }
+    } else {
       setLoading(false);
     }
   }
@@ -335,29 +366,75 @@ export default function DemandesSpeciales() {
     }
 
     setCreatingOrder(true);
-    try {
-      const payload = {
-        nomClient: createForm.nomClient.trim(),
-        telephoneClient: createForm.telephoneClient.trim(),
-        modeleAppareil: createForm.modeleAppareil.trim(),
-        employeId: createForm.employeId ? Number(createForm.employeId) : (!isAdmin && user?.id ? user.id : undefined),
-        articles: validArticles.map(a => ({
-          nom: a.nom.trim(),
-          quantite: Number(a.quantite) || 1,
-          prixUnitaire: Number(a.prixUnitaire) || 0
-        })),
-        fraisLivraison: Number(createForm.fraisLivraison) || 0,
-        devisTotal: createForm.devisTotal ? Number(createForm.devisTotal) : (createCalculatedTotal > 0 ? createCalculatedTotal : null),
-        statut: createForm.statut || "en_attente",
-        description: createForm.description ? createForm.description.trim() : null,
-        messageAdmin: createForm.messageAdmin ? createForm.messageAdmin.trim() : null,
-        photos: createPhotos,
-        photoUrl: createPhotos.length > 1 ? JSON.stringify(createPhotos) : (createPhotos[0] || null)
+    const idempotencyKey = `quote_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+    const payload = {
+      nomClient: createForm.nomClient.trim(),
+      telephoneClient: createForm.telephoneClient.trim(),
+      modeleAppareil: createForm.modeleAppareil.trim(),
+      employeId: createForm.employeId ? Number(createForm.employeId) : (!isAdmin && user?.id ? user.id : undefined),
+      articles: validArticles.map(a => ({
+        nom: a.nom.trim(),
+        quantite: Number(a.quantite) || 1,
+        prixUnitaire: Number(a.prixUnitaire) || 0
+      })),
+      fraisLivraison: Number(createForm.fraisLivraison) || 0,
+      devisTotal: createForm.devisTotal ? Number(createForm.devisTotal) : (createCalculatedTotal > 0 ? createCalculatedTotal : null),
+      statut: createForm.statut || "en_attente",
+      description: createForm.description ? createForm.description.trim() : null,
+      messageAdmin: createForm.messageAdmin ? createForm.messageAdmin.trim() : null,
+      photos: createPhotos,
+      photoUrl: createPhotos.length > 1 ? JSON.stringify(createPhotos) : (createPhotos[0] || null),
+      idempotencyKey
+    };
+
+    const processOfflineQuote = async () => {
+      const localCode = `DEM-OFFLINE-${Date.now().toString().slice(-6)}`;
+      const offlineReq = {
+        id: `offline_dem_${Date.now()}`,
+        code: localCode,
+        isOffline: true,
+        createdAt: new Date().toISOString(),
+        ...payload
       };
 
+      await enqueueAction({
+        type: "DEVIS_SUR_MESURE",
+        url: "/admin/custom-requests",
+        method: "POST",
+        data: payload,
+        idempotencyKey
+      });
+
+      await saveOfflineQuote(offlineReq);
+      setRequests(prev => [offlineReq, ...prev]);
+
+      setIsCreateModalOpen(false);
+      setCreatePhotos([]);
+      setCreateForm({
+        nomClient: "",
+        telephoneClient: "",
+        modeleAppareil: "",
+        articles: [{ nom: "", quantite: 1, prixUnitaire: "" }],
+        fraisLivraison: 0,
+        devisTotal: "",
+        statut: "en_attente",
+        description: "",
+        messageAdmin: "",
+        employeId: ""
+      });
+      toast.success(`Devis enregistre hors-ligne (#${localCode}). Il sera synchronise automatiquement des le retour du reseau.`);
+    };
+
+    if (!navigator.onLine) {
+      await processOfflineQuote();
+      setCreatingOrder(false);
+      return;
+    }
+
+    try {
       const res = await api.post("/admin/custom-requests", payload);
       if (res.data && res.data.success) {
-        toast.success("Devis / commande personnalisée enregistré avec succès !");
+        toast.success("Devis / commande personnalisee enregistre avec succes !");
         setIsCreateModalOpen(false);
         setCreatePhotos([]);
         setCreateForm({
@@ -375,8 +452,12 @@ export default function DemandesSpeciales() {
         await loadRequests();
       }
     } catch (err) {
-      console.error("Erreur création commande directe:", err);
-      toast.error(err.response?.data?.message || "Erreur lors de la création de la commande.");
+      if (!err.response || err.code === "ERR_NETWORK" || err.message?.includes("Network Error")) {
+        await processOfflineQuote();
+      } else {
+        console.error("Erreur creation commande directe:", err);
+        toast.error(err.response?.data?.message || "Erreur lors de la creation de la commande.");
+      }
     } finally {
       setCreatingOrder(false);
     }
@@ -1230,6 +1311,11 @@ export default function DemandesSpeciales() {
                         <div style={{ fontSize: 13.5, fontWeight: 800, fontFamily: "monospace", color: "#2563EB" }}>
                           {req.code}
                         </div>
+                        {req.isOffline && (
+                          <div style={{ fontSize: 10.5, color: "#92400E", background: "#FEF3C7", border: "1px solid #F59E0B", padding: "1px 6px", borderRadius: 4, display: "inline-block", marginTop: 2, fontWeight: 700 }}>
+                            En attente de connexion
+                          </div>
+                        )}
                         <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>
                           {new Date(req.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                         </div>
@@ -2178,7 +2264,7 @@ export default function DemandesSpeciales() {
                   )}
                   {selectedRequest.motifRefus && (
                     <div style={{ fontSize: 12.5, color: "#DC2626", marginTop: 6, fontWeight: 700 }}>
-                      ⚠️ Motif de refus client : {selectedRequest.motifRefus}
+                      Motif de refus client : {selectedRequest.motifRefus}
                     </div>
                   )}
                 </div>

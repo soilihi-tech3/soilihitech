@@ -1,5 +1,6 @@
 const { CustomOrderRequest, Boutique, Order, User } = require("../models");
 const { Op } = require("sequelize");
+const { getCache, setCache } = require("../config/cache");
 
 function generateRequestCode() {
   const rand = Math.floor(1000 + Math.random() * 9000);
@@ -407,8 +408,21 @@ async function createAdminCustomRequest(req, res) {
       fraisLivraison,
       devisTotal,
       messageAdmin,
-      employeId
+      employeId,
+      idempotencyKey
     } = req.body;
+
+    if (idempotencyKey) {
+      const existing = await getCache(`idempotency:${idempotencyKey}`);
+      if (existing) {
+        return res.status(200).json({
+          success: true,
+          message: "Demande sur-mesure deja traitee.",
+          request: existing,
+          duplicate: true
+        });
+      }
+    }
 
     if (!nomClient || !telephoneClient || !modeleAppareil) {
       return res.status(400).json({
@@ -450,6 +464,10 @@ async function createAdminCustomRequest(req, res) {
       totalPropose: devisTotal !== undefined && devisTotal !== null ? Number(devisTotal) : null,
       messageAdmin: messageAdmin ? messageAdmin.trim() : null
     });
+
+    if (idempotencyKey) {
+      await setCache(`idempotency:${idempotencyKey}`, request, 86400).catch(() => {});
+    }
 
     return res.status(201).json({
       success: true,

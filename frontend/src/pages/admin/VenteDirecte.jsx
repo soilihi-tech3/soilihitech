@@ -10,6 +10,8 @@ import { subscribeRealtime } from "../../utils/realtime.js";
 import { formatPrice as fcfa, getActiveCurrency } from "../../utils/currency.js";
 import { SkeletonPOSGrid } from "../../components/Skeleton.jsx";
 import ReceiptModal from "../../components/ReceiptModal.jsx";
+import { saveCache, getCache, enqueueAction, saveOfflineSale } from "../../utils/offlineStorage.js";
+import { useOffline } from "../../context/OfflineContext.jsx";
 
 function parseJsonSafe(raw) {
   if (!raw) return [];
@@ -86,6 +88,7 @@ export function getProductVariants(p) {
 
 export default function VenteDirecte() {
   const { boutique } = useAuth();
+  const { isOnline, pendingCount } = useOffline();
   const storeName = boutique?.nom || "Marché Vert";
   const [products, setProducts] = useState([]);
   const [productsLoading, setProductsLoading] = useState(true);
@@ -137,30 +140,54 @@ export default function VenteDirecte() {
     return Number(p.prix || 0);
   }
 
-  function load() {
-    setProductsLoading(true);
-    api.get("/admin/products")
-      .then(res => {
-        const data = res.data;
-        const list = Array.isArray(data) ? data : (data?.items || []);
-        setProducts(list);
-      })
-      .catch((err) => {
-        console.error("Erreur chargement produits POS:", err);
-      })
-      .finally(() => {
-        setProductsLoading(false);
-      });
+  async function load() {
+    // 1. Lire d'abord le cache local pour affichage instantane (meme hors-ligne)
+    const cached = await getCache("admin_products");
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      setProducts(cached);
+      setProductsLoading(false);
+    } else {
+      setProductsLoading(true);
+    }
+
+    // 2. Si le reseau est disponible, rafraichir depuis le serveur
+    if (navigator.onLine) {
+      api.get("/admin/products")
+        .then(res => {
+          const data = res.data;
+          const list = Array.isArray(data) ? data : (data?.items || []);
+          setProducts(list);
+          saveCache("admin_products", list).catch(() => {});
+        })
+        .catch((err) => {
+          console.warn("Chargement distant impossible, maintien du cache local:", err);
+        })
+        .finally(() => {
+          setProductsLoading(false);
+        });
+    } else {
+      setProductsLoading(false);
+    }
   }
 
   useEffect(() => {
     load();
+
     const unsub = subscribeRealtime((detail) => {
       if (detail.type === "product_updated" || detail.type === "order_created") {
         load();
       }
     });
-    return unsub;
+
+    const handleSynced = () => {
+      load();
+    };
+    window.addEventListener("offline_synced", handleSynced);
+
+    return () => {
+      if (typeof unsub === "function") unsub();
+      window.removeEventListener("offline_synced", handleSynced);
+    };
   }, []);
 
   const filteredProducts = products.filter(p => {
@@ -284,29 +311,110 @@ export default function VenteDirecte() {
   async function handleValiderVente() {
     if (cart.length === 0) return;
     setLoading(true);
-    try {
-      const itemsPayload = cart.map(item => {
-        const customPrice = (item.prixVendu !== "" && item.prixVendu !== null && item.prixVendu !== undefined && !isNaN(Number(item.prixVendu)))
-          ? Number(item.prixVendu)
-          : undefined;
 
-        return {
-          productId: item.product.id,
-          quantite: item.quantite,
-          prixVendu: customPrice,
-          modele: item.selectedModele || undefined,
-          couleur: item.selectedCouleur || item.selectedSenteur || undefined,
-          imageUrl: item.selectedImageUrl || undefined
-        };
-      });
+    const itemsPayload = cart.map(item => {
+      const customPrice = (item.prixVendu !== "" && item.prixVendu !== null && item.prixVendu !== undefined && !isNaN(Number(item.prixVendu)))
+        ? Number(item.prixVendu)
+        : undefined;
 
-      const res = await api.post("/admin/ventes/directe", {
-        items: itemsPayload,
-        clientNom: clientNom.trim() || "Client comptoir",
-        clientTelephone: clientTelephone.trim() || "",
+      return {
+        productId: item.product.id,
+        quantite: item.quantite,
+        prixVendu: customPrice,
+        modele: item.selectedModele || undefined,
+        couleur: item.selectedCouleur || item.selectedSenteur || undefined,
+        imageUrl: item.selectedImageUrl || undefined
+      };
+    });
+
+    const idempotencyKey = `sale_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+    const saleData = {
+      items: itemsPayload,
+      clientNom: clientNom.trim() || "Client comptoir",
+      clientTelephone: clientTelephone.trim() || "",
+      moyenPaiement,
+      devise: activeCurrency,
+      idempotencyKey
+    };
+
+    const processOfflineSale = async () => {
+      const localId = `offline_${Date.now()}`;
+      const localTicket = `POS-OFFLINE-${Date.now().toString().slice(-6)}`;
+      const offlineSale = {
+        id: localId,
+        numeroTicket: localTicket,
+        isOffline: true,
+        statut: "recuperee",
+        typeVente: "vente_directe",
+        devise: activeCurrency,
         moyenPaiement,
-        devise: activeCurrency
+        sousTotal,
+        total: sousTotal,
+        fraisLivraison: 0,
+        montantRecu: numMontantRecu > 0 ? numMontantRecu : null,
+        monnaieRendue: monnaieARendre,
+        client: {
+          nom: clientNom.trim() || "Client comptoir",
+          telephone: clientTelephone.trim() || ""
+        },
+        createdAt: new Date().toISOString(),
+        items: cart.map(item => ({
+          id: `off_item_${Date.now()}_${item.product.id}`,
+          quantite: item.quantite,
+          prixUnitaire: getItemUnitPrice(item),
+          modele: item.selectedModele || null,
+          couleur: item.selectedCouleur || item.selectedSenteur || null,
+          imageUrl: item.selectedImageUrl || item.product?.imageUrl || null,
+          product: {
+            id: item.product.id,
+            nom: item.product.nom,
+            prix: item.product.prix,
+            prixSenegal: item.product.prixSenegal,
+            imageUrl: item.product.imageUrl
+          }
+        }))
+      };
+
+      // Mettre en file d'attente locale pour synchronisation automatique des retour d'internet
+      await enqueueAction({
+        type: "VENTE_DIRECTE",
+        url: "/admin/ventes/directe",
+        method: "POST",
+        data: saleData,
+        idempotencyKey
       });
+
+      await saveOfflineSale(offlineSale);
+
+      // Mettre a jour les stocks locaux
+      setProducts(prevProducts => {
+        const updated = prevProducts.map(p => {
+          const cartItem = cart.find(ci => ci.product.id === p.id);
+          if (cartItem) {
+            return { ...p, stock: Math.max(0, p.stock - cartItem.quantite) };
+          }
+          return p;
+        });
+        saveCache("admin_products", updated).catch(() => {});
+        return updated;
+      });
+
+      setCompletedSale(offlineSale);
+      setCart([]);
+      setClientNom("");
+      setClientTelephone("");
+      setMontantRecu("");
+      toast.success("Vente enregistree hors-ligne. Le ticket PDF est pret et sera synchronise des le retour du reseau.");
+    };
+
+    if (!navigator.onLine) {
+      await processOfflineSale();
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await api.post("/admin/ventes/directe", saleData);
 
       setCompletedSale({
         ...res.data,
@@ -320,7 +428,11 @@ export default function VenteDirecte() {
       setMontantRecu("");
       load(); // Recharge le catalogue et les stocks
     } catch (err) {
-      toast.error(err.response?.data?.message || "Erreur lors de la validation de la vente.");
+      if (!err.response || err.code === "ERR_NETWORK" || err.message?.includes("Network Error")) {
+        await processOfflineSale();
+      } else {
+        toast.error(err.response?.data?.message || "Erreur lors de la validation de la vente.");
+      }
     } finally {
       setLoading(false);
     }
@@ -339,6 +451,42 @@ export default function VenteDirecte() {
           Enregistrez les ventes physiques directes en boutique, sélectionnez les variantes spécifiques et encaissez avec calcul automatique du rendu monnaie.
         </p>
       </div>
+
+      {(!isOnline || pendingCount > 0) && (
+        <div style={{
+          backgroundColor: !isOnline ? "#FEF3C7" : "#EFF6FF",
+          border: `1px solid ${!isOnline ? "#F59E0B" : "#3B82F6"}`,
+          borderRadius: 10,
+          padding: "10px 16px",
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 8,
+          fontSize: 13.5,
+          color: !isOnline ? "#92400E" : "#1E40AF"
+        }}>
+          <div>
+            <strong>{!isOnline ? "Mode Hors-Ligne Actif" : "Synchronisation"} :</strong>{" "}
+            {!isOnline 
+              ? "L'encaissement et l'impression de tickets fonctionnent sans connexion. Vos ventes seront transmises automatiquement des le retour du reseau." 
+              : "Connexion retablie. Les operations en attente sont transmises au serveur."}
+          </div>
+          {pendingCount > 0 && (
+            <span style={{
+              background: !isOnline ? "#F59E0B" : "#2563EB",
+              color: "#FFF",
+              padding: "3px 10px",
+              borderRadius: 20,
+              fontSize: 12,
+              fontWeight: 600
+            }}>
+              {pendingCount} en attente
+            </span>
+          )}
+        </div>
+      )}
 
       {/* MOBILE TABS SWITCHER */}
       <div className="bs-pos-mobile-tabs">

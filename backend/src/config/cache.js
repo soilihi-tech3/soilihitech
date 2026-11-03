@@ -21,18 +21,18 @@ try {
 
   redis.on("connect", () => {
     isRedisAvailable = true;
-    console.log("⚡ [CACHE] Connecté au serveur Redis avec succès.");
+    console.log("[CACHE] Connecte au serveur Redis avec succes.");
   });
 
   redis.on("error", (err) => {
     if (isRedisAvailable) {
-      console.warn("⚠️ [CACHE] Redis indisponible. Basculement sur le cache mémoire local.");
+      console.warn("[CACHE] Redis indisponible. Basculement sur le cache memoire local.");
     }
     isRedisAvailable = false;
   });
 } catch (e) {
   isRedisAvailable = false;
-  console.warn("⚠️ [CACHE] Redis non configuré. Utilisation du cache mémoire local.");
+  console.warn("[CACHE] Redis non configure. Utilisation du cache memoire local.");
 }
 
 // Memory cache cleaner interval (every 60 seconds)

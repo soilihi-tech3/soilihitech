@@ -11,8 +11,8 @@ import TablePagination from "../../components/TablePagination.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { subscribeRealtime } from "../../utils/realtime.js";
 import ReceiptModal from "../../components/ReceiptModal.jsx";
-
 import { formatPrice, formatPrice as fcfa } from "../../utils/currency.js";
+import { getOfflineSales, saveCache, getCache } from "../../utils/offlineStorage.js";
 
 const MONTHS = [
   { value: "01", label: "Janvier" },
@@ -58,16 +58,40 @@ export default function SalesHistory() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  function loadData() {
-    setLoading(true);
-    api.get("/admin/orders")
-      .then((res) => setOrders(res.data || []))
-      .catch(() => setOrders([]))
-      .finally(() => setLoading(false));
+  async function loadData() {
+    // 1. Lire d'abord les ventes hors-ligne et le cache local pour disponibilite immediate
+    const offlineSales = await getOfflineSales();
+    const cached = await getCache("admin_orders");
+    if (cached && Array.isArray(cached)) {
+      const combined = [...(offlineSales || []), ...cached];
+      const unique = Array.from(new Map(combined.map(o => [o.id, o])).values());
+      setOrders(unique);
+      setLoading(false);
+    } else if (offlineSales && offlineSales.length > 0) {
+      setOrders(offlineSales);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
 
-    api.get("/admin/employees")
-      .then((res) => setEmployees(res.data || []))
-      .catch(() => setEmployees([]));
+    if (navigator.onLine) {
+      api.get("/admin/orders")
+        .then((res) => {
+          const serverList = res.data || [];
+          saveCache("admin_orders", serverList).catch(() => {});
+          const combined = [...(offlineSales || []), ...serverList];
+          const unique = Array.from(new Map(combined.map(o => [o.id, o])).values());
+          setOrders(unique);
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+
+      api.get("/admin/employees")
+        .then((res) => setEmployees(res.data || []))
+        .catch(() => setEmployees([]));
+    } else {
+      setLoading(false);
+    }
   }
 
   async function handleConfirmDelete() {
@@ -114,7 +138,16 @@ export default function SalesHistory() {
         loadData();
       }
     });
-    return unsub;
+
+    const handleSynced = () => {
+      loadData();
+    };
+    window.addEventListener("offline_synced", handleSynced);
+
+    return () => {
+      if (typeof unsub === "function") unsub();
+      window.removeEventListener("offline_synced", handleSynced);
+    };
   }, []);
 
   // Filter logic
@@ -299,9 +332,9 @@ export default function SalesHistory() {
             value={filterPays}
             onChange={(e) => setFilterPays(e.target.value)}
           >
-            <option value="tous">🌍 Tous les pays</option>
-            <option value="KM">🇰🇲 Comores (KMF)</option>
-            <option value="SN">🇸🇳 Sénégal (FCFA)</option>
+            <option value="tous">Tous les pays</option>
+            <option value="KM">Comores (KMF)</option>
+            <option value="SN">Sénégal (FCFA)</option>
           </select>
 
           {/* FILTER: TYPE VENTE */}
@@ -555,7 +588,7 @@ export default function SalesHistory() {
                       {fcfa(o.total, o.devise || "KMF")}
                     </div>
                     <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: (o.devise === "FCFA" ? "#FEF3C7" : "#EFF6FF"), color: (o.devise === "FCFA" ? "#B45309" : "#1D4ED8") }}>
-                      {o.devise === "FCFA" ? "🇸🇳 Sénégal" : "🇰🇲 Comores"}
+                      {o.devise === "FCFA" ? "Sénégal" : "Comores"}
                     </span>
                   </td>
                   <td>

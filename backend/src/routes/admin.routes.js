@@ -1131,7 +1131,13 @@ router.put("/boutique", requireRole("admin"), async (req, res, next) => {
 
 router.post("/ventes/directe", async (req, res, next) => {
   try {
-    const { items, clientNom, clientTelephone, moyenPaiement, devise } = req.body;
+    const { items, clientNom, clientTelephone, moyenPaiement, devise, idempotencyKey } = req.body;
+    if (idempotencyKey) {
+      const existing = await getCache(`idempotency:${idempotencyKey}`);
+      if (existing) {
+        return res.status(200).json(existing);
+      }
+    }
     if (!items || !items.length) {
       return res.status(400).json({ message: "Le panier de vente est vide." });
     }
@@ -1293,6 +1299,10 @@ router.post("/ventes/directe", async (req, res, next) => {
     purgeCache();
     broadcast("order_created", { orderId: order.id, clientId: client.id, boutiqueId: req.boutiqueId });
     broadcast("product_updated", { boutiqueId: req.boutiqueId });
+
+    if (idempotencyKey) {
+      await setCache(`idempotency:${idempotencyKey}`, fullOrder, 86400).catch(() => {});
+    }
 
     res.status(201).json(fullOrder);
   } catch (err) { next(err); }
