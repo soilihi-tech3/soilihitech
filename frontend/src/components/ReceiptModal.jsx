@@ -454,10 +454,26 @@ export default function ReceiptModal({
       y += 3.5;
       doc.text(`A tres bientot chez ${cleanPdfText(storeName)}.`, centerX, y, { align: "center" });
 
-      // 14. Direct Save / Download
+      // 14. Téléchargement direct dans les fichiers du téléphone / navigateur sans blocage
       const fileName = `Ticket-${cleanId || "Commande"}.pdf`;
-      doc.save(fileName);
-      toast.success("Ticket de caisse PDF téléchargé !");
+      try {
+        const blob = doc.output("blob");
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.style.display = "none";
+        link.href = blobUrl;
+        link.download = fileName;
+        link.setAttribute("download", fileName);
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        }, 1500);
+      } catch (saveErr) {
+        doc.save(fileName);
+      }
+      toast.success("Ticket de caisse PDF enregistré dans vos fichiers !");
     } catch (err) {
       console.error("Erreur téléchargement PDF ticket:", err);
       toast.error("Erreur lors de la génération du PDF.");

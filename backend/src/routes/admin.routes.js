@@ -809,7 +809,7 @@ router.get("/employees", requireRole("admin"), async (req, res, next) => {
 
 router.post("/employees", requireRole("admin"), async (req, res, next) => {
   try {
-    const { nom, email, telephone, motDePasse, role, permissions } = req.body;
+    const { nom, email, telephone, motDePasse, role, permissions, deviseAutorisee } = req.body;
     const cleanEmail = email ? String(email).trim().toLowerCase() : null;
     const cleanPhone = telephone ? String(telephone).trim() : null;
 
@@ -839,6 +839,7 @@ router.post("/employees", requireRole("admin"), async (req, res, next) => {
       telephone: cleanPhone,
       motDePasseHash,
       permissions: userPermissions,
+      deviseAutorisee: deviseAutorisee || "TOUTES",
       role: userRole,
       boutiqueId: req.boutiqueId,
       statut: "actif",
@@ -855,7 +856,7 @@ router.post("/employees", requireRole("admin"), async (req, res, next) => {
 
     res.status(201).json({ 
       id: user.id, nom: user.nom, email: user.email, telephone: user.telephone, 
-      role: user.role, permissions: user.permissions, statut: user.statut,
+      role: user.role, permissions: user.permissions, deviseAutorisee: user.deviseAutorisee, statut: user.statut,
       generatedPassword: rawPassword,
       mustChangePassword: true
     });
@@ -869,7 +870,7 @@ router.put("/employees/:id", requireRole("admin"), async (req, res, next) => {
     });
     if (!targetUser) return res.status(404).json({ message: "Utilisateur introuvable." });
 
-    const { nom, email, telephone, motDePasse, role, permissions, statut } = req.body;
+    const { nom, email, telephone, motDePasse, role, permissions, deviseAutorisee, statut } = req.body;
     if (targetUser.id === req.user.id && statut === "suspendu") {
       return res.status(400).json({ message: "Vous ne pouvez pas suspendre votre propre compte administrateur." });
     }
@@ -878,6 +879,7 @@ router.put("/employees/:id", requireRole("admin"), async (req, res, next) => {
     if (email) targetUser.email = email;
     if (telephone !== undefined) targetUser.telephone = telephone;
     if (statut) targetUser.statut = statut;
+    if (deviseAutorisee !== undefined) targetUser.deviseAutorisee = deviseAutorisee;
     
     if (role) {
       targetUser.role = role === "admin" ? "admin" : "employe";
@@ -896,7 +898,7 @@ router.put("/employees/:id", requireRole("admin"), async (req, res, next) => {
     await targetUser.save();
     res.json({ 
       id: targetUser.id, nom: targetUser.nom, email: targetUser.email, telephone: targetUser.telephone, 
-      role: targetUser.role, permissions: targetUser.permissions, statut: targetUser.statut 
+      role: targetUser.role, permissions: targetUser.permissions, deviseAutorisee: targetUser.deviseAutorisee, statut: targetUser.statut 
     });
   } catch (err) { next(err); }
 });

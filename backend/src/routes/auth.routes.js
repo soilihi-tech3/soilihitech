@@ -18,6 +18,7 @@ function publicUser(user) {
   return {
     id: user.id, nom: user.nom, email: user.email, telephone: user.telephone,
     adresse: user.adresse, role: user.role, boutiqueId: user.boutiqueId, permissions: user.permissions,
+    deviseAutorisee: user.deviseAutorisee || "TOUTES",
     isEmailVerified: user.isEmailVerified, mustChangePassword: user.mustChangePassword,
   };
 }

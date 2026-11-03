@@ -41,18 +41,39 @@ export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [currentCurrency, setCurrentCurrency] = useState(() => getActiveCurrency());
+  const isEmploye = user?.role === "employe";
+  const assignedCurrency = isEmploye && user?.deviseAutorisee && user.deviseAutorisee !== "TOUTES" 
+    ? user.deviseAutorisee 
+    : null;
+
+  const [currentCurrency, setCurrentCurrency] = useState(() => assignedCurrency || getActiveCurrency());
 
   useEffect(() => {
-    const handleCurr = (e) => setCurrentCurrency(e.detail);
+    if (assignedCurrency && getActiveCurrency() !== assignedCurrency) {
+      setActiveCurrency(assignedCurrency);
+      setCurrentCurrency(assignedCurrency);
+    }
+  }, [assignedCurrency]);
+
+  useEffect(() => {
+    const handleCurr = (e) => {
+      if (assignedCurrency && e.detail !== assignedCurrency) {
+        setActiveCurrency(assignedCurrency);
+        setCurrentCurrency(assignedCurrency);
+      } else {
+        setCurrentCurrency(e.detail);
+      }
+    };
     window.addEventListener("currency_changed", handleCurr);
     return () => window.removeEventListener("currency_changed", handleCurr);
-  }, []);
+  }, [assignedCurrency]);
+
+  const availableCurrencies = assignedCurrency 
+    ? CURRENCIES.filter(c => c.code === assignedCurrency)
+    : CURRENCIES;
 
   const perms = Array.isArray(user?.permissions) ? user.permissions : [];
   const storeName = boutique?.nom || "Boutique";
-
-  const isEmploye = user?.role === "employe";
 
   const allLinks = [
     { to: "/admin", label: "Tableau de bord", icon: LayoutDashboard, exact: true, permKey: ["voir_dashboard"] },
@@ -114,13 +135,13 @@ export default function AdminLayout() {
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {/* MOBILE CURRENCY SWITCH */}
           <div style={{ display: "flex", alignItems: "center", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 16, padding: "2px", gap: 2 }}>
-            {CURRENCIES.map(c => {
+            {availableCurrencies.map(c => {
               const isActive = currentCurrency === c.code;
               return (
                 <button
                   key={c.code}
                   type="button"
-                  onClick={() => setActiveCurrency(c.code)}
+                  onClick={() => !assignedCurrency && setActiveCurrency(c.code)}
                   style={{
                     border: "none",
                     background: isActive ? "var(--forest-dark)" : "transparent",
@@ -129,8 +150,9 @@ export default function AdminLayout() {
                     padding: "3px 6px",
                     fontSize: 10.5,
                     fontWeight: 800,
-                    cursor: "pointer"
+                    cursor: assignedCurrency ? "default" : "pointer"
                   }}
+                  title={assignedCurrency ? `Devise attribuée à votre compte : ${assignedCurrency}` : `Basculer en ${c.code}`}
                 >
                   {c.code}
                 </button>
@@ -295,13 +317,13 @@ export default function AdminLayout() {
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {/* SÉLECTEUR DE DEVISE & PAYS : COMORES (KMF) OU SÉNÉGAL (FCFA) */}
             <div style={{ display: "flex", alignItems: "center", background: "var(--paper)", border: "1.5px solid var(--line)", borderRadius: 20, padding: "2px 3px", gap: 2 }}>
-              {CURRENCIES.map(c => {
+              {availableCurrencies.map(c => {
                 const isActive = currentCurrency === c.code;
                 return (
                   <button
                     key={c.code}
                     type="button"
-                    onClick={() => setActiveCurrency(c.code)}
+                    onClick={() => !assignedCurrency && setActiveCurrency(c.code)}
                     style={{
                       border: "none",
                       background: isActive ? "var(--forest-dark)" : "transparent",
@@ -310,14 +332,14 @@ export default function AdminLayout() {
                       padding: "4px 9px",
                       fontSize: 11.5,
                       fontWeight: 800,
-                      cursor: "pointer",
+                      cursor: assignedCurrency ? "default" : "pointer",
                       display: "flex",
                       alignItems: "center",
                       gap: 4,
                       transition: "all 0.15s ease",
                       boxShadow: isActive ? "0 2px 6px rgba(0,0,0,0.12)" : "none"
                     }}
-                    title={`Basculer les prix et encaissements en ${c.label}`}
+                    title={assignedCurrency ? `Devise attribuée à votre profil : ${assignedCurrency}` : `Basculer les prix et encaissements en ${c.label}`}
                   >
                     <span>{c.code}</span>
                   </button>

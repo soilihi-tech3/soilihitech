@@ -666,8 +666,25 @@ export default function DemandesSpeciales() {
       });
 
       const today = new Date().toISOString().split("T")[0];
-      doc.save(`Bordereau_Commandes_Soilihitech_${today}.pdf`);
-      toast.success("Bordereau PDF téléchargé avec succès !");
+      const fileName = `Bordereau_Commandes_Soilihitech_${today}.pdf`;
+      try {
+        const blob = doc.output("blob");
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.style.display = "none";
+        link.href = blobUrl;
+        link.download = fileName;
+        link.setAttribute("download", fileName);
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        }, 1500);
+      } catch (saveErr) {
+        doc.save(fileName);
+      }
+      toast.success("Bordereau PDF enregistré dans vos fichiers !");
     } catch (err) {
       console.error("Erreur génération PDF jsPDF:", err);
       toast.error("Erreur lors de la génération du PDF.");

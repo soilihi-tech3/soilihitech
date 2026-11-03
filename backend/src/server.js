@@ -378,7 +378,8 @@ async function ensureColumns() {
       "ALTER TABLE order_items ADD COLUMN couleur VARCHAR(100) NULL;",
       "ALTER TABLE order_items ADD COLUMN image_url LONGTEXT NULL;",
       "ALTER TABLE orders ADD COLUMN devise VARCHAR(10) DEFAULT 'KMF';",
-      "ALTER TABLE orders ADD COLUMN capture_url LONGTEXT NULL;"
+      "ALTER TABLE orders ADD COLUMN capture_url LONGTEXT NULL;",
+      "ALTER TABLE users ADD COLUMN devise_autorisee VARCHAR(20) DEFAULT 'TOUTES';"
     ];
 
     for (const q of alterQueries) {

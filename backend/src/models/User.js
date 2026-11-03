@@ -19,6 +19,7 @@ const User = sequelize.define("User", {
   otpExpiresAt: { type: DataTypes.DATE, allowNull: true },
   isEmailVerified: { type: DataTypes.BOOLEAN, defaultValue: false },
   mustChangePassword: { type: DataTypes.BOOLEAN, defaultValue: false },
+  deviseAutorisee: { type: DataTypes.STRING(20), allowNull: true, defaultValue: "TOUTES" },
 }, { tableName: "users" });
 
 module.exports = User;

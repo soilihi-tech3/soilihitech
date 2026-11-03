@@ -83,7 +83,8 @@ export default function AdminEmployees() {
       telephone: "", 
       motDePasse: randomPwd, 
       role: "employe", 
-      permissions: ["voir_dashboard", "vente_directe", "historique_ventes", "voir_produits"] 
+      permissions: ["voir_dashboard", "vente_directe", "historique_ventes", "voir_produits", "creer_demande"],
+      deviseAutorisee: "TOUTES"
     });
     setShowPassword(true);
     setErreur("");
@@ -99,7 +100,8 @@ export default function AdminEmployees() {
       telephone: u.telephone || "",
       motDePasse: "",
       role: u.role || "employe",
-      permissions: Array.isArray(u.permissions) ? u.permissions : []
+      permissions: Array.isArray(u.permissions) ? u.permissions : [],
+      deviseAutorisee: u.deviseAutorisee || "TOUTES"
     });
     setShowPassword(false);
     setErreur("");
@@ -112,7 +114,8 @@ export default function AdminEmployees() {
     setForm({
       ...u,
       role: u.role || "employe",
-      permissions: Array.isArray(u.permissions) ? u.permissions : []
+      permissions: Array.isArray(u.permissions) ? u.permissions : [],
+      deviseAutorisee: u.deviseAutorisee || "TOUTES"
     });
     setErreur("");
     setSucces("");
@@ -286,17 +289,29 @@ export default function AdminEmployees() {
                           <ShieldCheck size={14} color="var(--forest)" /> Admin (Accès Total)
                         </span>
                       ) : (
-                        <button
-                          onClick={() => openPermissionsModal(u)}
-                          style={{
-                            background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 20,
-                            padding: "5px 12px", fontSize: 12, fontWeight: 700, color: "var(--forest-dark)",
-                            cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6
-                          }}
-                        >
-                          <Shield size={14} color="var(--forest)" />
-                          {perms.length} accès attribué{perms.length > 1 ? "s" : ""}
-                        </button>
+                        <div>
+                          <button
+                            onClick={() => openPermissionsModal(u)}
+                            style={{
+                              background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 20,
+                              padding: "5px 12px", fontSize: 12, fontWeight: 700, color: "var(--forest-dark)",
+                              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6
+                            }}
+                          >
+                            <Shield size={14} color="var(--forest)" />
+                            {perms.length} accès attribué{perms.length > 1 ? "s" : ""}
+                          </button>
+                          <div style={{ marginTop: 5 }}>
+                            <span style={{
+                              fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 6,
+                              background: u.deviseAutorisee === "KMF" ? "#DCFCE7" : u.deviseAutorisee === "FCFA" ? "#FEF3C7" : "#EFF6FF",
+                              color: u.deviseAutorisee === "KMF" ? "#15803D" : u.deviseAutorisee === "FCFA" ? "#B45309" : "#1D4ED8",
+                              border: `1px solid ${u.deviseAutorisee === "KMF" ? "#86EFAC" : u.deviseAutorisee === "FCFA" ? "#FDE68A" : "#BFDBFE"}`
+                            }}>
+                              {u.deviseAutorisee === "KMF" ? "Devise : KMF (Comores)" : u.deviseAutorisee === "FCFA" ? "Devise : FCFA (Sénégal)" : "Devises : KMF & FCFA"}
+                            </span>
+                          </div>
+                        </div>
                       )}
                     </td>
 
@@ -515,6 +530,74 @@ export default function AdminEmployees() {
                 </div>
               </div>
 
+              {/* DEVISE ATTRIBUÉE (PAYS / CAISSE) POUR EMPLOYÉ */}
+              {form.role === "employe" && (
+                <div style={{ marginTop: 8, background: "#F8FAFC", padding: 14, borderRadius: 14, border: "1.5px solid #E2E8F0" }}>
+                  <label style={{ fontSize: 13, fontWeight: 800, color: "#1E293B", display: "block", marginBottom: 4 }}>
+                    Devise & Caisse autorisées à cet employé :
+                  </label>
+                  <p style={{ margin: "0 0 10px 0", fontSize: 11.5, color: "#64748B" }}>
+                    Choisissez si cet employé est assigné à une caisse locale ou aux deux devises.
+                  </p>
+                  
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                    {/* Option Toutes */}
+                    <div
+                      type="button"
+                      onClick={() => setForm({ ...form, deviseAutorisee: "TOUTES" })}
+                      style={{
+                        border: (!form.deviseAutorisee || form.deviseAutorisee === "TOUTES") ? "2px solid #2563EB" : "1px solid #CBD5E1",
+                        background: (!form.deviseAutorisee || form.deviseAutorisee === "TOUTES") ? "#EFF6FF" : "#FFFFFF",
+                        borderRadius: 10, padding: 10, cursor: "pointer", textAlign: "center", transition: "all 0.15s"
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, fontSize: 12.5, color: (!form.deviseAutorisee || form.deviseAutorisee === "TOUTES") ? "#1D4ED8" : "#334155" }}>
+                        KMF & FCFA
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "#64748B", marginTop: 2 }}>
+                        Les 2 pays
+                      </div>
+                    </div>
+
+                    {/* Option KMF */}
+                    <div
+                      type="button"
+                      onClick={() => setForm({ ...form, deviseAutorisee: "KMF" })}
+                      style={{
+                        border: form.deviseAutorisee === "KMF" ? "2px solid #16A34A" : "1px solid #CBD5E1",
+                        background: form.deviseAutorisee === "KMF" ? "#DCFCE7" : "#FFFFFF",
+                        borderRadius: 10, padding: 10, cursor: "pointer", textAlign: "center", transition: "all 0.15s"
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, fontSize: 12.5, color: form.deviseAutorisee === "KMF" ? "#15803D" : "#334155" }}>
+                        KMF seul
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "#64748B", marginTop: 2 }}>
+                        Comores
+                      </div>
+                    </div>
+
+                    {/* Option FCFA */}
+                    <div
+                      type="button"
+                      onClick={() => setForm({ ...form, deviseAutorisee: "FCFA" })}
+                      style={{
+                        border: form.deviseAutorisee === "FCFA" ? "2px solid #D97706" : "1px solid #CBD5E1",
+                        background: form.deviseAutorisee === "FCFA" ? "#FEF3C7" : "#FFFFFF",
+                        borderRadius: 10, padding: 10, cursor: "pointer", textAlign: "center", transition: "all 0.15s"
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, fontSize: 12.5, color: form.deviseAutorisee === "FCFA" ? "#B45309" : "#334155" }}>
+                        FCFA seul
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "#64748B", marginTop: 2 }}>
+                        Sénégal
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* GRANULAR PERMISSIONS MATRIX IF ROLE IS EMPLOYE */}
               {form.role === "employe" ? (
                 <div style={{ marginTop: 10, background: "var(--paper)", padding: 16, borderRadius: 14, border: "1px solid var(--line)" }}>
@@ -682,6 +765,54 @@ export default function AdminEmployees() {
                 <CheckCircle size={16} /> {succes}
               </div>
             )}
+
+            {/* DEVISE ASSIGNÉE DANS PERMISSIONS */}
+            <div style={{ marginBottom: 16, background: "var(--paper)", padding: 14, borderRadius: 12, border: "1.5px solid var(--line)" }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--forest-dark)", marginBottom: 4 }}>
+                Devise & Caisse autorisées à cet employé :
+              </div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>
+                Choisissez si cet employé accède uniquement aux prix KMF, FCFA, ou aux deux :
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, deviseAutorisee: "TOUTES" })}
+                  style={{
+                    padding: "7px 6px", borderRadius: 8, fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+                    border: (!form.deviseAutorisee || form.deviseAutorisee === "TOUTES") ? "2px solid #2563EB" : "1px solid var(--line)",
+                    background: (!form.deviseAutorisee || form.deviseAutorisee === "TOUTES") ? "#EFF6FF" : "#fff",
+                    color: (!form.deviseAutorisee || form.deviseAutorisee === "TOUTES") ? "#1D4ED8" : "var(--ink)"
+                  }}
+                >
+                  KMF & FCFA
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, deviseAutorisee: "KMF" })}
+                  style={{
+                    padding: "7px 6px", borderRadius: 8, fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+                    border: form.deviseAutorisee === "KMF" ? "2px solid #16A34A" : "1px solid var(--line)",
+                    background: form.deviseAutorisee === "KMF" ? "#DCFCE7" : "#fff",
+                    color: form.deviseAutorisee === "KMF" ? "#15803D" : "var(--ink)"
+                  }}
+                >
+                  KMF (Comores)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, deviseAutorisee: "FCFA" })}
+                  style={{
+                    padding: "7px 6px", borderRadius: 8, fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+                    border: form.deviseAutorisee === "FCFA" ? "2px solid #D97706" : "1px solid var(--line)",
+                    background: form.deviseAutorisee === "FCFA" ? "#FEF3C7" : "#fff",
+                    color: form.deviseAutorisee === "FCFA" ? "#B45309" : "var(--ink)"
+                  }}
+                >
+                  FCFA (Sénégal)
+                </button>
+              </div>
+            </div>
 
             <div style={{ fontSize: 13, color: "var(--ink)", fontWeight: 600, marginBottom: 12 }}>
               Activez ou désactivez les menus accessibles à cet employé :
