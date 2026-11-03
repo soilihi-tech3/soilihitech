@@ -330,10 +330,6 @@ export default function VenteDirecte() {
     window.print();
   }
 
-  // Coupures rapides selon devise
-  const quickBills = activeCurrency === "FCFA" 
-    ? [500, 1000, 2000, 5000, 10000]
-    : [500, 1000, 2000, 5000, 10000];
 
   return (
     <>
@@ -687,94 +683,135 @@ export default function VenteDirecte() {
 
             {/* ENCAISSEMENT & CALCUL MONNAIE */}
             <div style={{
-              background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12,
-              padding: 12, marginBottom: 16
+              background: "#F8FAFC",
+              border: "1px solid #E2E8F0",
+              borderRadius: 12,
+              padding: 14,
+              marginBottom: 16
             }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
-                  Montant reçu du client :
-                </span>
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <input
-                    type="number"
-                    min="0"
-                    step="50"
-                    placeholder="0"
-                    className="bs-input"
-                    value={montantRecu}
-                    onChange={(e) => setMontantRecu(e.target.value)}
-                    style={{
-                      width: 110, height: 32, fontSize: 13, fontWeight: 800,
-                      textAlign: "right", color: "#0F172A"
-                    }}
-                  />
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B" }}>{activeCurrency}</span>
-                </div>
-              </div>
+              <label style={{
+                display: "block",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#475569",
+                marginBottom: 6,
+                textTransform: "uppercase",
+                letterSpacing: "0.5px"
+              }}>
+                Montant reçu du client
+              </label>
 
-              {/* Raccourcis billets */}
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
-                {quickBills.map(val => (
-                  <button
-                    key={val}
-                    type="button"
-                    onClick={() => setMontantRecu(String(numMontantRecu + val))}
-                    style={{
-                      background: "#fff", border: "1px solid #CBD5E1", borderRadius: 6,
-                      padding: "3px 7px", fontSize: 11, fontWeight: 700, color: "#334155", cursor: "pointer"
-                    }}
-                  >
-                    +{val >= 1000 ? `${val / 1000}k` : val}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setMontantRecu(String(sousTotal))}
+              <div style={{
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                width: "100%"
+              }}>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  placeholder="0"
+                  value={montantRecu}
+                  onChange={(e) => setMontantRecu(e.target.value)}
                   style={{
-                    background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 6,
-                    padding: "3px 8px", fontSize: 11, fontWeight: 800, color: "#2563EB", cursor: "pointer"
+                    width: "100%",
+                    height: 44,
+                    fontSize: 16,
+                    fontWeight: 700,
+                    padding: "0 68px 0 14px",
+                    background: "#FFFFFF",
+                    border: "1.5px solid #CBD5E1",
+                    borderRadius: 10,
+                    color: "#0F172A",
+                    outline: "none",
+                    boxSizing: "border-box",
+                    transition: "border-color 0.15s ease, box-shadow 0.15s ease"
                   }}
-                >
-                  Exact
-                </button>
+                  onFocus={(e) => {
+                    e.target.style.borderColor = "#2563EB";
+                    e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,0.12)";
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = "#CBD5E1";
+                    e.target.style.boxShadow = "none";
+                  }}
+                />
+
                 {montantRecu !== "" && (
                   <button
                     type="button"
                     onClick={() => setMontantRecu("")}
+                    title="Effacer le montant"
                     style={{
-                      background: "#FEE2E2", border: "1px solid #FECACA", borderRadius: 6,
-                      padding: "3px 6px", fontSize: 11, fontWeight: 700, color: "#DC2626", cursor: "pointer"
+                      position: "absolute",
+                      right: 64,
+                      background: "#F1F5F9",
+                      border: "none",
+                      borderRadius: "50%",
+                      width: 22,
+                      height: 22,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      color: "#64748B",
+                      padding: 0
                     }}
                   >
-                    Effacer
+                    <X size={12} />
                   </button>
                 )}
+
+                <span style={{
+                  position: "absolute",
+                  right: 10,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: "#64748B",
+                  background: "#F1F5F9",
+                  padding: "4px 8px",
+                  borderRadius: 6,
+                  pointerEvents: "none"
+                }}>
+                  {activeCurrency}
+                </span>
               </div>
 
               {/* Résultat Monnaie ou Reste à payer */}
               {numMontantRecu > 0 && (
-                <div>
+                <div style={{ marginTop: 10 }}>
                   {numMontantRecu >= sousTotal ? (
                     <div style={{
-                      background: "#DCFCE7", border: "1.5px solid #86EFAC", borderRadius: 8,
-                      padding: "6px 10px", display: "flex", justifyContent: "space-between", alignItems: "center"
+                      background: "#DCFCE7",
+                      border: "1.5px solid #86EFAC",
+                      borderRadius: 10,
+                      padding: "8px 12px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
                     }}>
-                      <span style={{ fontSize: 12, fontWeight: 800, color: "#166534" }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: "#166534" }}>
                         Monnaie à rendre :
                       </span>
-                      <span style={{ fontSize: 15, fontWeight: 900, color: "#15803D" }}>
+                      <span style={{ fontSize: 16, fontWeight: 900, color: "#15803D" }}>
                         {fcfa(monnaieARendre, activeCurrency)}
                       </span>
                     </div>
                   ) : (
                     <div style={{
-                      background: "#FEF2F2", border: "1.5px solid #FECACA", borderRadius: 8,
-                      padding: "6px 10px", display: "flex", justifyContent: "space-between", alignItems: "center"
+                      background: "#FEF2F2",
+                      border: "1.5px solid #FECACA",
+                      borderRadius: 10,
+                      padding: "8px 12px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
                     }}>
-                      <span style={{ fontSize: 12, fontWeight: 800, color: "#991B1B" }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: "#991B1B" }}>
                         Reste à payer :
                       </span>
-                      <span style={{ fontSize: 15, fontWeight: 900, color: "#DC2626" }}>
+                      <span style={{ fontSize: 16, fontWeight: 900, color: "#DC2626" }}>
                         {fcfa(resteAPayer, activeCurrency)}
                       </span>
                     </div>
