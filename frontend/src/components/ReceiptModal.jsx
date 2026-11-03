@@ -207,9 +207,8 @@ export default function ReceiptModal({
     MOYEN_LABELS[order.moyenPaiement] ||
     (order.moyenPaiement ? order.moyenPaiement.toUpperCase() : "PAIEMENT SÉCURISÉ");
 
-  const handleDownloadPDF = () => {
-    try {
-      const items = order.items || [];
+  const buildPdfBlob = () => {
+    const items = order.items || [];
       const isCash = order.moyenPaiement === "cash" || order.moyenPaiement === "especes";
       const hasChange = isCash && Boolean(order.montantRecu);
 
@@ -454,10 +453,15 @@ export default function ReceiptModal({
       y += 3.5;
       doc.text(`A tres bientot chez ${cleanPdfText(storeName)}.`, centerX, y, { align: "center" });
 
-      // 14. Téléchargement direct dans les fichiers du téléphone / navigateur sans blocage
       const fileName = `Ticket-${cleanId || "Commande"}.pdf`;
+      const blob = doc.output("blob");
+      return { doc, blob, fileName, cleanId };
+  };
+
+  const handleDownloadPDF = () => {
+    try {
+      const { doc, blob, fileName } = buildPdfBlob();
       try {
-        const blob = doc.output("blob");
         const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.style.display = "none";
@@ -473,23 +477,67 @@ export default function ReceiptModal({
       } catch (saveErr) {
         doc.save(fileName);
       }
-      toast.success("Ticket de caisse PDF enregistré dans vos fichiers !");
+      toast.success("Facture PDF telechargee avec succes !");
     } catch (err) {
-      console.error("Erreur téléchargement PDF ticket:", err);
-      toast.error("Erreur lors de la génération du PDF.");
+      console.error("Erreur telechargement PDF ticket:", err);
+      toast.error("Erreur lors de la generation du PDF.");
     }
   };
 
-  const handleShare = () => {
-    const cleanPhone = (clientPhone || "").replace(/[^0-9]/g, "");
-    const clientGreeting = clientName && clientName !== "Client comptoir" ? ` ${clientName}` : "";
-    const text = `Bonjour${clientGreeting},\n\nVoici votre facture ${orderNumber}.\nTotal : ${fcfa(totalAmount, activeDevise)}`;
+  const handleShare = async () => {
+    try {
+      const { blob, fileName } = buildPdfBlob();
+      const pdfFile = new File([blob], fileName, { type: "application/pdf" });
 
-    const waUrl = cleanPhone
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
-      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+      const clientGreeting = clientName && clientName !== "Client comptoir" ? ` ${clientName}` : "";
+      const shareText = `Bonjour${clientGreeting},\n\nVoici votre facture.`;
 
-    window.location.href = waUrl;
+      // 1. Partage natif avec piece jointe PDF (iPhone, Android, Safari, Chrome mobile)
+      if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+        try {
+          await navigator.share({
+            files: [pdfFile],
+            title: `Facture ${cleanPdfText(orderNumber)}`,
+            text: shareText
+          });
+          return;
+        } catch (shareErr) {
+          if (shareErr.name === "AbortError") {
+            return;
+          }
+          console.warn("Partage natif annule ou echoue, bascule vers telechargement + message:", shareErr);
+        }
+      }
+
+      // 2. Si le partage de fichier natif n'est pas supporte (ex: PC de bureau) : telecharger le fichier et ouvrir WhatsApp
+      try {
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.style.display = "none";
+        link.href = blobUrl;
+        link.download = fileName;
+        link.setAttribute("download", fileName);
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        }, 1500);
+      } catch (e) {
+        // Ignorer
+      }
+
+      const cleanPhone = (clientPhone || "").replace(/[^0-9]/g, "");
+      const waUrl = cleanPhone
+        ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(shareText)}`
+        : `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
+
+      window.open(waUrl, "_blank");
+      toast.success("Facture PDF telechargee. Vous pouvez la glisser dans la discussion WhatsApp !");
+    } catch (err) {
+      console.error("Erreur partage facture PDF:", err);
+      toast.error("Erreur lors de la preparation de la facture.");
+    }
   };
 
   return (

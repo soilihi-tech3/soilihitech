@@ -1,37 +1,15 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { toast } from "react-hot-toast";
 import { 
-  PlusCircle, Edit, Trash2, Search, Filter, Calendar, User, 
-  Receipt, ArrowUpRight, DollarSign, Tag, FileText, CheckCircle, 
-  AlertCircle, X, Download, Eye, ExternalLink, RefreshCw
+  PlusCircle, Edit, Trash2, Search, Calendar, User, 
+  Receipt, ArrowUpRight, DollarSign, AlertCircle, X, 
+  ExternalLink, RefreshCw
 } from "lucide-react";
 import api from "../../api";
 import { useAuth } from "../../context/AuthContext.jsx";
 import TablePagination from "../../components/TablePagination";
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 import { formatPrice as fcfa, getActiveCurrency } from "../../utils/currency.js";
-
-const CATEGORIES_DEPENSE = [
-  { value: "loyer", label: "Loyer & Bail Magasin" },
-  { value: "electricite", label: "Électricité, Eau & Énergie" },
-  { value: "transport", label: "Transport, Colis & Fret" },
-  { value: "fournitures", label: "Fournitures & Emballages" },
-  { value: "salaires", label: "Salaires, Primes & Avances" },
-  { value: "maintenance", label: "Entretien, Réparation & Travaux" },
-  { value: "marketing", label: "Publicité, Crédit & Communication" },
-  { value: "autre", label: "Autre Dépense Divers" },
-];
-
-const MOYENS_PAIEMENT = [
-  { value: "especes", label: "Espèces / Cash" },
-  { value: "mvola", label: "MVola Mobile Money" },
-  { value: "wave", label: "Wave" },
-  { value: "orange", label: "Orange Money" },
-  { value: "wero", label: "Wero" },
-  { value: "virement", label: "Virement Bancaire" },
-  { value: "cheque", label: "Chèque" },
-  { value: "autre", label: "Autre" }
-];
 
 export default function Depenses() {
   const { user } = useAuth();
@@ -55,7 +33,6 @@ export default function Depenses() {
   const [search, setSearch] = useState("");
   const [filterEmployee, setFilterEmployee] = useState("TOUS");
   const [filterCurrency, setFilterCurrency] = useState(assignedCurrency || "TOUTES");
-  const [filterCategory, setFilterCategory] = useState("TOUTES");
   const [dateDebut, setDateDebut] = useState("");
   const [dateFin, setDateFin] = useState("");
 
@@ -68,17 +45,13 @@ export default function Depenses() {
     titre: "",
     montant: "",
     devise: assignedCurrency || getActiveCurrency() || "KMF",
-    categorie: "autre",
     dateDepense: new Date().toISOString().split("T")[0],
-    beneficiaire: "",
-    moyenPaiement: "especes",
     notes: "",
     justificatifUrl: ""
   };
 
   const [form, setForm] = useState(initialFormState);
   const [erreur, setErreur] = useState("");
-  const [succes, setSucces] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Pagination
@@ -90,7 +63,6 @@ export default function Depenses() {
     const params = {};
     if (filterEmployee !== "TOUS") params.employeId = filterEmployee;
     if (filterCurrency !== "TOUTES") params.devise = filterCurrency;
-    if (filterCategory !== "TOUTES") params.categorie = filterCategory;
     if (dateDebut) params.dateDebut = dateDebut;
     if (dateFin) params.dateFin = dateFin;
     if (search.trim()) params.search = search.trim();
@@ -111,9 +83,8 @@ export default function Depenses() {
 
   useEffect(() => {
     loadExpenses();
-  }, [filterEmployee, filterCurrency, filterCategory, dateDebut, dateFin]);
+  }, [filterEmployee, filterCurrency, dateDebut, dateFin]);
 
-  // Delayed search
   useEffect(() => {
     const handler = setTimeout(() => {
       loadExpenses();
@@ -127,7 +98,6 @@ export default function Depenses() {
       devise: assignedCurrency || getActiveCurrency() || "KMF"
     });
     setErreur("");
-    setSucces("");
     setModalType("create");
   }
 
@@ -137,22 +107,17 @@ export default function Depenses() {
       titre: exp.titre || "",
       montant: exp.montant || "",
       devise: exp.devise || "KMF",
-      categorie: exp.categorie || "autre",
       dateDepense: exp.dateDepense ? new Date(exp.dateDepense).toISOString().split("T")[0] : "",
-      beneficiaire: exp.beneficiaire || "",
-      moyenPaiement: exp.moyenPaiement || "especes",
       notes: exp.notes || "",
       justificatifUrl: exp.justificatifUrl || ""
     });
     setErreur("");
-    setSucces("");
     setModalType("edit");
   }
 
   async function handleSave(e) {
     e.preventDefault();
     setErreur("");
-    setSucces("");
 
     if (!form.titre.trim()) {
       setErreur("Le titre ou motif de la dépense est requis.");
@@ -206,7 +171,7 @@ export default function Depenses() {
             Gestion des Dépenses
           </h1>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 13.5 }}>
-            Suivi des sorties de caisse, charges d'exploitation et contrôle par employé.
+            Suivi des sorties d'argent, dépenses courantes et contrôle par employé.
           </p>
         </div>
 
@@ -374,7 +339,7 @@ export default function Depenses() {
           <input
             type="text"
             className="bs-input"
-            placeholder="Rechercher titre, bénéficiaire..."
+            placeholder="Rechercher titre, motif..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ paddingLeft: 34, fontSize: 13, height: 38 }}
@@ -413,19 +378,6 @@ export default function Depenses() {
           </select>
         )}
 
-        {/* Filter Category */}
-        <select
-          className="bs-input"
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          style={{ fontSize: 13, height: 38, minWidth: 160 }}
-        >
-          <option value="TOUTES">Toutes catégories</option>
-          {CATEGORIES_DEPENSE.map(c => (
-            <option key={c.value} value={c.value}>{c.label}</option>
-          ))}
-        </select>
-
         {/* Date Debut */}
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <span style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700 }}>Du</span>
@@ -450,14 +402,13 @@ export default function Depenses() {
           />
         </div>
 
-        {(search || filterEmployee !== "TOUS" || filterCategory !== "TOUTES" || dateDebut || dateFin) && (
+        {(search || filterEmployee !== "TOUS" || dateDebut || dateFin) && (
           <button
             type="button"
             className="bs-btn-secondary"
             onClick={() => {
               setSearch("");
               setFilterEmployee("TOUS");
-              setFilterCategory("TOUTES");
               setDateDebut("");
               setDateFin("");
             }}
@@ -476,9 +427,7 @@ export default function Depenses() {
             <thead>
               <tr style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)" }}>
                 <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 800 }}>Date</th>
-                <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 800 }}>Motif & Titre</th>
-                <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 800 }}>Catégorie</th>
-                <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 800 }}>Bénéficiaire</th>
+                <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 800 }}>Motif / Titre</th>
                 <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 800 }}>Enregistré par</th>
                 <th style={{ padding: "12px 16px", textAlign: "right", fontSize: 12, fontWeight: 800 }}>Montant</th>
                 <th style={{ padding: "12px 16px", textAlign: "center", fontSize: 12, fontWeight: 800, width: 100 }}>Actions</th>
@@ -486,16 +435,16 @@ export default function Depenses() {
             </thead>
             <tbody>
               {loading ? (
-                <SkeletonTableRows rows={6} cols={7} />
+                <SkeletonTableRows rows={6} cols={5} />
               ) : pagedExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: "center", padding: "48px 20px", color: "var(--muted)" }}>
+                  <td colSpan={5} style={{ textAlign: "center", padding: "48px 20px", color: "var(--muted)" }}>
                     <Receipt size={36} style={{ margin: "0 auto 10px", opacity: 0.3, display: "block" }} />
                     <div style={{ fontWeight: 700, fontSize: 15, color: "var(--ink)" }}>Aucune dépense trouvée</div>
                     <div style={{ fontSize: 13, marginTop: 4 }}>
-                      {search || filterEmployee !== "TOUS" || filterCategory !== "TOUTES"
+                      {search || filterEmployee !== "TOUS"
                         ? "Essayez d'ajuster ou d'effacer vos filtres de recherche."
-                        : "Enregistrez votre première dépense pour suivre vos charges d'exploitation."}
+                        : "Enregistrez votre première dépense pour suivre vos sorties de caisse."}
                     </div>
                   </td>
                 </tr>
@@ -504,16 +453,12 @@ export default function Depenses() {
                   const dateStr = exp.dateDepense
                     ? new Date(exp.dateDepense).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })
                     : "-";
-                  const catObj = CATEGORIES_DEPENSE.find(c => c.value === exp.categorie);
                   const isFCFA = exp.devise === "FCFA";
 
                   return (
                     <tr key={exp.id} style={{ borderBottom: "1px solid var(--line)" }}>
                       <td style={{ padding: "12px 16px", fontSize: 12.5, whiteSpace: "nowrap" }}>
                         <div style={{ fontWeight: 700, color: "var(--ink)" }}>{dateStr}</div>
-                        <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                          {MOYENS_PAIEMENT.find(m => m.value === exp.moyenPaiement)?.label || exp.moyenPaiement}
-                        </div>
                       </td>
 
                       <td style={{ padding: "12px 16px" }}>
@@ -521,7 +466,7 @@ export default function Depenses() {
                           {exp.titre}
                         </div>
                         {exp.notes && (
-                          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2, maxWidth: 300, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2, maxWidth: 350, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {exp.notes}
                           </div>
                         )}
@@ -535,23 +480,6 @@ export default function Depenses() {
                             <ExternalLink size={11} /> Voir justificatif
                           </a>
                         )}
-                      </td>
-
-                      <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
-                        <span style={{
-                          background: "#F1F5F9",
-                          color: "#475569",
-                          fontSize: 11.5,
-                          fontWeight: 700,
-                          padding: "3px 8px",
-                          borderRadius: 8
-                        }}>
-                          {catObj?.label || exp.categorie}
-                        </span>
-                      </td>
-
-                      <td style={{ padding: "12px 16px", fontSize: 13, color: "var(--ink)" }}>
-                        {exp.beneficiaire || <span style={{ color: "var(--muted)", fontStyle: "italic" }}>Non précisé</span>}
                       </td>
 
                       <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
@@ -643,7 +571,7 @@ export default function Depenses() {
         )}
       </div>
 
-      {/* MODAL CRÉATION / ÉDITION */}
+      {/* MODAL CRÉATION / ÉDITION (SIMPLE ET ÉPURÉ : SANS CATÉGORIE, SANS BÉNÉFICIAIRE, SANS MODE DE PAIEMENT) */}
       {modalType && (
         <div
           onClick={() => setModalType(null)}
@@ -665,7 +593,7 @@ export default function Depenses() {
               background: "var(--paper)",
               borderRadius: 20,
               width: "100%",
-              maxWidth: 540,
+              maxWidth: 480,
               padding: "24px 26px",
               boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
               maxHeight: "90vh",
@@ -675,10 +603,10 @@ export default function Depenses() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
               <div>
                 <h2 style={{ fontSize: 18, fontWeight: 900, margin: 0, color: "var(--forest-dark)" }}>
-                  {modalType === "create" ? "Enregistrer une Nouvelle Dépense" : "Modifier la Dépense"}
+                  {modalType === "create" ? "Enregistrer une Dépense" : "Modifier la Dépense"}
                 </h2>
                 <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--muted)" }}>
-                  Renseignez les détails de la sortie d'argent.
+                  Saisie rapide du motif et du montant de la sortie d'argent.
                 </p>
               </div>
               <button
@@ -697,7 +625,7 @@ export default function Depenses() {
             )}
 
             <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {/* Titre */}
+              {/* Titre / Motif */}
               <div>
                 <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
                   Titre / Motif de la dépense *
@@ -706,7 +634,7 @@ export default function Depenses() {
                   type="text"
                   required
                   className="bs-input"
-                  placeholder="Ex : Facture Électricité Sonlec, Transport stock..."
+                  placeholder="Ex : taxi, électricité, transport stock..."
                   value={form.titre}
                   onChange={(e) => setForm({ ...form, titre: e.target.value })}
                   style={{ width: "100%", fontSize: 13.5 }}
@@ -749,73 +677,22 @@ export default function Depenses() {
                 </div>
               </div>
 
-              {/* Catégorie & Date */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
-                    Catégorie
-                  </label>
-                  <select
-                    className="bs-input"
-                    value={form.categorie}
-                    onChange={(e) => setForm({ ...form, categorie: e.target.value })}
-                    style={{ width: "100%", fontSize: 13 }}
-                  >
-                    {CATEGORIES_DEPENSE.map(c => (
-                      <option key={c.value} value={c.value}>{c.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
-                    Date de la dépense
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    className="bs-input"
-                    value={form.dateDepense}
-                    onChange={(e) => setForm({ ...form, dateDepense: e.target.value })}
-                    style={{ width: "100%", fontSize: 13 }}
-                  />
-                </div>
+              {/* Date de la dépense */}
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
+                  Date de la dépense *
+                </label>
+                <input
+                  type="date"
+                  required
+                  className="bs-input"
+                  value={form.dateDepense}
+                  onChange={(e) => setForm({ ...form, dateDepense: e.target.value })}
+                  style={{ width: "100%", fontSize: 13 }}
+                />
               </div>
 
-              {/* Bénéficiaire & Moyen de paiement */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
-                    Bénéficiaire / Destinataire
-                  </label>
-                  <input
-                    type="text"
-                    className="bs-input"
-                    placeholder="Ex : Sonlec, Taxi, Fournisseur..."
-                    value={form.beneficiaire}
-                    onChange={(e) => setForm({ ...form, beneficiaire: e.target.value })}
-                    style={{ width: "100%", fontSize: 13 }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
-                    Moyen de paiement
-                  </label>
-                  <select
-                    className="bs-input"
-                    value={form.moyenPaiement}
-                    onChange={(e) => setForm({ ...form, moyenPaiement: e.target.value })}
-                    style={{ width: "100%", fontSize: 13 }}
-                  >
-                    {MOYENS_PAIEMENT.map(m => (
-                      <option key={m.value} value={m.value}>{m.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Notes & Justificatif */}
+              {/* Notes ou description complémentaire */}
               <div>
                 <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
                   Notes ou description complémentaire
@@ -823,13 +700,14 @@ export default function Depenses() {
                 <textarea
                   className="bs-input"
                   rows={2}
-                  placeholder="Précisions sur cette dépense..."
+                  placeholder="Précisions sur cette dépense (optionnel)..."
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   style={{ width: "100%", fontSize: 13, resize: "vertical" }}
                 />
               </div>
 
+              {/* Lien ou photo justificatif */}
               <div>
                 <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
                   Lien ou photo justificatif (optionnel)
@@ -921,7 +799,7 @@ export default function Depenses() {
               Supprimer cette dépense ?
             </h3>
             <p style={{ fontSize: 13, color: "var(--muted)", margin: "8px 0 20px" }}>
-              Cette action est irréversible et supprimera la sortie de caisse des totaux.
+              Cette action est irréversible et retirera cette dépense des totaux.
             </p>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
