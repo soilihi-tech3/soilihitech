@@ -447,9 +447,8 @@ async function createAdminCustomRequest(req, res) {
       photoUrl: finalPhotoUrl,
       statut: statut || "en_attente",
       fraisLivraison: Number(fraisLivraison) || 0,
-      devisTotal: devisTotal !== undefined && devisTotal !== null ? Number(devisTotal) : null,
-      messageAdmin: messageAdmin ? messageAdmin.trim() : null,
-      dateDevis: devisTotal ? new Date() : null
+      totalPropose: devisTotal !== undefined && devisTotal !== null ? Number(devisTotal) : null,
+      messageAdmin: messageAdmin ? messageAdmin.trim() : null
     });
 
     return res.status(201).json({

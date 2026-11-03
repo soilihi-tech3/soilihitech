@@ -11,7 +11,7 @@ const getBaseUrl = () => {
   }
 
   // En production (Vercel, mobile, domaine personnalisé) : utilise la variable VITE_API_URL si définie
-  return import.meta.env.VITE_API_URL || "https://electro-backend-8hfq.onrender.com/api";
+  return import.meta.env.VITE_API_URL || "https://soilihitech.onrender.com/api";
 };
 
 export const SLUG = import.meta.env.VITE_BOUTIQUE_SLUG || "soilihitech";
