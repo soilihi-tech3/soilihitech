@@ -1,7 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const { Op } = require("sequelize");
-const { sequelize, Product, Category, Order, OrderItem, User, Boutique, Notification, Review, Famille, Fournisseur, UniteVente, Achat, Marque, Testimonial } = require("../models");
+const { sequelize, Product, Category, Order, OrderItem, User, Boutique, Notification, Review, Famille, Fournisseur, UniteVente, Achat, Marque, Testimonial, Expense, Saving } = require("../models");
 const { authenticate, requireRole, requireOwnBoutique } = require("../middleware/auth");
 const { getCache, setCache, clearCachePattern } = require("../config/cache");
 const { broadcast } = require("../utils/broadcaster");
@@ -1855,6 +1855,380 @@ router.post("/custom-requests", requireRole("admin", "employe"), createAdminCust
 router.put("/custom-requests/:id", requireRole("admin", "employe"), updateAdminCustomRequest);
 router.delete("/custom-requests/:id", requireRole("admin", "employe"), deleteAdminCustomRequest);
 router.put("/custom-requests/:id/quote", requireRole("admin", "employe"), quoteCustomRequest);
+
+// --- ROUTES DÉPENSES (EXPENSES) ---
+function checkExpensePerm(req, perm) {
+  if (req.user.role === "admin" || req.user.role === "super_admin") return true;
+  const perms = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+  return perms.includes(perm) || perms.includes("gerer_depenses");
+}
+
+router.get("/expenses", async (req, res, next) => {
+  try {
+    const perms = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+    const canAccess = req.user.role === "admin" || req.user.role === "super_admin" ||
+      ["voir_depenses", "creer_depense", "modifier_depense", "supprimer_depense", "gerer_depenses"].some(p => perms.includes(p));
+
+    if (!canAccess) {
+      return res.status(403).json({ message: "Accès refusé. Vous n'avez pas la permission de consulter les dépenses." });
+    }
+
+    const { employeId, devise, categorie, dateDebut, dateFin, search } = req.query;
+    const where = { boutiqueId: req.boutiqueId };
+
+    if (req.user.role === "employe" && req.user.deviseAutorisee && req.user.deviseAutorisee !== "TOUTES") {
+      where.devise = req.user.deviseAutorisee;
+    } else if (devise && devise !== "TOUTES") {
+      where.devise = devise;
+    }
+
+    if (employeId && employeId !== "TOUS") {
+      where.creeParId = employeId;
+    }
+
+    if (categorie && categorie !== "TOUTES") {
+      where.categorie = categorie;
+    }
+
+    if (dateDebut && dateFin) {
+      where.dateDepense = {
+        [Op.between]: [new Date(`${dateDebut}T00:00:00.000Z`), new Date(`${dateFin}T23:59:59.999Z`)]
+      };
+    } else if (dateDebut) {
+      where.dateDepense = { [Op.gte]: new Date(`${dateDebut}T00:00:00.000Z`) };
+    } else if (dateFin) {
+      where.dateDepense = { [Op.lte]: new Date(`${dateFin}T23:59:59.999Z`) };
+    }
+
+    if (search && search.trim()) {
+      const q = `%${search.trim()}%`;
+      where[Op.or] = [
+        { titre: { [Op.like]: q } },
+        { beneficiaire: { [Op.like]: q } },
+        { notes: { [Op.like]: q } }
+      ];
+    }
+
+    const expenses = await Expense.findAll({
+      where,
+      include: [
+        { model: User, as: "creePar", attributes: ["id", "nom", "email", "role"] }
+      ],
+      order: [["dateDepense", "DESC"], ["id", "DESC"]]
+    });
+
+    let totalMontantKMF = 0;
+    let totalMontantFCFA = 0;
+
+    expenses.forEach(e => {
+      const m = Number(e.montant || 0);
+      if (e.devise === "FCFA") {
+        totalMontantFCFA += m;
+      } else {
+        totalMontantKMF += m;
+      }
+    });
+
+    const employees = await User.findAll({
+      where: { boutiqueId: req.boutiqueId, role: ["admin", "employe"] },
+      attributes: ["id", "nom", "email", "role"]
+    });
+
+    res.json({
+      expenses,
+      kpis: {
+        totalCount: expenses.length,
+        totalMontantKMF,
+        totalMontantFCFA
+      },
+      employees
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/expenses", async (req, res, next) => {
+  try {
+    if (!checkExpensePerm(req, "creer_depense")) {
+      return res.status(403).json({ message: "Vous n'avez pas l'autorisation d'ajouter une dépense." });
+    }
+
+    const { titre, montant, devise, categorie, dateDepense, beneficiaire, moyenPaiement, notes, justificatifUrl } = req.body;
+    if (!titre || !titre.trim()) {
+      return res.status(400).json({ message: "Le titre de la dépense est requis." });
+    }
+    if (!montant || Number(montant) <= 0) {
+      return res.status(400).json({ message: "Le montant doit être supérieur à 0." });
+    }
+
+    let finalDevise = devise || "KMF";
+    if (req.user.role === "employe" && req.user.deviseAutorisee && req.user.deviseAutorisee !== "TOUTES") {
+      finalDevise = req.user.deviseAutorisee;
+    }
+
+    const expense = await Expense.create({
+      boutiqueId: req.boutiqueId,
+      creeParId: req.user.id,
+      titre: titre.trim(),
+      montant: Number(montant),
+      devise: finalDevise,
+      categorie: categorie || "autre",
+      dateDepense: dateDepense ? new Date(dateDepense) : new Date(),
+      beneficiaire: beneficiaire ? beneficiaire.trim() : null,
+      moyenPaiement: moyenPaiement || "especes",
+      notes: notes ? notes.trim() : null,
+      justificatifUrl: justificatifUrl || null
+    });
+
+    const fullExpense = await Expense.findByPk(expense.id, {
+      include: [{ model: User, as: "creePar", attributes: ["id", "nom", "email", "role"] }]
+    });
+
+    res.status(201).json(fullExpense);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put("/expenses/:id", async (req, res, next) => {
+  try {
+    if (!checkExpensePerm(req, "modifier_depense")) {
+      return res.status(403).json({ message: "Vous n'avez pas l'autorisation de modifier une dépense." });
+    }
+
+    const expense = await Expense.findOne({
+      where: { id: req.params.id, boutiqueId: req.boutiqueId }
+    });
+
+    if (!expense) {
+      return res.status(404).json({ message: "Dépense introuvable." });
+    }
+
+    const { titre, montant, devise, categorie, dateDepense, beneficiaire, moyenPaiement, notes, justificatifUrl } = req.body;
+    if (titre !== undefined) expense.titre = titre.trim();
+    if (montant !== undefined) expense.montant = Number(montant);
+    if (devise !== undefined) {
+      if (req.user.role === "employe" && req.user.deviseAutorisee && req.user.deviseAutorisee !== "TOUTES") {
+        expense.devise = req.user.deviseAutorisee;
+      } else {
+        expense.devise = devise;
+      }
+    }
+    if (categorie !== undefined) expense.categorie = categorie;
+    if (dateDepense !== undefined) expense.dateDepense = new Date(dateDepense);
+    if (beneficiaire !== undefined) expense.beneficiaire = beneficiaire ? beneficiaire.trim() : null;
+    if (moyenPaiement !== undefined) expense.moyenPaiement = moyenPaiement;
+    if (notes !== undefined) expense.notes = notes ? notes.trim() : null;
+    if (justificatifUrl !== undefined) expense.justificatifUrl = justificatifUrl;
+
+    await expense.save();
+
+    const fullExpense = await Expense.findByPk(expense.id, {
+      include: [{ model: User, as: "creePar", attributes: ["id", "nom", "email", "role"] }]
+    });
+
+    res.json(fullExpense);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/expenses/:id", async (req, res, next) => {
+  try {
+    if (!checkExpensePerm(req, "supprimer_depense")) {
+      return res.status(403).json({ message: "Vous n'avez pas l'autorisation de supprimer une dépense." });
+    }
+
+    const expense = await Expense.findOne({
+      where: { id: req.params.id, boutiqueId: req.boutiqueId }
+    });
+
+    if (!expense) {
+      return res.status(404).json({ message: "Dépense introuvable." });
+    }
+
+    await expense.destroy();
+    res.json({ success: true, message: "Dépense supprimée avec succès." });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- ROUTES ÉPARGNE (SAVINGS - STRICTEMENT ADMIN) ---
+router.get("/savings", async (req, res, next) => {
+  try {
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      return res.status(403).json({ message: "Accès strictement réservé à l'administrateur." });
+    }
+
+    const { devise, type, dateDebut, dateFin, search } = req.query;
+    const where = { boutiqueId: req.boutiqueId };
+
+    if (devise && devise !== "TOUTES") {
+      where.devise = devise;
+    }
+    if (type && type !== "TOUS") {
+      where.type = type;
+    }
+
+    if (dateDebut && dateFin) {
+      where.dateOperation = {
+        [Op.between]: [new Date(`${dateDebut}T00:00:00.000Z`), new Date(`${dateFin}T23:59:59.999Z`)]
+      };
+    } else if (dateDebut) {
+      where.dateOperation = { [Op.gte]: new Date(`${dateDebut}T00:00:00.000Z`) };
+    } else if (dateFin) {
+      where.dateOperation = { [Op.lte]: new Date(`${dateFin}T23:59:59.999Z`) };
+    }
+
+    if (search && search.trim()) {
+      const q = `%${search.trim()}%`;
+      where[Op.or] = [
+        { compte: { [Op.like]: q } },
+        { reference: { [Op.like]: q } },
+        { notes: { [Op.like]: q } }
+      ];
+    }
+
+    const savings = await Saving.findAll({
+      where,
+      include: [
+        { model: User, as: "creePar", attributes: ["id", "nom", "email"] }
+      ],
+      order: [["dateOperation", "DESC"], ["id", "DESC"]]
+    });
+
+    const allSavings = await Saving.findAll({
+      where: { boutiqueId: req.boutiqueId },
+      attributes: ["type", "montant", "devise"]
+    });
+
+    let totalDepotsKMF = 0;
+    let totalRetraitsKMF = 0;
+    let totalDepotsFCFA = 0;
+    let totalRetraitsFCFA = 0;
+
+    allSavings.forEach(s => {
+      const m = Number(s.montant || 0);
+      const isDepot = s.type === "depot";
+      if (s.devise === "FCFA") {
+        if (isDepot) totalDepotsFCFA += m;
+        else totalRetraitsFCFA += m;
+      } else {
+        if (isDepot) totalDepotsKMF += m;
+        else totalRetraitsKMF += m;
+      }
+    });
+
+    const totalEpargneKMF = totalDepotsKMF - totalRetraitsKMF;
+    const totalEpargneFCFA = totalDepotsFCFA - totalRetraitsFCFA;
+
+    res.json({
+      savings,
+      kpis: {
+        totalEpargneKMF,
+        totalEpargneFCFA,
+        totalDepotsKMF,
+        totalRetraitsKMF,
+        totalDepotsFCFA,
+        totalRetraitsFCFA,
+        totalOperations: savings.length
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/savings", async (req, res, next) => {
+  try {
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      return res.status(403).json({ message: "Accès strictement réservé à l'administrateur." });
+    }
+
+    const { type, montant, devise, dateOperation, compte, reference, notes } = req.body;
+    if (!montant || Number(montant) <= 0) {
+      return res.status(400).json({ message: "Le montant doit être supérieur à 0." });
+    }
+
+    const saving = await Saving.create({
+      boutiqueId: req.boutiqueId,
+      creeParId: req.user.id,
+      type: type === "retrait" ? "retrait" : "depot",
+      montant: Number(montant),
+      devise: devise || "KMF",
+      dateOperation: dateOperation ? new Date(dateOperation) : new Date(),
+      compte: compte ? compte.trim() : "Compte Épargne",
+      reference: reference ? reference.trim() : null,
+      notes: notes ? notes.trim() : null
+    });
+
+    const fullSaving = await Saving.findByPk(saving.id, {
+      include: [{ model: User, as: "creePar", attributes: ["id", "nom", "email"] }]
+    });
+
+    res.status(201).json(fullSaving);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put("/savings/:id", async (req, res, next) => {
+  try {
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      return res.status(403).json({ message: "Accès strictement réservé à l'administrateur." });
+    }
+
+    const saving = await Saving.findOne({
+      where: { id: req.params.id, boutiqueId: req.boutiqueId }
+    });
+
+    if (!saving) {
+      return res.status(404).json({ message: "Opération d'épargne introuvable." });
+    }
+
+    const { type, montant, devise, dateOperation, compte, reference, notes } = req.body;
+    if (type !== undefined) saving.type = type === "retrait" ? "retrait" : "depot";
+    if (montant !== undefined) saving.montant = Number(montant);
+    if (devise !== undefined) saving.devise = devise;
+    if (dateOperation !== undefined) saving.dateOperation = new Date(dateOperation);
+    if (compte !== undefined) saving.compte = compte ? compte.trim() : "Compte Épargne";
+    if (reference !== undefined) saving.reference = reference ? reference.trim() : null;
+    if (notes !== undefined) saving.notes = notes ? notes.trim() : null;
+
+    await saving.save();
+
+    const fullSaving = await Saving.findByPk(saving.id, {
+      include: [{ model: User, as: "creePar", attributes: ["id", "nom", "email"] }]
+    });
+
+    res.json(fullSaving);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/savings/:id", async (req, res, next) => {
+  try {
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      return res.status(403).json({ message: "Accès strictement réservé à l'administrateur." });
+    }
+
+    const saving = await Saving.findOne({
+      where: { id: req.params.id, boutiqueId: req.boutiqueId }
+    });
+
+    if (!saving) {
+      return res.status(404).json({ message: "Opération d'épargne introuvable." });
+    }
+
+    await saving.destroy();
+    res.json({ success: true, message: "Opération d'épargne supprimée avec succès." });
+  } catch (err) {
+    next(err);
+  }
+});
 
 module.exports = router;
 

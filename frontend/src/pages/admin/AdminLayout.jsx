@@ -3,7 +3,7 @@ import { NavLink, Link, Outlet, useLocation, useNavigate, Navigate } from "react
 import { 
   LayoutDashboard, Package, ShoppingCart, Users, Store, LogOut, Layers, 
   PanelLeftClose, PanelLeftOpen, User, Image, LayoutGrid, CreditCard, 
-  ShoppingBag, Truck, Scale, History, Menu, X, ExternalLink, ArrowLeft, Clock, Lock, UserCheck, Sun, Moon, PhoneCall, Award, MessageCircle, ClipboardList, Smartphone
+  ShoppingBag, Truck, Scale, History, Menu, X, ExternalLink, ArrowLeft, Clock, Lock, UserCheck, Sun, Moon, PhoneCall, Award, MessageCircle, ClipboardList, Smartphone, Receipt, PiggyBank
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useCart } from "../../context/CartContext.jsx";
@@ -18,6 +18,8 @@ const ROUTE_MODULE_MAP = {
   "/admin/ventes-historique": { key: "ventesHistorique", label: "Historique Ventes" },
   "/admin/achats": { key: "achats", label: "Achats & Stocks" },
   "/admin/fournisseurs": { key: "fournisseurs", label: "Fournisseurs" },
+  "/admin/depenses": { key: "depenses", label: "Dépenses" },
+  "/admin/epargne": { key: "epargne", label: "Épargne" },
   "/admin/unites": { key: "unites", label: "Unités de vente" },
   "/admin/marques": { key: "marques", label: "Marques" },
   "/admin/telephones": { key: "telephones", label: "Modèles Téléphones" },
@@ -87,6 +89,8 @@ export default function AdminLayout() {
     { to: "/admin/telephones", label: "Modèles Téléphones", icon: Smartphone, permKey: ["voir_telephones", "gerer_telephones", "gerer_categories", "gerer_produits"], moduleKey: "telephones" },
     { to: "/admin/achats", label: "Achats & Stocks", icon: ShoppingBag, permKey: ["achats_stocks", "gerer_produits"], moduleKey: "achats" },
     { to: "/admin/fournisseurs", label: "Fournisseurs", icon: Truck, permKey: ["gerer_fournisseurs", "achats_stocks"], moduleKey: "fournisseurs" },
+    { to: "/admin/depenses", label: "Dépenses", icon: Receipt, permKey: ["voir_depenses", "creer_depense", "modifier_depense", "supprimer_depense"], moduleKey: "depenses" },
+    { to: "/admin/epargne", label: "Épargne", icon: PiggyBank, adminOnly: true, moduleKey: "epargne" },
     { to: "/admin/unites", label: "Unités de vente", icon: Scale, permKey: ["gerer_unites", "gerer_categories", "gerer_produits"], moduleKey: "unites" },
     { to: "/admin/avis", label: "Avis Clients WhatsApp", icon: MessageCircle, permKey: ["gerer_avis"], moduleKey: "avis" },
     { to: "/admin/clients", label: "Clients", icon: UserCheck, permKey: ["voir_clients", "gerer_clients"], moduleKey: "clients" },

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Printer, Download, X, RotateCcw, ShoppingBag, Store, Truck, Sparkles } from "lucide-react";
+import { Printer, Download, X, RotateCcw, ShoppingBag, Store, Truck, Sparkles, Share2, MessageCircle } from "lucide-react";
 import { toast } from "react-hot-toast";
 import jsPDF from "jspdf";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -480,6 +480,18 @@ export default function ReceiptModal({
     }
   };
 
+  const handleShare = () => {
+    const cleanPhone = (clientPhone || "").replace(/[^0-9]/g, "");
+    const clientGreeting = clientName && clientName !== "Client comptoir" ? ` ${clientName}` : "";
+    const text = `Bonjour${clientGreeting},\n\nVoici votre facture ${orderNumber}.\nTotal : ${fcfa(totalAmount, activeDevise)}`;
+
+    const waUrl = cleanPhone
+      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+
+    window.location.href = waUrl;
+  };
+
   return (
     <div
       onClick={onClose}
@@ -956,76 +968,106 @@ export default function ReceiptModal({
         <div
           style={{
             display: "flex",
-            gap: 10,
+            flexDirection: "column",
+            gap: 8,
             width: "100%",
             maxWidth: 380,
             marginTop: 14,
             padding: "0 6px"
           }}
         >
-          <button
-            type="button"
-            onClick={handleDownloadPDF}
-            style={{
-              flex: 1,
-              padding: "11px 16px",
-              borderRadius: 12,
-              background: "var(--forest)",
-              color: "#fff",
-              border: "none",
-              fontWeight: 800,
-              fontSize: 13,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              boxShadow: "0 4px 12px rgba(31, 77, 58, 0.35)",
-              transition: "transform 0.15s ease"
-            }}
-          >
-            <Download size={16} /> Télécharger le Reçu PDF
-          </button>
+          <div style={{ display: "flex", gap: 8, width: "100%" }}>
+            <button
+              type="button"
+              onClick={handleDownloadPDF}
+              style={{
+                flex: 1,
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "var(--forest)",
+                color: "#fff",
+                border: "none",
+                fontWeight: 800,
+                fontSize: 12.5,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                boxShadow: "0 4px 12px rgba(31, 77, 58, 0.35)",
+                transition: "transform 0.15s ease"
+              }}
+            >
+              <Download size={15} /> Télécharger PDF
+            </button>
 
-          <button
-            type="button"
-            onClick={onContinue || onClose}
-            style={{
-              flex: 1,
-              padding: "11px 16px",
-              borderRadius: 12,
-              background: "#FFFFFF",
-              border: "1px solid #CBD5E1",
-              color: "#1E293B",
-              fontWeight: 800,
-              fontSize: 13,
-              cursor: "pointer",
-              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)"
-            }}
-          >
-            {onContinue ? "Continuer" : "Fermer"}
-          </button>
+            <button
+              type="button"
+              onClick={handleShare}
+              title="Partager la facture directement sur WhatsApp"
+              style={{
+                flex: 1,
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "#25D366",
+                color: "#fff",
+                border: "none",
+                fontWeight: 800,
+                fontSize: 12.5,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                boxShadow: "0 4px 12px rgba(37, 211, 102, 0.35)",
+                transition: "transform 0.15s ease"
+              }}
+            >
+              <MessageCircle size={15} /> Partager Facture
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => window.print()}
-            title="Imprimer sur imprimante physique"
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 12,
-              background: "#F1F5F9",
-              border: "1px solid #CBD5E1",
-              color: "#475569",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              flexShrink: 0
-            }}
-          >
-            <Printer size={16} />
-          </button>
+          <div style={{ display: "flex", gap: 8, width: "100%" }}>
+            <button
+              type="button"
+              onClick={onContinue || onClose}
+              style={{
+                flex: 1,
+                padding: "9px 14px",
+                borderRadius: 12,
+                background: "#FFFFFF",
+                border: "1px solid #CBD5E1",
+                color: "#1E293B",
+                fontWeight: 800,
+                fontSize: 12.5,
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)"
+              }}
+            >
+              {onContinue ? "Continuer" : "Fermer"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => window.print()}
+              title="Imprimer sur imprimante physique"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                background: "#F1F5F9",
+                border: "1px solid #CBD5E1",
+                color: "#475569",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                flexShrink: 0
+              }}
+            >
+              <Printer size={15} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

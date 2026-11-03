@@ -3,7 +3,7 @@ import { toast } from "react-hot-toast";
 import { 
   PlusCircle, Edit, Trash2, Shield, Lock, CheckCircle, Ban, User, AlertCircle, X, 
   ShieldCheck, UserCheck, Key, Settings, Layers, Package, ShoppingCart, Image, Eye, 
-  EyeOff, Copy, RefreshCw, Send, CreditCard, History, ShoppingBag, ClipboardList, Award, Smartphone, Truck, Scale, MessageCircle
+  EyeOff, Copy, RefreshCw, Send, CreditCard, History, ShoppingBag, ClipboardList, Award, Smartphone, Truck, Scale, MessageCircle, FileText
 } from "lucide-react";
 import api from "../../api";
 import TablePagination from "../../components/TablePagination";
@@ -19,6 +19,10 @@ const PERMISSIONS_LIST = [
   { key: "creer_demande", label: "Ajouter & Créer un Devis", desc: "Créer et enregistrer de nouvelles demandes et devis sur-mesure", icon: PlusCircle },
   { key: "gerer_demandes", label: "Chiffrer & Modifier Devis", desc: "Modifier et chiffrer les propositions de devis et commandes spéciales", icon: ClipboardList },
   { key: "supprimer_demandes", label: "Supprimer Demandes & Devis", desc: "Supprimer définitivement des demandes de devis", icon: Trash2 },
+  { key: "voir_depenses", label: "Consulter les Dépenses", desc: "Voir la liste des dépenses et les totaux", icon: FileText },
+  { key: "creer_depense", label: "Ajouter des Dépenses", desc: "Créer et enregistrer de nouvelles dépenses", icon: PlusCircle },
+  { key: "modifier_depense", label: "Modifier les Dépenses", desc: "Éditer et mettre à jour les dépenses existantes", icon: Edit },
+  { key: "supprimer_depense", label: "Supprimer les Dépenses", desc: "Supprimer définitivement des dépenses enregistrées", icon: Trash2 },
   { key: "voir_produits", label: "Consulter le Catalogue Produits", desc: "Voir la liste des articles et stocks disponibles", icon: Package },
   { key: "ajouter_modifier_produit", label: "Ajouter & Modifier des Produits", desc: "Créer ou éditer les fiches articles, prix et variantes", icon: Package },
   { key: "supprimer_produit", label: "Supprimer des Produits", desc: "Supprimer définitivement des articles du catalogue", icon: Trash2 },

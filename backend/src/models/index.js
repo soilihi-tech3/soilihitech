@@ -113,9 +113,21 @@ PhoneModel.belongsTo(PhoneBrand, { foreignKey: "brandId", as: "brand" });
 Boutique.hasMany(PhoneModel, { foreignKey: "boutiqueId" });
 PhoneModel.belongsTo(Boutique, { foreignKey: "boutiqueId" });
 
+const Expense = require("./Expense");
+Boutique.hasMany(Expense, { foreignKey: "boutiqueId", as: "expenses" });
+Expense.belongsTo(Boutique, { foreignKey: "boutiqueId" });
+User.hasMany(Expense, { foreignKey: "creeParId", as: "expensesCrees" });
+Expense.belongsTo(User, { foreignKey: "creeParId", as: "creePar" });
+
+const Saving = require("./Saving");
+Boutique.hasMany(Saving, { foreignKey: "boutiqueId", as: "savings" });
+Saving.belongsTo(Boutique, { foreignKey: "boutiqueId" });
+User.hasMany(Saving, { foreignKey: "creeParId", as: "savingsCrees" });
+Saving.belongsTo(User, { foreignKey: "creeParId", as: "creePar" });
+
 module.exports = { 
   sequelize, Boutique, User, Category, Product, Order, OrderItem, 
   Review, Notification, Famille, Fournisseur, UniteVente, Achat, Marque, EmailLog, RechargePlan,
-  Testimonial, CustomOrderRequest, PhoneBrand, PhoneModel
+  Testimonial, CustomOrderRequest, PhoneBrand, PhoneModel, Expense, Saving
 };
 

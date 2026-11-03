@@ -300,20 +300,15 @@ export default function DemandesSpeciales() {
 
   function sendWhatsAppQuote(req) {
     const cleanPhone = (req.telephoneClient || "").replace(/[^0-9]/g, "");
-    if (!cleanPhone) {
-      toast.error("Numéro de téléphone client manquant.");
-      return;
-    }
-
-    const articlesLines = (req.articles || [])
-      .map((a, i) => `• ${a.nom} (x${a.quantite}) : ${Number(a.prixUnitaire) ? fcfa(Number(a.prixUnitaire) * Number(a.quantite || 1)) : "À confirmer"}`)
-      .join("\n");
-
     const totalDevisCalc = Number(req.totalPropose || 0) + Number(req.fraisLivraison || 0);
+    const clientName = req.nomClient ? ` ${req.nomClient}` : "";
+    const text = `Bonjour${clientName},\n\nVoici votre facture #${req.code}.\nTotal : ${fcfa(totalDevisCalc)}`;
 
-    const text = `Bonjour ${req.nomClient},\n\nVoici le chiffrage de votre demande sur-mesure *#${req.code}* pour votre *${req.modeleAppareil}* chez *Soilihitech* :\n\n${articlesLines}\n\n*Total :* ${fcfa(totalDevisCalc)}\n${req.messageAdmin ? `\n*Note :* ${req.messageAdmin}\n` : ""}\nVous pouvez consulter et valider directement votre devis ici :\n${window.location.origin}/demande/${req.code}`;
+    const waUrl = cleanPhone
+      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
 
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, "_blank");
+    window.location.href = waUrl;
   }
 
   // --- CRÉATION DIRECTE ---
