@@ -1499,40 +1499,42 @@ export default function DemandesSpeciales() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {editForm.articles.map((art, idx) => (
                     <div key={idx} style={{
-                      display: "flex", gap: 8, alignItems: "center",
-                      background: "#F8FAFC", border: "1px solid #E2E8F0", padding: "8px 12px", borderRadius: 10
+                      display: "flex", gap: 6, alignItems: "center",
+                      background: "#F8FAFC", border: "1px solid #E2E8F0", padding: "6px 8px", borderRadius: 10
                     }}>
-                      <div style={{ flex: 2 }}>
+                      <div style={{ flex: 1, minWidth: 100 }}>
                         <input
                           type="text"
                           required
                           className="bs-input"
-                          style={{ height: 36, fontSize: 13 }}
-                          placeholder="Nom de l'accessoire"
+                          style={{ height: 38, fontSize: 13.5, width: "100%", padding: "0 10px" }}
+                          placeholder="Article / accessoire..."
                           value={art.nom}
                           onChange={(e) => handleUpdateEditArticleField(idx, "nom", e.target.value)}
                         />
                       </div>
-                      <div style={{ width: 80 }}>
+                      <div style={{ width: 52, flexShrink: 0 }}>
                         <input
                           type="number"
                           min="1"
                           required
                           className="bs-input"
-                          style={{ height: 36, fontSize: 13, textAlign: "center" }}
+                          style={{ height: 38, fontSize: 13.5, fontWeight: 700, textAlign: "center", width: "100%", padding: "0 2px" }}
                           placeholder="Qté"
+                          title="Quantité"
                           value={art.quantite}
                           onChange={(e) => handleUpdateEditArticleField(idx, "quantite", Math.max(1, parseInt(e.target.value) || 1))}
                         />
                       </div>
-                      <div style={{ width: 130 }}>
+                      <div style={{ width: 78, flexShrink: 0 }}>
                         <input
                           type="number"
                           min="0"
                           step="50"
                           className="bs-input"
-                          style={{ height: 36, fontSize: 13, textAlign: "right", fontWeight: 700 }}
-                          placeholder="Prix U. (KMF)"
+                          style={{ height: 38, fontSize: 13, textAlign: "right", fontWeight: 700, width: "100%", padding: "0 6px" }}
+                          placeholder="Prix U."
+                          title="Prix unitaire"
                           value={art.prixUnitaire}
                           onChange={(e) => handleUpdateEditArticleField(idx, "prixUnitaire", e.target.value)}
                         />
@@ -1543,11 +1545,13 @@ export default function DemandesSpeciales() {
                           onClick={() => handleRemoveEditArticleField(idx)}
                           style={{
                             background: "#FEE2E2", border: "none", color: "#DC2626",
-                            padding: 8, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center"
+                            width: 32, height: 38, borderRadius: 8, cursor: "pointer",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            flexShrink: 0, padding: 0
                           }}
                           title="Supprimer la ligne"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={15} />
                         </button>
                       )}
                     </div>
@@ -1868,40 +1872,42 @@ export default function DemandesSpeciales() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {createForm.articles.map((art, idx) => (
                     <div key={idx} style={{
-                      display: "flex", gap: 8, alignItems: "center",
-                      background: "#F8FAFC", border: "1px solid #E2E8F0", padding: "8px 12px", borderRadius: 10
+                      display: "flex", gap: 6, alignItems: "center",
+                      background: "#F8FAFC", border: "1px solid #E2E8F0", padding: "6px 8px", borderRadius: 10
                     }}>
-                      <div style={{ flex: 2 }}>
+                      <div style={{ flex: 1, minWidth: 100 }}>
                         <input
                           type="text"
                           required
                           className="bs-input"
-                          style={{ height: 36, fontSize: 13 }}
-                          placeholder="Ex: Écran OLED, Coque Silicone Noire..."
+                          style={{ height: 38, fontSize: 13.5, width: "100%", padding: "0 10px" }}
+                          placeholder="Article / accessoire..."
                           value={art.nom}
                           onChange={(e) => handleUpdateArticleField(idx, "nom", e.target.value)}
                         />
                       </div>
-                      <div style={{ width: 80 }}>
+                      <div style={{ width: 52, flexShrink: 0 }}>
                         <input
                           type="number"
                           min="1"
                           required
                           className="bs-input"
-                          style={{ height: 36, fontSize: 13, textAlign: "center" }}
+                          style={{ height: 38, fontSize: 13.5, fontWeight: 700, textAlign: "center", width: "100%", padding: "0 2px" }}
                           placeholder="Qté"
+                          title="Quantité"
                           value={art.quantite}
                           onChange={(e) => handleUpdateArticleField(idx, "quantite", Math.max(1, parseInt(e.target.value) || 1))}
                         />
                       </div>
-                      <div style={{ width: 130 }}>
+                      <div style={{ width: 78, flexShrink: 0 }}>
                         <input
                           type="number"
                           min="0"
                           step="50"
                           className="bs-input"
-                          style={{ height: 36, fontSize: 13, textAlign: "right", fontWeight: 700 }}
-                          placeholder="Prix U. (KMF)"
+                          style={{ height: 38, fontSize: 13, textAlign: "right", fontWeight: 700, width: "100%", padding: "0 6px" }}
+                          placeholder="Prix U."
+                          title="Prix unitaire"
                           value={art.prixUnitaire}
                           onChange={(e) => handleUpdateArticleField(idx, "prixUnitaire", e.target.value)}
                         />
@@ -1912,11 +1918,13 @@ export default function DemandesSpeciales() {
                           onClick={() => handleRemoveArticleField(idx)}
                           style={{
                             background: "#FEE2E2", border: "none", color: "#DC2626",
-                            padding: 8, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center"
+                            width: 32, height: 38, borderRadius: 8, cursor: "pointer",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            flexShrink: 0, padding: 0
                           }}
                           title="Supprimer la ligne"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={15} />
                         </button>
                       )}
                     </div>
