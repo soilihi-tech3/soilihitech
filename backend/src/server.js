@@ -100,6 +100,7 @@ app.use("/uploads", express.static(uploadsPath, {
 
 // Root Endpoint Health Check
 app.get("/", (req, res) => res.json({ message: "API Boutique SaaS Comores Biachara en ligne.", status: "ok" }));
+app.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
 app.get("/api/health", (req, res) => res.json({ status: "ok", version: "2.3.0-devis-employe", timestamp: new Date().toISOString() }));
 
 // Diagnostic UnitechPay & Outbound IP

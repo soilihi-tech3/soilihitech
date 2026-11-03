@@ -726,14 +726,19 @@ router.patch("/orders/:id/assign", async (req, res, next) => {
 });
 
 router.put("/orders/:id", requireRole("admin", "employe"), async (req, res, next) => {
+  const t = await sequelize.transaction();
   try {
     const order = await Order.findOne({
       where: { id: req.params.id, boutiqueId: req.boutiqueId },
-      include: [{ model: OrderItem, as: "items" }]
+      include: [{ model: OrderItem, as: "items" }],
+      transaction: t
     });
-    if (!order) return res.status(404).json({ message: "Vente / commande introuvable." });
+    if (!order) {
+      await t.rollback();
+      return res.status(404).json({ message: "Vente / commande introuvable." });
+    }
 
-    const { moyenPaiement, statut, notes, clientNom, clientTelephone, adresseLivraison } = req.body;
+    const { moyenPaiement, statut, notes, clientNom, clientTelephone, adresseLivraison, items, devise } = req.body;
 
     const updates = {};
     if (moyenPaiement !== undefined) updates.moyenPaiement = moyenPaiement;
@@ -742,13 +747,94 @@ router.put("/orders/:id", requireRole("admin", "employe"), async (req, res, next
     if (clientTelephone !== undefined) updates.clientTelephone = clientTelephone;
     if (adresseLivraison !== undefined) updates.adresseLivraison = adresseLivraison;
     if (statut !== undefined) updates.statut = statut;
+    if (devise !== undefined) updates.devise = devise;
 
-    await order.update(updates);
+    // Si des items de panier sont fournis pour modification
+    if (Array.isArray(items) && items.length > 0) {
+      // 1. Re-crediter le stock des anciens items
+      if (order.items && order.items.length > 0) {
+        for (const oldIt of order.items) {
+          if (oldIt.productId) {
+            const p = await Product.findByPk(oldIt.productId, { transaction: t });
+            if (p) {
+              await p.update({
+                stock: (p.stock || 0) + oldIt.quantite,
+                ventesCount: Math.max(0, (p.ventesCount || 0) - oldIt.quantite)
+              }, { transaction: t });
+            }
+          }
+        }
+        await OrderItem.destroy({ where: { orderId: order.id }, transaction: t });
+      }
+
+      // 2. Creer les nouveaux items et deduire le stock
+      const saleCurrency = updates.devise || order.devise || "KMF";
+      let newSousTotal = 0;
+
+      for (const it of items) {
+        const p = await Product.findOne({ where: { id: it.productId, boutiqueId: req.boutiqueId }, transaction: t });
+        if (!p) {
+          await t.rollback();
+          return res.status(404).json({ message: `Produit ID ${it.productId} introuvable.` });
+        }
+
+        let prixEffectif = 0;
+        if (it.prixVendu !== undefined && it.prixVendu !== null && !isNaN(Number(it.prixVendu)) && Number(it.prixVendu) > 0) {
+          prixEffectif = Number(it.prixVendu);
+        } else if (it.prixUnitaire !== undefined && it.prixUnitaire !== null && !isNaN(Number(it.prixUnitaire)) && Number(it.prixUnitaire) > 0) {
+          prixEffectif = Number(it.prixUnitaire);
+        } else if (saleCurrency === "FCFA") {
+          prixEffectif = p.enPromo && p.prixPromoSenegal ? Number(p.prixPromoSenegal) : Number(p.prixSenegal || p.prix);
+        } else {
+          prixEffectif = p.enPromo && p.prixPromo ? Number(p.prixPromo) : Number(p.prix);
+        }
+
+        const chosenModele = it.selectedModele || it.modele || null;
+        const chosenCouleur = it.selectedCouleur || it.couleur || null;
+        const chosenSenteur = it.selectedSenteur || it.senteur || null;
+        const chosenImage = it.selectedImageUrl || it.imageUrl || null;
+
+        await OrderItem.create({
+          orderId: order.id,
+          productId: it.productId,
+          quantite: it.quantite,
+          prixUnitaire: prixEffectif,
+          modele: chosenModele,
+          couleur: chosenCouleur || chosenSenteur,
+          imageUrl: chosenImage
+        }, { transaction: t });
+
+        p.stock = Math.max(0, (p.stock || 0) - it.quantite);
+        p.ventesCount = (p.ventesCount || 0) + it.quantite;
+        await p.save({ transaction: t });
+
+        newSousTotal += prixEffectif * it.quantite;
+      }
+
+      updates.sousTotal = newSousTotal;
+      updates.total = newSousTotal + (order.fraisLivraison || 0);
+    }
+
+    await order.update(updates, { transaction: t });
+    await t.commit();
+
+    const fullOrder = await Order.findByPk(order.id, {
+      include: [
+        { model: OrderItem, as: "items", include: [{ model: Product, as: "product" }] },
+        { model: User, as: "client", attributes: ["nom", "telephone"] },
+        { model: User, as: "employeAssigne", attributes: ["nom"] }
+      ]
+    });
+
     purgeCache();
     broadcast("order_updated", { orderId: order.id, boutiqueId: req.boutiqueId });
+    broadcast("product_updated", { boutiqueId: req.boutiqueId });
 
-    res.json(order);
-  } catch (err) { next(err); }
+    res.json(fullOrder);
+  } catch (err) {
+    await t.rollback();
+    next(err);
+  }
 });
 
 router.delete("/orders/:id", requireRole("admin", "employe"), async (req, res, next) => {

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { 
   ShoppingCart, Search, Plus, Minus, Trash2, CheckCircle, Printer, X, CreditCard, 
@@ -87,6 +88,8 @@ export function getProductVariants(p) {
 }
 
 export default function VenteDirecte() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { boutique } = useAuth();
   const { isOnline, pendingCount } = useOffline();
   const storeName = boutique?.nom || "Marché Vert";
@@ -103,11 +106,78 @@ export default function VenteDirecte() {
   const [mobileTab, setMobileTab] = useState("produits"); // 'produits' | 'panier'
   const [activeCurrency, setActiveCurrency] = useState(() => getActiveCurrency());
 
+  // Mode modification d'une vente existante
+  const [editingOrder, setEditingOrder] = useState(null);
+
   // Modal sélection d'une variante spécifique
   const [selectedProductForVariants, setSelectedProductForVariants] = useState(null);
 
   // Encaissement & Rendu monnaie
   const [montantRecu, setMontantRecu] = useState("");
+
+  useEffect(() => {
+    let orderToEdit = location.state?.editOrder;
+    if (!orderToEdit) {
+      const saved = sessionStorage.getItem("pos_edit_order");
+      if (saved) {
+        try {
+          orderToEdit = JSON.parse(saved);
+        } catch (e) {}
+      }
+    }
+
+    if (orderToEdit && orderToEdit.id) {
+      setEditingOrder(orderToEdit);
+      if (orderToEdit.clientNom || orderToEdit.client?.nom) {
+        setClientNom(orderToEdit.clientNom || orderToEdit.client?.nom || "");
+      }
+      if (orderToEdit.clientTelephone || orderToEdit.client?.telephone) {
+        setClientTelephone(orderToEdit.clientTelephone || orderToEdit.client?.telephone || "");
+      }
+      if (orderToEdit.moyenPaiement) {
+        setMoyenPaiement(orderToEdit.moyenPaiement);
+      }
+      if (orderToEdit.devise) {
+        setActiveCurrency(orderToEdit.devise);
+      }
+
+      const items = orderToEdit.items || [];
+      if (items.length > 0) {
+        const restoredCart = items.map((it, idx) => {
+          const p = it.product || {
+            id: it.productId,
+            nom: it.nom || "Article",
+            prix: it.prixUnitaire
+          };
+          const variantLabel = [it.modele, it.couleur].filter(Boolean).join(" · ") || null;
+          return {
+            cartKey: `edit_${it.id || it.productId}_${idx}`,
+            product: p,
+            quantite: Number(it.quantite) || 1,
+            selectedModele: it.modele || null,
+            selectedCouleur: it.couleur || null,
+            selectedSenteur: null,
+            selectedImageUrl: it.imageUrl || p.imageUrl,
+            prixVendu: (it.prixUnitaire !== undefined && it.prixUnitaire !== null) ? String(it.prixUnitaire) : "",
+            variantLabel,
+            stockMax: 9999
+          };
+        });
+        setCart(restoredCart);
+        setMobileTab("panier"); // Amener directement sur le panier pour voir/modifier les articles
+      }
+    }
+  }, [location.state]);
+
+  function handleCancelEdit() {
+    setEditingOrder(null);
+    try { sessionStorage.removeItem("pos_edit_order"); } catch (e) {}
+    setCart([]);
+    setClientNom("");
+    setClientTelephone("");
+    setMontantRecu("");
+    toast.success("Mode modification annulé.");
+  }
 
   const paymentMethods = activeCurrency === "FCFA" ? [
     { value: "cash", label: "Espèces / Cash" },
@@ -414,7 +484,15 @@ export default function VenteDirecte() {
     }
 
     try {
-      const res = await api.post("/admin/ventes/directe", saleData);
+      let res;
+      if (editingOrder) {
+        res = await api.put(`/admin/orders/${editingOrder.id}`, saleData);
+        toast.success(`Vente #${editingOrder.id} modifiée avec succès !`);
+        setEditingOrder(null);
+        try { sessionStorage.removeItem("pos_edit_order"); } catch (e) {}
+      } else {
+        res = await api.post("/admin/ventes/directe", saleData);
+      }
 
       setCompletedSale({
         ...res.data,
@@ -428,7 +506,7 @@ export default function VenteDirecte() {
       setMontantRecu("");
       load(); // Recharge le catalogue et les stocks
     } catch (err) {
-      if (!err.response || err.code === "ERR_NETWORK" || err.message?.includes("Network Error")) {
+      if (!editingOrder && (!err.response || err.code === "ERR_NETWORK" || err.message?.includes("Network Error"))) {
         await processOfflineSale();
       } else {
         toast.error(err.response?.data?.message || "Erreur lors de la validation de la vente.");
@@ -485,6 +563,46 @@ export default function VenteDirecte() {
               {pendingCount} en attente
             </span>
           )}
+        </div>
+      )}
+
+      {editingOrder && (
+        <div style={{
+          background: "linear-gradient(135deg, #1E3A8A, #2563EB)",
+          color: "#fff",
+          padding: "14px 18px",
+          borderRadius: 12,
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 12,
+          boxShadow: "0 4px 15px rgba(37,99,235,0.2)"
+        }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>
+              Modification de la Vente #{editingOrder.id} ({editingOrder.client?.nom || editingOrder.clientNom || "Client comptoir"})
+            </div>
+            <div style={{ fontSize: 12.5, opacity: 0.9, marginTop: 2 }}>
+              Articles recharges dans votre panier direct. Vous pouvez ajouter des articles, ajuster les quantites ou en supprimer, puis enregistrer.
+            </div>
+          </div>
+          <button
+            onClick={handleCancelEdit}
+            style={{
+              background: "rgba(255,255,255,0.2)",
+              border: "1px solid rgba(255,255,255,0.4)",
+              color: "#fff",
+              borderRadius: 8,
+              padding: "7px 14px",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer"
+            }}
+          >
+            Annuler la modification
+          </button>
         </div>
       )}
 
@@ -976,6 +1094,8 @@ export default function VenteDirecte() {
             >
               {loading ? (
                 "Validation en cours..."
+              ) : editingOrder ? (
+                <><CheckCircle size={18} /> Enregistrer les modifications ({activeCurrency})</>
               ) : (
                 <><CheckCircle size={18} /> Valider la Vente Directe ({activeCurrency})</>
               )}

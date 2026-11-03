@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 import React, { useEffect, useState } from "react";
 import { 
@@ -30,11 +31,19 @@ const MONTHS = [
 ];
 
 export default function SalesHistory() {
+  const navigate = useNavigate();
   const { user, boutique } = useAuth();
   const storeName = boutique?.nom || "Marché Vert";
   const [orders, setOrders] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  function handleEditOrderCart(order) {
+    try {
+      sessionStorage.setItem("pos_edit_order", JSON.stringify(order));
+    } catch (e) {}
+    navigate("/admin/vente", { state: { editOrder: order, tab: "panier" } });
+  }
 
   // Filter state
   const [search, setSearch] = useState("");
@@ -604,15 +613,8 @@ export default function SalesHistory() {
                         <>
                           <button
                             className="bs-icon-btn"
-                            title="Modifier cette vente (Admin)"
-                            onClick={() => setEditingOrder({
-                              id: o.id,
-                              moyenPaiement: o.moyenPaiement || "cash",
-                              statut: o.statut || "recuperee",
-                              clientNom: o.client?.nom || o.clientNom || "",
-                              clientTelephone: o.client?.telephone || o.clientTelephone || "",
-                              notes: o.notes || ""
-                            })}
+                            title="Modifier le panier de cette vente"
+                            onClick={() => handleEditOrderCart(o)}
                             style={{ color: "var(--forest-dark)" }}
                           >
                             <Pencil size={15} />
