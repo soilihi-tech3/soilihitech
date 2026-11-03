@@ -3,7 +3,7 @@ const bcrypt = require("bcryptjs");
 const { Op } = require("sequelize");
 const { sequelize, Product, Category, Order, OrderItem, User, Boutique, Notification, Review, Famille, Fournisseur, UniteVente, Achat, Marque, Testimonial } = require("../models");
 const { authenticate, requireRole, requireOwnBoutique } = require("../middleware/auth");
-const { clearCachePattern } = require("../config/cache");
+const { getCache, setCache, clearCachePattern } = require("../config/cache");
 const { broadcast } = require("../utils/broadcaster");
 const { sendOrderStatusEmail } = require("../services/email.service");
 
@@ -13,6 +13,8 @@ function purgeCache() {
   clearCachePattern("/api/store").catch(() => {});
   clearCachePattern("store").catch(() => {});
   clearCachePattern("/api/boutique").catch(() => {});
+  clearCachePattern("admin:products").catch(() => {});
+  clearCachePattern("cache:b").catch(() => {});
 }
 
 router.use(authenticate, requireRole("admin", "employe"), requireOwnBoutique);
@@ -446,11 +448,60 @@ router.delete("/categories/:id", async (req, res, next) => {
 
 router.get("/products", async (req, res, next) => {
   try {
-    res.json(await Product.findAll({ 
+    const { page, limit, paginated, search, categorieId } = req.query;
+    const cacheKey = `admin:products:${req.boutiqueId}:${req.originalUrl || req.url}`;
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    if (paginated === "true" || page) {
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+      const offset = (pageNum - 1) * limitNum;
+
+      const where = { boutiqueId: req.boutiqueId };
+      if (search && search.trim()) {
+        const q = `%${search.trim()}%`;
+        where[Op.or] = [
+          { nom: { [Op.like]: q } },
+          { description: { [Op.like]: q } }
+        ];
+      }
+      if (categorieId) where.categorieId = categorieId;
+
+      const { count, rows } = await Product.findAndCountAll({ 
+        where, 
+        include: [Category, { model: Fournisseur, as: "fournisseur" }, { model: Marque, as: "marque" }], 
+        order: [["createdAt", "DESC"]],
+        limit: limitNum,
+        offset
+      });
+
+      const result = {
+        items: rows,
+        total: count,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(count / limitNum),
+        hasMore: offset + rows.length < count
+      };
+
+      await setCache(cacheKey, result, 180);
+      res.setHeader("X-Cache", "MISS");
+      return res.json(result);
+    }
+
+    const items = await Product.findAll({ 
       where: { boutiqueId: req.boutiqueId }, 
       include: [Category, { model: Fournisseur, as: "fournisseur" }, { model: Marque, as: "marque" }], 
       order: [["createdAt", "DESC"]] 
-    }));
+    });
+
+    await setCache(cacheKey, items, 180);
+    res.setHeader("X-Cache", "MISS");
+    res.json(items);
   } catch (err) { next(err); }
 });
 
@@ -668,7 +719,7 @@ router.patch("/orders/:id/assign", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.put("/orders/:id", requireRole("admin"), async (req, res, next) => {
+router.put("/orders/:id", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const order = await Order.findOne({
       where: { id: req.params.id, boutiqueId: req.boutiqueId },
@@ -694,7 +745,7 @@ router.put("/orders/:id", requireRole("admin"), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.delete("/orders/:id", requireRole("admin"), async (req, res, next) => {
+router.delete("/orders/:id", requireRole("admin", "employe"), async (req, res, next) => {
   const t = await sequelize.transaction();
   try {
     const order = await Order.findOne({
@@ -890,7 +941,7 @@ router.delete("/employees/:id", requireRole("admin"), async (req, res, next) => 
 
 /* ---------------------- GESTION DES CLIENTS ---------------------- */
 
-router.get("/clients", requireRole("admin"), async (req, res, next) => {
+router.get("/clients", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const clients = await User.findAll({
       where: { role: "client", isEmailVerified: true },
@@ -901,7 +952,7 @@ router.get("/clients", requireRole("admin"), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post("/clients", requireRole("admin"), async (req, res, next) => {
+router.post("/clients", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const { nom, email, telephone, motDePasse } = req.body;
     const cleanEmail = email ? String(email).trim().toLowerCase() : null;
@@ -934,7 +985,7 @@ router.post("/clients", requireRole("admin"), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.put("/clients/:id", requireRole("admin"), async (req, res, next) => {
+router.put("/clients/:id", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const client = await User.findOne({ where: { id: req.params.id, role: "client" } });
     if (!client) return res.status(404).json({ message: "Client introuvable." });
@@ -957,7 +1008,7 @@ router.put("/clients/:id", requireRole("admin"), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.patch("/clients/:id/status", requireRole("admin"), async (req, res, next) => {
+router.patch("/clients/:id/status", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const client = await User.findOne({ where: { id: req.params.id, role: "client" } });
     if (!client) return res.status(404).json({ message: "Client introuvable." });
@@ -968,7 +1019,7 @@ router.patch("/clients/:id/status", requireRole("admin"), async (req, res, next)
   } catch (err) { next(err); }
 });
 
-router.delete("/clients/:id", requireRole("admin"), async (req, res, next) => {
+router.delete("/clients/:id", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const client = await User.findOne({ where: { id: req.params.id, role: "client" } });
     if (!client) return res.status(404).json({ message: "Client introuvable." });
@@ -1112,7 +1163,11 @@ router.post("/ventes/directe", async (req, res, next) => {
       if (!p) return res.status(404).json({ message: `Produit ID ${it.productId} introuvable.` });
       
       let prixEffectif = 0;
-      if (saleCurrency === "FCFA") {
+      if (it.prixVendu !== undefined && it.prixVendu !== null && !isNaN(Number(it.prixVendu)) && Number(it.prixVendu) > 0) {
+        prixEffectif = Number(it.prixVendu);
+      } else if (it.prixUnitaire !== undefined && it.prixUnitaire !== null && !isNaN(Number(it.prixUnitaire)) && Number(it.prixUnitaire) > 0) {
+        prixEffectif = Number(it.prixUnitaire);
+      } else if (saleCurrency === "FCFA") {
         prixEffectif = p.enPromo && p.prixPromoSenegal ? Number(p.prixPromoSenegal) : Number(p.prixSenegal || p.prix);
       } else {
         prixEffectif = p.enPromo && p.prixPromo ? Number(p.prixPromo) : Number(p.prix);
@@ -1140,17 +1195,81 @@ router.post("/ventes/directe", async (req, res, next) => {
 
     // Enregistrement des items et décrémentation directe des stocks
     for (const it of items) {
+      const chosenModele = it.selectedModele || it.modele || null;
+      const chosenCouleur = it.selectedCouleur || it.couleur || null;
+      const chosenSenteur = it.selectedSenteur || it.senteur || null;
+      const chosenImage = it.selectedImageUrl || it.imageUrl || null;
+
       await OrderItem.create({
         orderId: order.id,
         productId: it.productId,
         quantite: it.quantite,
-        prixUnitaire: it.prixUnitaire
+        prixUnitaire: it.prixUnitaire,
+        modele: chosenModele,
+        couleur: chosenCouleur || chosenSenteur,
+        imageUrl: chosenImage
       });
 
       const p = await Product.findByPk(it.productId);
       if (p) {
         p.stock = Math.max(0, p.stock - it.quantite);
         p.ventesCount = (p.ventesCount || 0) + it.quantite;
+
+        // Décrémenter la couleur spécifique si vendue
+        if (chosenCouleur && p.couleurs) {
+          let list = typeof p.couleurs === "string" ? JSON.parse(p.couleurs) : p.couleurs;
+          if (Array.isArray(list)) {
+            list = list.map(c => {
+              if (c.nom && String(c.nom).trim().toLowerCase() === String(chosenCouleur).trim().toLowerCase()) {
+                const cur = c.quantite !== undefined && c.quantite !== null ? Number(c.quantite) : (c.stock !== undefined && c.stock !== null ? Number(c.stock) : null);
+                if (cur !== null) {
+                  const updated = Math.max(0, cur - it.quantite);
+                  return { ...c, quantite: updated, stock: updated };
+                }
+              }
+              return c;
+            });
+            p.couleurs = list;
+          }
+        }
+
+        // Décrémenter le modèle spécifique si vendu
+        if (chosenModele && p.modelesCompatibles) {
+          let list = typeof p.modelesCompatibles === "string" ? JSON.parse(p.modelesCompatibles) : p.modelesCompatibles;
+          if (Array.isArray(list)) {
+            list = list.map(m => {
+              const mNom = m.nomComplet || m.nom;
+              if (mNom && String(mNom).trim().toLowerCase() === String(chosenModele).trim().toLowerCase()) {
+                const cur = m.quantite !== undefined && m.quantite !== null ? Number(m.quantite) : (m.stock !== undefined && m.stock !== null ? Number(m.stock) : null);
+                if (cur !== null) {
+                  const updated = Math.max(0, cur - it.quantite);
+                  return { ...m, quantite: updated, stock: updated };
+                }
+              }
+              return m;
+            });
+            p.modelesCompatibles = list;
+          }
+        }
+
+        // Décrémenter la senteur spécifique si vendue
+        if (chosenSenteur && p.senteurs) {
+          let list = typeof p.senteurs === "string" ? JSON.parse(p.senteurs) : p.senteurs;
+          if (Array.isArray(list)) {
+            list = list.map(s => {
+              if (s.nom && String(s.nom).trim().toLowerCase() === String(chosenSenteur).trim().toLowerCase()) {
+                const cur = s.quantite !== undefined && s.quantite !== null ? Number(s.quantite) : (s.stock !== undefined && s.stock !== null ? Number(s.stock) : null);
+                if (cur !== null) {
+                  const updated = Math.max(0, cur - it.quantite);
+                  return { ...s, quantite: updated, stock: updated };
+                }
+              }
+              return s;
+            });
+            p.senteurs = list;
+          }
+        }
+
         await p.save();
       }
     }
@@ -1199,7 +1318,7 @@ router.put("/fournisseurs/:id", requireRole("admin", "employe"), async (req, res
   } catch (err) { next(err); }
 });
 
-router.delete("/fournisseurs/:id", requireRole("admin"), async (req, res, next) => {
+router.delete("/fournisseurs/:id", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const fourn = await Fournisseur.findOne({ where: { id: req.params.id, boutiqueId: req.boutiqueId } });
     if (!fourn) return res.status(404).json({ message: "Fournisseur introuvable." });
@@ -1246,7 +1365,7 @@ router.put("/unites/:id", requireRole("admin", "employe"), async (req, res, next
   } catch (err) { next(err); }
 });
 
-router.delete("/unites/:id", requireRole("admin"), async (req, res, next) => {
+router.delete("/unites/:id", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const unite = await UniteVente.findOne({ where: { id: req.params.id, boutiqueId: req.boutiqueId } });
     if (!unite) return res.status(404).json({ message: "Unité introuvable." });
@@ -1354,7 +1473,7 @@ router.post("/achats", requireRole("admin", "employe"), async (req, res, next) =
   } catch (err) { next(err); }
 });
 
-router.put("/achats/:id", requireRole("admin"), async (req, res, next) => {
+router.put("/achats/:id", requireRole("admin", "employe"), async (req, res, next) => {
   const t = await sequelize.transaction();
   try {
     const achat = await Achat.findOne({
@@ -1409,7 +1528,7 @@ router.put("/achats/:id", requireRole("admin"), async (req, res, next) => {
   }
 });
 
-router.delete("/achats/:id", requireRole("admin"), async (req, res, next) => {
+router.delete("/achats/:id", requireRole("admin", "employe"), async (req, res, next) => {
   const t = await sequelize.transaction();
   try {
     const achat = await Achat.findOne({
@@ -1483,7 +1602,7 @@ router.put("/marques/:id", requireRole("admin", "employe"), async (req, res, nex
   } catch (err) { next(err); }
 });
 
-router.delete("/marques/:id", requireRole("admin"), async (req, res, next) => {
+router.delete("/marques/:id", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const marque = await Marque.findOne({ where: { id: req.params.id, boutiqueId: req.boutiqueId } });
     if (!marque) return res.status(404).json({ message: "Marque introuvable." });
@@ -1497,7 +1616,7 @@ router.delete("/marques/:id", requireRole("admin"), async (req, res, next) => {
 
 /* ---------------------- AVIS CLIENTS & RETOURS WHATSAPP ---------------------- */
 
-router.get("/testimonials", requireRole("admin"), async (req, res, next) => {
+router.get("/testimonials", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const list = await Testimonial.findAll({
       where: { boutiqueId: req.boutiqueId },
@@ -1507,7 +1626,7 @@ router.get("/testimonials", requireRole("admin"), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post("/testimonials", requireRole("admin"), async (req, res, next) => {
+router.post("/testimonials", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const { nom, photoUrl, genre, type, message, captureUrl, note, actif, ordre } = req.body;
     if (!nom || !nom.trim()) {
@@ -1531,7 +1650,7 @@ router.post("/testimonials", requireRole("admin"), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.put("/testimonials/:id", requireRole("admin"), async (req, res, next) => {
+router.put("/testimonials/:id", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const testimonial = await Testimonial.findOne({
       where: { id: req.params.id, boutiqueId: req.boutiqueId }
@@ -1544,7 +1663,7 @@ router.put("/testimonials/:id", requireRole("admin"), async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
-router.delete("/testimonials/:id", requireRole("admin"), async (req, res, next) => {
+router.delete("/testimonials/:id", requireRole("admin", "employe"), async (req, res, next) => {
   try {
     const testimonial = await Testimonial.findOne({
       where: { id: req.params.id, boutiqueId: req.boutiqueId }
@@ -1621,11 +1740,17 @@ router.post("/ai/generate-studio-photo", async (req, res, next) => {
 // --- ROUTES DEMANDES SUR-MESURE & DEVIS ---
 const {
   listAdminCustomRequests,
-  quoteCustomRequest
+  quoteCustomRequest,
+  createAdminCustomRequest,
+  updateAdminCustomRequest,
+  deleteAdminCustomRequest
 } = require("../controllers/customOrder.controller");
 
-router.get("/custom-requests", requireRole("admin"), listAdminCustomRequests);
-router.put("/custom-requests/:id/quote", requireRole("admin"), quoteCustomRequest);
+router.get("/custom-requests", requireRole("admin", "employe"), listAdminCustomRequests);
+router.post("/custom-requests", requireRole("admin", "employe"), createAdminCustomRequest);
+router.put("/custom-requests/:id", requireRole("admin", "employe"), updateAdminCustomRequest);
+router.delete("/custom-requests/:id", requireRole("admin", "employe"), deleteAdminCustomRequest);
+router.put("/custom-requests/:id/quote", requireRole("admin", "employe"), quoteCustomRequest);
 
 module.exports = router;
 

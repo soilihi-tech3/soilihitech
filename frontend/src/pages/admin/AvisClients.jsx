@@ -3,6 +3,7 @@ import { toast } from "react-hot-toast";
 import { PlusCircle, List, Trash2, Pencil, CheckCircle, Eye, EyeOff, MessageSquare, Image, Star, X } from "lucide-react";
 import api from "../../api";
 import ImageUploader from "../../components/ImageUploader.jsx";
+import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 
 export default function AdminAvisClients() {
   const [testimonials, setTestimonials] = useState([]);
@@ -171,11 +172,7 @@ export default function AdminAvisClients() {
             </thead>
             <tbody>
               {loading && (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: "center", padding: 30, color: "var(--muted)" }}>
-                    Chargement des avis...
-                  </td>
-                </tr>
+                <SkeletonTableRows rows={5} cols={7} />
               )}
               {!loading && testimonials.length === 0 && (
                 <tr>

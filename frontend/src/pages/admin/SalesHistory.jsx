@@ -56,7 +56,7 @@ export default function SalesHistory() {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(20);
 
   function loadData() {
     setLoading(true);

@@ -5,6 +5,7 @@ import api from "../../api";
 import TablePagination from "../../components/TablePagination";
 import { formatPrice } from "../../utils/currency.js";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 
 export default function Achats() {
   const { user } = useAuth();
@@ -27,8 +28,8 @@ export default function Achats() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [loading, setLoading] = useState(false);
+  const [pageSize, setPageSize] = useState(20);
+  const [loading, setLoading] = useState(true);
 
   function load(start = startDate, end = endDate) {
     setLoading(true);
@@ -368,10 +369,12 @@ export default function Achats() {
             </tr>
           </thead>
           <tbody>
-            {filteredAchats.length === 0 ? (
+            {loading ? (
+              <SkeletonTableRows rows={6} cols={isAdmin ? 7 : 6} />
+            ) : filteredAchats.length === 0 ? (
               <tr>
                 <td colSpan={isAdmin ? 7 : 6} style={{ padding: 36, textAlign: "center", color: "var(--muted)", fontSize: 14 }}>
-                  {loading ? "Chargement des achats..." : "Aucun achat / approvisionnement trouvé pour cette période."}
+                  Aucun achat / approvisionnement trouvé pour cette période.
                 </td>
               </tr>
             ) : (

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, ArrowRight, Star, CheckCircle, MessageCircle, X, ZoomIn, Truck, ShieldCheck, Sparkles, Leaf, Zap } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowRight, Star, CheckCircle, MessageCircle, X, ZoomIn, Truck, ShieldCheck, Sparkles, Leaf, Zap, Lock, Headphones } from "lucide-react";
 import api, { SLUG } from "../../api";
 import ProductCard from "../../components/ProductCard.jsx";
 import { subscribeRealtime } from "../../utils/realtime.js";
@@ -9,35 +9,38 @@ import { useData } from "../../context/DataContext.jsx";
 const DEFAULT_SLIDES = [
   {
     id: 1,
-    tag: "CHARGE ULTRA RAPIDE GaN",
-    title: "Chargeurs 20W à 65W & Câbles Renforcés",
-    subtitle: "Rechargez votre iPhone, Samsung, Tecno ou Xiaomi en un temps record avec notre sélection haute performance certifiée anti-surchauffe.",
-    imageUrl: "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=1200&q=80",
-    buttonText: "Voir les chargeurs",
-    linkUrl: "/catalogue?famille=Chargeurs",
-    editorial: "Soilihitech Power",
+    tag: "LATEST TECH. PREMIUM QUALITY.",
+    titleLine1: "Powerful Tech.",
+    titleLine2: "Smarter Living.",
+    subtitle: "Découvrez nos smartphones, gadgets et accessoires dernière génération pour rester connecté, productif et performant au quotidien.",
+    imageUrl: "/images/tech_hero_gadgets.jpg",
+    buttonText: "SHOP NOW",
+    linkUrl: "/catalogue",
+    editorial: "TechHaven Essentials",
     objectPosition: "center center"
   },
   {
     id: 2,
-    tag: "PROTECTION TOTALE 9D",
-    title: "Glaces Trempées & Coques Antichocs",
-    subtitle: "Verres antiespion et pochettes antichocs en silicone renforcé pour préserver l'écran et les caméras de votre smartphone.",
-    imageUrl: "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?auto=format&fit=crop&w=1200&q=80",
-    buttonText: "Protéger mon téléphone",
-    linkUrl: "/catalogue?famille=Protections",
-    editorial: "Blindage Soilihitech",
+    tag: "CHARGE ULTRA RAPIDE GaN",
+    titleLine1: "Ultra Fast Power.",
+    titleLine2: "Zero Compromise.",
+    subtitle: "Chargeurs 20W à 65W, stations magnétiques et câbles renforcés certifiés anti-surchauffe pour tous vos appareils.",
+    imageUrl: "/images/tech_hero_chargers.jpg",
+    buttonText: "SHOP NOW",
+    linkUrl: "/catalogue?famille=Chargeurs",
+    editorial: "Performance GaN",
     objectPosition: "center center"
   },
   {
     id: 3,
-    tag: "EXPERIENCE AUDIO & POWERBANKS",
-    title: "AirPods, Écouteurs & Batteries 20 000mAh",
-    subtitle: "Ne tombez plus jamais à court de batterie et profitez d'une qualité sonore cristalline avec notre sélection Oraimo, Apple et JBL.",
-    imageUrl: "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=1200&q=80",
-    buttonText: "Découvrir l'audio",
+    tag: "AUDIO SANS FIL & ÉNERGIE",
+    titleLine1: "Pure Sound.",
+    titleLine2: "Infinite Battery.",
+    subtitle: "AirPods, casques réducteurs de bruit et batteries 20 000mAh pour une liberté sonore et énergétique totale.",
+    imageUrl: "/images/tech_hero_audio.jpg",
+    buttonText: "SHOP NOW",
     linkUrl: "/catalogue?famille=Audio",
-    editorial: "Audio & Énergie",
+    editorial: "Son & Mobilité",
     objectPosition: "center center"
   }
 ];
@@ -342,108 +345,112 @@ export default function Home() {
   }
 
   // Système de texte dynamique Soilihitech Accessoires High-Tech
+  // Système de texte et slides dynamiques style TECHHAVEN
   const currentSlideDisplay = (() => {
     const slide = slides[activeSlide] || slides[0] || {};
-    const defaultTitles = [
-      "Chargeurs 20W à 65W & Câbles Renforcés",
-      "Glaces Trempées & Coques Antichocs",
-      "AirPods, Écouteurs & Batteries 20 000mAh"
-    ];
-    const defaultSubs = [
-      "Rechargez votre iPhone, Samsung, Tecno ou Xiaomi en un temps record avec notre sélection haute performance certifiée anti-surchauffe.",
-      "Verres antiespion et pochettes antichocs en silicone renforcé pour préserver l'écran et les caméras de votre smartphone.",
-      "Ne tombez plus jamais à court de batterie et profitez d'une qualité sonore cristalline avec notre sélection Oraimo, Apple et JBL."
-    ];
-    const defaultTags = [
-      "CHARGE ULTRA RAPIDE GaN",
-      "PROTECTION TOTALE 9D",
-      "EXPERIENCE AUDIO & POWERBANKS"
-    ];
-    const defaultCtas = [
-      "Voir les chargeurs",
-      "Protéger mon téléphone",
-      "Découvrir l'audio"
-    ];
-    const defaultEditorials = [
-      "Soilihitech Power",
-      "Blindage Soilihitech",
-      "Audio & Énergie"
+    const defaultMeta = [
+      {
+        tag: "LATEST TECH. PREMIUM QUALITY.",
+        titleLine1: "Powerful Tech.",
+        titleLine2: "Smarter Living.",
+        subtitle: "Découvrez nos smartphones, gadgets et accessoires dernière génération pour rester connecté, productif et performant au quotidien.",
+        buttonText: "SHOP NOW",
+        editorial: "TechHaven Essentials"
+      },
+      {
+        tag: "CHARGE ULTRA RAPIDE GaN",
+        titleLine1: "Ultra Fast Power.",
+        titleLine2: "Zero Compromise.",
+        subtitle: "Chargeurs 20W à 65W, stations magnétiques et câbles renforcés certifiés anti-surchauffe pour tous vos appareils.",
+        buttonText: "SHOP NOW",
+        editorial: "Performance GaN"
+      },
+      {
+        tag: "AUDIO SANS FIL & ÉNERGIE",
+        titleLine1: "Pure Sound.",
+        titleLine2: "Infinite Battery.",
+        subtitle: "AirPods, casques réducteurs de bruit et batteries 20 000mAh pour une liberté sonore et énergétique totale.",
+        buttonText: "SHOP NOW",
+        editorial: "Son & Mobilité"
+      }
     ];
 
-    const idx = activeSlide % defaultTitles.length;
+    const idx = activeSlide % defaultMeta.length;
+    const meta = defaultMeta[idx];
+
+    // Splitting or fallback for title lines
+    let l1 = slide.titleLine1 || meta.titleLine1;
+    let l2 = slide.titleLine2 || meta.titleLine2;
+    if (!slide.titleLine1 && slide.title) {
+      const parts = slide.title.split("&");
+      if (parts.length > 1) {
+        l1 = parts[0].trim();
+        l2 = parts[1].trim();
+      } else {
+        l1 = slide.title;
+        l2 = meta.titleLine2;
+      }
+    }
+
     return {
-      tag: slide.tag || defaultTags[idx],
-      title: slide.title || slide.shortTitle || defaultTitles[idx],
-      subtitle: slide.subtitle || slide.shortSubtitle || defaultSubs[idx],
-      buttonText: slide.buttonText || defaultCtas[idx],
-      imageUrl: slide.imageUrl,
+      tag: slide.tag || meta.tag,
+      titleLine1: l1,
+      titleLine2: l2,
+      subtitle: slide.subtitle || meta.subtitle,
+      buttonText: slide.buttonText || meta.buttonText,
+      imageUrl: slide.imageUrl || meta.imageUrl,
       linkUrl: slide.linkUrl,
-      editorial: slide.editorial || defaultEditorials[idx]
+      editorial: slide.editorial || meta.editorial
     };
   })();
 
   return (
     <>
-      {/* 1. HERO BANNER - SOILIHITECH MODERNE */}
-      <div className="bs-hero-banner">
-        {/* Colonne Gauche (37%) : Texte épuré, bouton & badges */}
-        <div className="bs-hero-text-col">
-          <div key={activeSlide} className="bs-hero-text-animated">
-            <div className="bs-hero-collection-tag">
-              <span className="bs-hero-tag-dot"></span>
-              {currentSlideDisplay.tag}
-            </div>
-            <h1 className="bs-hero-title">
-              {currentSlideDisplay.title}
-            </h1>
-            <p className="bs-hero-subtitle">
-              {currentSlideDisplay.subtitle}
-            </p>
-            <div className="bs-hero-cta-wrap">
-              <button 
-                className="bs-hero-cta-btn" 
-                onClick={() => handleBannerClick(slides[activeSlide] || {})}
-              >
-                <span>{currentSlideDisplay.buttonText}</span>
-                <ArrowRight size={15} />
-              </button>
+      {/* 1. HERO BANNER - TECHHAVEN STYLE */}
+      <div className="bs-hero-wrapper">
+        <div className="bs-hero-banner">
+          {/* Colonne Gauche (44%) : Titre, Tagline & Bouton CTA */}
+          <div className="bs-hero-text-col">
+            <div key={activeSlide} className="bs-hero-text-animated">
+              <div className="bs-hero-collection-tag">
+                <span className="bs-hero-tag-dot"></span>
+                {currentSlideDisplay.tag}
+              </div>
+
+              <h1 className="bs-hero-title">
+                <span className="bs-hero-title-dark">{currentSlideDisplay.titleLine1}</span>
+                <span className="bs-hero-title-blue">{currentSlideDisplay.titleLine2}</span>
+              </h1>
+
+              <p className="bs-hero-subtitle">
+                {currentSlideDisplay.subtitle}
+              </p>
+
+              <div className="bs-hero-cta-wrap">
+                <button 
+                  className="bs-hero-cta-btn" 
+                  onClick={() => handleBannerClick(slides[activeSlide] || {})}
+                >
+                  <span>{currentSlideDisplay.buttonText}</span>
+                  <ArrowRight size={16} />
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Badges de Confiance compacts en ligne */}
-          <div className="bs-hero-trust-row">
-            <div className="bs-hero-trust-item" title="100% Compatible iPhone, Samsung, Tecno">
-              <ShieldCheck size={14} className="bs-hero-trust-icon-inline" />
-              <span>100% Compatible</span>
-            </div>
-            <span className="bs-hero-trust-sep">•</span>
-            <div className="bs-hero-trust-item" title="Norme CE & Charge Sécurisée">
-              <Zap size={14} className="bs-hero-trust-icon-inline" />
-              <span>Normes Anti-surchauffe</span>
-            </div>
-            <span className="bs-hero-trust-sep">•</span>
-            <div className="bs-hero-trust-item" title="Expédition rapide Comores & Régions">
-              <Truck size={14} className="bs-hero-trust-icon-inline" />
-              <span>Livraison Express</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Colonne Droite (63%) : Fenêtre Photo Large qui Défile */}
-        <div className="bs-hero-slider-window">
-          <div 
-            className="bs-hero-slider-track"
-            style={{
-              display: "flex",
-              width: `${slides.length * 100}%`,
-              height: "100%",
-              transform: `translateX(-${(activeSlide * 100) / slides.length}%)`,
-              transition: "transform 0.65s cubic-bezier(0.25, 1, 0.5, 1)"
-            }}
-          >
-            {slides.map((slide, idx) => {
-              const defaultObjPos = idx === 0 ? "center 82%" : idx === 1 ? "center 26%" : "center center";
-              return (
+          {/* Colonne Droite (56%) : Défilement fluide des photos d'appareils */}
+          <div className="bs-hero-slider-window">
+            <div 
+              className="bs-hero-slider-track"
+              style={{
+                display: "flex",
+                width: `${slides.length * 100}%`,
+                height: "100%",
+                transform: `translateX(-${(activeSlide * 100) / slides.length}%)`,
+                transition: "transform 0.65s cubic-bezier(0.25, 1, 0.5, 1)"
+              }}
+            >
+              {slides.map((slide, idx) => (
                 <div 
                   key={slide.id || idx} 
                   className="bs-hero-slide-img-wrap"
@@ -455,56 +462,97 @@ export default function Home() {
                 >
                   <img 
                     src={slide.imageUrl} 
-                    alt={slide.title} 
+                    alt={slide.title || "Appareils Tech"} 
                     className="bs-hero-slide-img"
-                    style={{
-                      objectPosition: slide.objectPosition || defaultObjPos
-                    }}
                     onError={(e) => {
-                      e.currentTarget.src = "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1200&q=80";
+                      e.currentTarget.src = "/images/tech_hero_gadgets.jpg";
                     }}
                   />
                 </div>
-              );
-            })}
+              ))}
+            </div>
+
+            {/* Boutons flèches de navigation circulaires */}
+            {slides.length > 1 && (
+              <>
+                <button 
+                  className="bs-hero-nav-btn prev" 
+                  onClick={(e) => { e.stopPropagation(); setActiveSlide((prev) => (prev - 1 + slides.length) % slides.length); }}
+                  aria-label="Diapositive précédente"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button 
+                  className="bs-hero-nav-btn next" 
+                  onClick={(e) => { e.stopPropagation(); setActiveSlide((prev) => (prev + 1) % slides.length); }}
+                  aria-label="Diapositive suivante"
+                >
+                  <ChevronRight size={18} />
+                </button>
+
+                {/* Points indicateurs de défilement */}
+                <div className="bs-hero-dots">
+                  {slides.map((_, idx) => (
+                    <button 
+                      key={idx} 
+                      className={`bs-hero-dot ${idx === activeSlide ? "active" : ""}`}
+                      onClick={(e) => { e.stopPropagation(); setActiveSlide(idx); }}
+                      aria-label={`Aller au slide ${idx + 1}`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* 4 Badges de Confiance sous le Hero Banner (Fidèle à la maquette) */}
+        <div className="bs-hero-trust-bar">
+          <div className="bs-hero-trust-badge">
+            <div className="bs-hero-trust-icon-box">
+              <Truck size={20} />
+            </div>
+            <div className="bs-hero-trust-texts">
+              <span className="bs-hero-trust-title">FREE SHIPPING</span>
+              <span className="bs-hero-trust-desc">Dès 25 000 KMF d'achat</span>
+            </div>
           </div>
 
-          {/* Badge Élégant Flottant sur la photo */}
-          <div className="bs-hero-floating-badge">
-            <span>{currentSlideDisplay.editorial}</span>
+          <div className="bs-hero-trust-divider"></div>
+
+          <div className="bs-hero-trust-badge">
+            <div className="bs-hero-trust-icon-box">
+              <ShieldCheck size={20} />
+            </div>
+            <div className="bs-hero-trust-texts">
+              <span className="bs-hero-trust-title">PREMIUM QUALITY</span>
+              <span className="bs-hero-trust-desc">100% Produits d'origine</span>
+            </div>
           </div>
 
-          {/* Boutons flèches de navigation circulaires (style Velloria) */}
-          {slides.length > 1 && (
-            <>
-              <button 
-                className="bs-hero-nav-btn prev" 
-                onClick={(e) => { e.stopPropagation(); setActiveSlide((prev) => (prev - 1 + slides.length) % slides.length); }}
-                aria-label="Diapositive précédente"
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <button 
-                className="bs-hero-nav-btn next" 
-                onClick={(e) => { e.stopPropagation(); setActiveSlide((prev) => (prev + 1) % slides.length); }}
-                aria-label="Diapositive suivante"
-              >
-                <ChevronRight size={18} />
-              </button>
+          <div className="bs-hero-trust-divider"></div>
 
-              {/* Points indicateurs de défilement en bas à droite */}
-              <div className="bs-hero-dots">
-                {slides.map((_, idx) => (
-                  <button 
-                    key={idx} 
-                    className={`bs-hero-dot ${idx === activeSlide ? "active" : ""}`}
-                    onClick={(e) => { e.stopPropagation(); setActiveSlide(idx); }}
-                    aria-label={`Aller au slide ${idx + 1}`}
-                  />
-                ))}
-              </div>
-            </>
-          )}
+          <div className="bs-hero-trust-badge">
+            <div className="bs-hero-trust-icon-box">
+              <Lock size={20} />
+            </div>
+            <div className="bs-hero-trust-texts">
+              <span className="bs-hero-trust-title">SECURE PAYMENT</span>
+              <span className="bs-hero-trust-desc">Paiement fiable & crypté</span>
+            </div>
+          </div>
+
+          <div className="bs-hero-trust-divider"></div>
+
+          <div className="bs-hero-trust-badge">
+            <div className="bs-hero-trust-icon-box">
+              <Headphones size={20} />
+            </div>
+            <div className="bs-hero-trust-texts">
+              <span className="bs-hero-trust-title">24/7 SUPPORT</span>
+              <span className="bs-hero-trust-desc">Assistance réactive 7j/7</span>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -1,18 +1,95 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { 
-  ShoppingCart, Search, Plus, Minus, Trash2, CheckCircle, Printer, X, CreditCard, DollarSign, Phone, User, Tag
+  ShoppingCart, Search, Plus, Minus, Trash2, CheckCircle, Printer, X, CreditCard, 
+  DollarSign, Phone, User, Tag, Layers, Eye, Check
 } from "lucide-react";
 import api from "../../api";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { subscribeRealtime } from "../../utils/realtime.js";
-
 import { formatPrice as fcfa, getActiveCurrency } from "../../utils/currency.js";
+import { SkeletonPOSGrid } from "../../components/Skeleton.jsx";
+import ReceiptModal from "../../components/ReceiptModal.jsx";
+
+function parseJsonSafe(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function getProductVariants(p) {
+  if (!p) return [];
+  const variants = [];
+  const modeles = parseJsonSafe(p.modelesCompatibles);
+  const couleurs = parseJsonSafe(p.couleurs);
+  const senteurs = parseJsonSafe(p.senteurs);
+
+  modeles.forEach((m, idx) => {
+    const nom = typeof m === "string" ? m : (m.nomComplet || m.nom || m.modele || `Modèle ${idx + 1}`);
+    const stk = typeof m === "object" && (m.quantite !== undefined || m.stock !== undefined)
+      ? Number(m.quantite !== undefined ? m.quantite : m.stock)
+      : Number(p.stock || 0);
+    const photo = typeof m === "object" ? (m.photo || m.photoUrl || m.image || null) : null;
+    const prix = typeof m === "object" && m.prix ? Number(m.prix) : null;
+    variants.push({
+      key: `modele_${idx}_${nom}`,
+      type: "modele",
+      typeLabel: "Modèle",
+      nom,
+      stock: stk,
+      photo: photo || p.imageUrl,
+      prixSpecifique: prix
+    });
+  });
+
+  couleurs.forEach((c, idx) => {
+    const nom = typeof c === "string" ? c : (c.nom || c.couleur || `Couleur ${idx + 1}`);
+    const stk = typeof c === "object" && (c.quantite !== undefined || c.stock !== undefined)
+      ? Number(c.quantite !== undefined ? c.quantite : c.stock)
+      : Number(p.stock || 0);
+    const photo = typeof c === "object" ? (c.photo || c.photoUrl || c.image || null) : null;
+    variants.push({
+      key: `couleur_${idx}_${nom}`,
+      type: "couleur",
+      typeLabel: "Couleur",
+      nom,
+      stock: stk,
+      photo: photo || p.imageUrl,
+      prixSpecifique: null
+    });
+  });
+
+  senteurs.forEach((s, idx) => {
+    const nom = typeof s === "string" ? s : (s.nom || s.senteur || `Senteur ${idx + 1}`);
+    const stk = typeof s === "object" && (s.quantite !== undefined || s.stock !== undefined)
+      ? Number(s.quantite !== undefined ? s.quantite : s.stock)
+      : Number(p.stock || 0);
+    const photo = typeof s === "object" ? (s.photo || s.photoUrl || s.image || null) : null;
+    variants.push({
+      key: `senteur_${idx}_${nom}`,
+      type: "senteur",
+      typeLabel: "Senteur",
+      nom,
+      stock: stk,
+      photo: photo || p.imageUrl,
+      prixSpecifique: null
+    });
+  });
+
+  return variants;
+}
 
 export default function VenteDirecte() {
   const { boutique } = useAuth();
   const storeName = boutique?.nom || "Marché Vert";
   const [products, setProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [visibleLimit, setVisibleLimit] = useState(20);
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState([]);
   const [clientNom, setClientNom] = useState("");
@@ -22,6 +99,12 @@ export default function VenteDirecte() {
   const [completedSale, setCompletedSale] = useState(null);
   const [mobileTab, setMobileTab] = useState("produits"); // 'produits' | 'panier'
   const [activeCurrency, setActiveCurrency] = useState(() => getActiveCurrency());
+
+  // Modal sélection d'une variante spécifique
+  const [selectedProductForVariants, setSelectedProductForVariants] = useState(null);
+
+  // Encaissement & Rendu monnaie
+  const [montantRecu, setMontantRecu] = useState("");
 
   const paymentMethods = activeCurrency === "FCFA" ? [
     { value: "cash", label: "Espèces / Cash" },
@@ -54,9 +137,20 @@ export default function VenteDirecte() {
     return Number(p.prix || 0);
   }
 
-
   function load() {
-    api.get("/admin/products").then(res => setProducts(res.data || []));
+    setProductsLoading(true);
+    api.get("/admin/products")
+      .then(res => {
+        const data = res.data;
+        const list = Array.isArray(data) ? data : (data?.items || []);
+        setProducts(list);
+      })
+      .catch((err) => {
+        console.error("Erreur chargement produits POS:", err);
+      })
+      .finally(() => {
+        setProductsLoading(false);
+      });
   }
 
   useEffect(() => {
@@ -74,30 +168,83 @@ export default function VenteDirecte() {
     return !q || p.nom.toLowerCase().includes(q) || (p.famille && p.famille.toLowerCase().includes(q));
   });
 
-  function addToCart(p) {
+  const displayedProducts = filteredProducts.slice(0, visibleLimit);
+
+  // Ajout direct (sans variante particulière ou avec attribut par défaut)
+  function addToCartDirect(p) {
     if (p.stock <= 0) {
       toast.error("Ce produit est en rupture de stock.");
       return;
     }
+    const cartKey = `prod_${p.id}`;
     setCart(prev => {
-      const exist = prev.find(item => item.product.id === p.id);
+      const exist = prev.find(item => item.cartKey === cartKey);
       if (exist) {
         if (exist.quantite >= p.stock) {
           toast.error(`Stock insuffisant. Seules ${p.stock} unités sont disponibles.`);
           return prev;
         }
-        return prev.map(item => item.product.id === p.id ? { ...item, quantite: item.quantite + 1 } : item);
+        return prev.map(item => item.cartKey === cartKey ? { ...item, quantite: item.quantite + 1 } : item);
       }
-      return [...prev, { product: p, quantite: 1 }];
+      return [...prev, {
+        cartKey,
+        product: p,
+        quantite: 1,
+        selectedModele: null,
+        selectedCouleur: null,
+        selectedSenteur: null,
+        selectedImageUrl: p.imageUrl,
+        prixVendu: "",
+        variantLabel: null,
+        stockMax: p.stock
+      }];
     });
+    toast.success(`${p.nom} ajouté au panier`);
   }
 
-  function updateQty(productId, delta) {
+  // Ajout avec variante spécifique (modèle, couleur ou senteur)
+  function addVariantToCart(p, variant) {
+    if (variant.stock <= 0) {
+      toast.error(`La variante "${variant.nom}" est actuellement épuisée.`);
+      return;
+    }
+
+    const cartKey = `prod_${p.id}_${variant.type}_${variant.nom}`;
+    setCart(prev => {
+      const exist = prev.find(item => item.cartKey === cartKey);
+      if (exist) {
+        if (exist.quantite >= variant.stock) {
+          toast.error(`Stock insuffisant pour "${variant.nom}". Disponible : ${variant.stock}`);
+          return prev;
+        }
+        return prev.map(item => item.cartKey === cartKey ? { ...item, quantite: item.quantite + 1 } : item);
+      }
+
+      return [...prev, {
+        cartKey,
+        product: p,
+        quantite: 1,
+        selectedModele: variant.type === "modele" ? variant.nom : null,
+        selectedCouleur: variant.type === "couleur" ? variant.nom : null,
+        selectedSenteur: variant.type === "senteur" ? variant.nom : null,
+        selectedImageUrl: variant.photo || p.imageUrl,
+        prixVendu: variant.prixSpecifique || "",
+        variantLabel: `${variant.typeLabel}: ${variant.nom}`,
+        stockMax: variant.stock
+      }];
+    });
+
+    toast.success(`${variant.nom} ajouté au panier`);
+    setSelectedProductForVariants(null);
+  }
+
+  function updateQty(cartKey, delta) {
     setCart(prev => prev.map(item => {
-      if (item.product.id === productId) {
+      if (item.cartKey === cartKey) {
         const newQty = item.quantite + delta;
-        if (newQty > item.product.stock) {
-          toast.error(`Stock insuffisant. Maximum : ${item.product.stock}`);
+        const maxLimit = item.stockMax !== undefined ? item.stockMax : item.product.stock;
+        if (newQty > maxLimit) {
+          toast.error(`Stock insuffisant. Maximum : ${maxLimit}`);
           return item;
         }
         return newQty > 0 ? { ...item, quantite: newQty } : null;
@@ -106,23 +253,52 @@ export default function VenteDirecte() {
     }).filter(Boolean));
   }
 
-  function removeFromCart(productId) {
-    setCart(prev => prev.filter(item => String(item.product?.id) !== String(productId)));
+  function updateCustomPrice(cartKey, newPrice) {
+    setCart(prev => prev.map(item => {
+      if (item.cartKey === cartKey) {
+        return { ...item, prixVendu: newPrice };
+      }
+      return item;
+    }));
+  }
+
+  function removeFromCart(cartKey) {
+    setCart(prev => prev.filter(item => item.cartKey !== cartKey));
+  }
+
+  function getItemUnitPrice(item) {
+    if (item.prixVendu !== "" && item.prixVendu !== null && item.prixVendu !== undefined && !isNaN(Number(item.prixVendu)) && Number(item.prixVendu) >= 0) {
+      return Number(item.prixVendu);
+    }
+    return getEffectivePrice(item.product, activeCurrency);
   }
 
   const sousTotal = cart.reduce((sum, item) => {
-    const prixEff = getEffectivePrice(item.product, activeCurrency);
-    return sum + (prixEff * item.quantite);
+    return sum + (getItemUnitPrice(item) * item.quantite);
   }, 0);
+
+  const numMontantRecu = Number(montantRecu) || 0;
+  const monnaieARendre = numMontantRecu >= sousTotal ? numMontantRecu - sousTotal : 0;
+  const resteAPayer = (numMontantRecu > 0 && numMontantRecu < sousTotal) ? sousTotal - numMontantRecu : 0;
 
   async function handleValiderVente() {
     if (cart.length === 0) return;
     setLoading(true);
     try {
-      const itemsPayload = cart.map(item => ({
-        productId: item.product.id,
-        quantite: item.quantite
-      }));
+      const itemsPayload = cart.map(item => {
+        const customPrice = (item.prixVendu !== "" && item.prixVendu !== null && item.prixVendu !== undefined && !isNaN(Number(item.prixVendu)))
+          ? Number(item.prixVendu)
+          : undefined;
+
+        return {
+          productId: item.product.id,
+          quantite: item.quantite,
+          prixVendu: customPrice,
+          modele: item.selectedModele || undefined,
+          couleur: item.selectedCouleur || item.selectedSenteur || undefined,
+          imageUrl: item.selectedImageUrl || undefined
+        };
+      });
 
       const res = await api.post("/admin/ventes/directe", {
         items: itemsPayload,
@@ -132,11 +308,17 @@ export default function VenteDirecte() {
         devise: activeCurrency
       });
 
-      setCompletedSale(res.data);
+      setCompletedSale({
+        ...res.data,
+        montantRecu: numMontantRecu > 0 ? numMontantRecu : null,
+        monnaieRendue: monnaieARendre
+      });
+
       setCart([]);
       setClientNom("");
       setClientTelephone("");
-      load(); // Reload stock
+      setMontantRecu("");
+      load(); // Recharge le catalogue et les stocks
     } catch (err) {
       toast.error(err.response?.data?.message || "Erreur lors de la validation de la vente.");
     } finally {
@@ -148,12 +330,17 @@ export default function VenteDirecte() {
     window.print();
   }
 
+  // Coupures rapides selon devise
+  const quickBills = activeCurrency === "FCFA" 
+    ? [500, 1000, 2000, 5000, 10000]
+    : [500, 1000, 2000, 5000, 10000];
+
   return (
     <>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 26, margin: 0, color: "var(--forest-dark)" }}>Caisse & Vente Directe</h1>
         <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 14 }}>
-          Enregistrez les ventes physiques directes en boutique avec mise à jour immédiate du stock.
+          Enregistrez les ventes physiques directes en boutique, sélectionnez les variantes spécifiques et encaissez avec calcul automatique du rendu monnaie.
         </p>
       </div>
 
@@ -184,68 +371,160 @@ export default function VenteDirecte() {
                 className="bs-input"
                 placeholder="Rechercher un produit à ajouter au panier..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setVisibleLimit(20);
+                }}
                 style={{ paddingLeft: 38, borderRadius: 10, fontSize: 13.5, height: 40 }}
               />
             </div>
           </div>
 
-          {/* PRODUCT GRID */}
-          <div className="bs-pos-products-grid">
-            {filteredProducts.map(p => {
-              const inStock = p.stock > 0;
-              const prixEff = getEffectivePrice(p, activeCurrency);
+          {/* PRODUCT GRID OR SKELETON */}
+          {productsLoading ? (
+            <SkeletonPOSGrid count={12} />
+          ) : filteredProducts.length === 0 ? (
+            <div style={{
+              padding: 40, textAlign: "center", color: "var(--muted)",
+              background: "#fff", borderRadius: 14, border: "1px dashed var(--line)"
+            }}>
+              Aucun produit trouvé{search ? ` pour « ${search} »` : ""}.
+            </div>
+          ) : (
+            <>
+              <div className="bs-pos-products-grid">
+                {displayedProducts.map(p => {
+                  const inStock = p.stock > 0;
+                  const prixEff = getEffectivePrice(p, activeCurrency);
+                  const variants = getProductVariants(p);
+                  const hasVariants = variants.length > 0;
 
-              return (
-                <div
-                  key={p.id}
-                  onClick={() => inStock && addToCart(p)}
-                  style={{
-                    background: "#fff", borderRadius: 14, border: "1px solid var(--line)",
-                    padding: 12, cursor: inStock ? "pointer" : "not-allowed",
-                    opacity: inStock ? 1 : 0.6, display: "flex", flexDirection: "column",
-                    justifyContent: "space-between", position: "relative", transition: "transform 0.15s",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
-                  }}
-                >
-                  <img
-                    src={p.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=150&q=80"}
-                    alt={p.nom}
-                    style={{ width: "100%", height: 110, objectFit: "cover", borderRadius: 10, marginBottom: 8 }}
-                  />
-                  <div>
-                    <div style={{ fontSize: 11, color: "var(--forest)", fontWeight: 700, textTransform: "uppercase" }}>
-                      {p.famille || "Produit"}
-                    </div>
-                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)", height: 36, overflow: "hidden" }}>
-                      {p.nom}
-                    </div>
-                    
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                      <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--forest-dark)" }}>
-                        {fcfa(prixEff, activeCurrency)} {p.unite ? <span style={{ fontSize: 11, fontWeight: 500, color: "var(--muted)" }}>/ {p.unite}</span> : ""}
+                  return (
+                    <div
+                      key={p.id}
+                      style={{
+                        background: "#fff", borderRadius: 14, border: "1px solid var(--line)",
+                        padding: 12, opacity: inStock ? 1 : 0.6, display: "flex", flexDirection: "column",
+                        justifyContent: "space-between", position: "relative", transition: "transform 0.15s",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
+                      }}
+                    >
+                      <div style={{ position: "relative" }}>
+                        <img
+                          src={p.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=150&q=80"}
+                          alt={p.nom}
+                          style={{ width: "100%", height: 110, objectFit: "cover", borderRadius: 10, marginBottom: 8 }}
+                        />
+                        {hasVariants && (
+                          <span style={{
+                            position: "absolute", top: 6, right: 6, background: "rgba(15, 23, 42, 0.8)",
+                            color: "#fff", padding: "2px 8px", borderRadius: 8, fontSize: 10.5, fontWeight: 800,
+                            backdropFilter: "blur(4px)", display: "flex", alignItems: "center", gap: 4
+                          }}>
+                            <Layers size={11} /> {variants.length} variante{variants.length > 1 ? "s" : ""}
+                          </span>
+                        )}
                       </div>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: inStock ? "#1F4D3A" : "#B4483A" }}>
-                        {inStock ? `Stock: ${p.stock}` : "Épuisé"}
-                      </span>
-                    </div>
-                  </div>
 
+                      <div>
+                        <div style={{ fontSize: 11, color: "var(--forest)", fontWeight: 700, textTransform: "uppercase" }}>
+                          {p.famille || "Produit"}
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)", height: 36, overflow: "hidden" }} title={p.nom}>
+                          {p.nom}
+                        </div>
+                        
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                          <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--forest-dark)" }}>
+                            {fcfa(prixEff, activeCurrency)} {p.unite ? <span style={{ fontSize: 11, fontWeight: 500, color: "var(--muted)" }}>/ {p.unite}</span> : ""}
+                          </div>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: inStock ? "#1F4D3A" : "#B4483A" }}>
+                            {inStock ? `Stock: ${p.stock}` : "Épuisé"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* BOUTONS D'AJOUT : DIRECT OU VARIANTES */}
+                      {hasVariants ? (
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 6, marginTop: 10 }}>
+                          <button
+                            type="button"
+                            disabled={!inStock}
+                            onClick={() => inStock && addToCartDirect(p)}
+                            title="Ajouter le produit standard avec la photo principale"
+                            style={{
+                              background: inStock ? "#F1F5F9" : "#F3F4F6",
+                              color: inStock ? "#334155" : "var(--muted)", border: "1px solid #CBD5E1",
+                              padding: "7px 4px", borderRadius: 8, fontWeight: 700, fontSize: 11.5,
+                              cursor: inStock ? "pointer" : "not-allowed", textAlign: "center"
+                            }}
+                          >
+                            + Direct
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={!inStock}
+                            onClick={() => inStock && setSelectedProductForVariants(p)}
+                            style={{
+                              background: inStock ? "#2563EB" : "#F3F4F6",
+                              color: inStock ? "#fff" : "var(--muted)", border: "none",
+                              padding: "7px 6px", borderRadius: 8, fontWeight: 800, fontSize: 11.5,
+                              display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+                              cursor: inStock ? "pointer" : "not-allowed", boxShadow: inStock ? "0 2px 6px rgba(37,99,235,0.25)" : "none"
+                            }}
+                          >
+                            <Layers size={13} /> Variantes
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={!inStock}
+                          onClick={() => inStock && addToCartDirect(p)}
+                          style={{
+                            marginTop: 10, width: "100%", background: inStock ? "var(--forest-light)" : "#F3F4F6",
+                            color: inStock ? "var(--forest)" : "var(--muted)", border: "none",
+                            padding: "7px", borderRadius: 8, fontWeight: 700, fontSize: 12,
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                            cursor: inStock ? "pointer" : "not-allowed"
+                          }}
+                        >
+                          <Plus size={14} /> Ajouter au panier
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {filteredProducts.length > visibleLimit && (
+                <div style={{ textAlign: "center", marginTop: 18, marginBottom: 10 }}>
                   <button
-                    disabled={!inStock}
+                    type="button"
+                    onClick={() => setVisibleLimit(prev => prev + 20)}
                     style={{
-                      marginTop: 10, width: "100%", background: inStock ? "var(--forest-light)" : "#F3F4F6",
-                      color: inStock ? "var(--forest)" : "var(--muted)", border: "none",
-                      padding: "7px", borderRadius: 8, fontWeight: 700, fontSize: 12,
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: inStock ? "pointer" : "not-allowed"
+                      background: "#fff",
+                      border: "1.5px solid var(--forest)",
+                      color: "var(--forest-dark)",
+                      padding: "10px 22px",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 13,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      transition: "all 0.15s"
                     }}
                   >
-                    <Plus size={14} /> Ajouter au panier
+                    Afficher la suite (+20 produits) — {displayedProducts.length} sur {filteredProducts.length}
                   </button>
                 </div>
-              );
-            })}
-          </div>
+              )}
+            </>
+          )}
         </div>
 
         {/* RIGHT COLUMN: CASHIER CART & TICKET SUMMARY */}
@@ -257,60 +536,103 @@ export default function VenteDirecte() {
                 <h3 style={{ margin: 0, fontSize: 17, color: "var(--forest-dark)" }}>Panier de Caisse</h3>
               </div>
               <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)" }}>
-                {cart.length} article{cart.length > 1 ? "s" : ""}
+                {cart.length} ligne{cart.length > 1 ? "s" : ""}
               </span>
             </div>
 
             {/* CART ITEMS LIST */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 280, overflowY: "auto", marginBottom: 16, paddingRight: 4 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 310, overflowY: "auto", marginBottom: 16, paddingRight: 4 }}>
               {cart.length === 0 ? (
                 <div style={{ padding: 30, textAlign: "center", color: "var(--muted)", fontSize: 13.5 }}>
-                  Le panier est actuellement vide.<br />Cliquez sur un produit pour l'ajouter.
+                  Le panier est actuellement vide.<br />Cliquez sur un produit ou une variante pour l'ajouter.
                 </div>
               ) : (
                 cart.map(item => {
-                  const prixEff = getEffectivePrice(item.product, activeCurrency);
+                  const unitPrice = getItemUnitPrice(item);
+                  const catalogPrice = getEffectivePrice(item.product, activeCurrency);
+                  const isCustomPrice = item.prixVendu !== "" && item.prixVendu !== null && item.prixVendu !== undefined;
 
                   return (
-                    <div key={item.product.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, background: "var(--paper)", borderRadius: 10, border: "1px solid var(--line)" }}>
-                      <img 
-                        src={item.product.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80"} 
-                        alt={item.product.nom}
-                        style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover" }}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {item.product.nom}
+                    <div key={item.cartKey} style={{
+                      display: "flex", flexDirection: "column", gap: 6, padding: 10,
+                      background: "var(--paper)", borderRadius: 10, border: "1px solid var(--line)"
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <img 
+                          src={item.selectedImageUrl || item.product.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80"} 
+                          alt={item.product.nom}
+                          style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover", flexShrink: 0 }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {item.product.nom}
+                          </div>
+                          {item.variantLabel && (
+                            <div style={{ fontSize: 11.5, color: "#2563EB", fontWeight: 700 }}>
+                              {item.variantLabel}
+                            </div>
+                          )}
+                          <div style={{ fontSize: 12, color: "var(--forest)", fontWeight: 800, marginTop: 2 }}>
+                            {fcfa(unitPrice, activeCurrency)} x {item.quantite} = {fcfa(unitPrice * item.quantite, activeCurrency)}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 12, color: "var(--forest)", fontWeight: 700 }}>
-                          {fcfa(prixEff, activeCurrency)} x {item.quantite} = {fcfa(prixEff * item.quantite, activeCurrency)}
+
+                        {/* QUANTITY CONTROLS */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, background: "#fff", padding: "2px 6px", borderRadius: 8, border: "1px solid var(--line)" }}>
+                          <button 
+                            type="button"
+                            onClick={() => updateQty(item.cartKey, -1)}
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+                          >
+                            <Minus size={14} color="var(--ink)" />
+                          </button>
+                          <span style={{ fontSize: 13, fontWeight: 700, minWidth: 16, textAlign: "center" }}>{item.quantite}</span>
+                          <button 
+                            type="button"
+                            onClick={() => updateQty(item.cartKey, 1)}
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+                          >
+                            <Plus size={14} color="var(--ink)" />
+                          </button>
                         </div>
+
+                        <button 
+                          type="button"
+                          onClick={() => removeFromCart(item.cartKey)}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "#B4483A", padding: 4 }}
+                          title="Supprimer"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
 
-                      {/* QUANTITY CONTROLS */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, background: "#fff", padding: "2px 6px", borderRadius: 8, border: "1px solid var(--line)" }}>
-                        <button 
-                          onClick={() => updateQty(item.product.id, -1)}
-                          style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
-                        >
-                          <Minus size={14} color="var(--ink)" />
-                        </button>
-                        <span style={{ fontSize: 13, fontWeight: 700, minWidth: 16, textAlign: "center" }}>{item.quantite}</span>
-                        <button 
-                          onClick={() => updateQty(item.product.id, 1)}
-                          style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
-                        >
-                          <Plus size={14} color="var(--ink)" />
-                        </button>
+                      {/* CHAMP DE PRIX DE VENTE LIBRE / NÉGOCIÉ */}
+                      <div style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        background: "#fff", padding: "4px 8px", borderRadius: 6, border: "1px dashed #CBD5E1", fontSize: 11.5
+                      }}>
+                        <span style={{ color: "var(--muted)", fontWeight: 600 }}>
+                          Prix unitaire vendu :
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="50"
+                            placeholder={String(catalogPrice)}
+                            value={item.prixVendu ?? ""}
+                            onChange={(e) => updateCustomPrice(item.cartKey, e.target.value)}
+                            style={{
+                              width: 85, height: 26, padding: "2px 6px", fontSize: 12,
+                              textAlign: "right", fontWeight: 800,
+                              color: isCustomPrice ? "#1D4ED8" : "var(--ink)",
+                              border: isCustomPrice ? "1.5px solid #3B82F6" : "1px solid #CBD5E1",
+                              borderRadius: 4
+                            }}
+                          />
+                          <span style={{ fontWeight: 700, color: "var(--muted)", fontSize: 11 }}>{activeCurrency}</span>
+                        </div>
                       </div>
-
-                      <button 
-                        onClick={() => removeFromCart(item.product.id)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "#B4483A", padding: 4 }}
-                        title="Supprimer"
-                      >
-                        <Trash2 size={16} />
-                      </button>
                     </div>
                   );
                 })
@@ -356,11 +678,109 @@ export default function VenteDirecte() {
             </div>
 
             {/* TOTAL & SUBMIT */}
-            <div style={{ background: "var(--paper)", padding: 14, borderRadius: 12, border: "1px solid var(--line)", marginBottom: 16 }}>
+            <div style={{ background: "var(--paper)", padding: 14, borderRadius: 12, border: "1px solid var(--line)", marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>Total à Payer</span>
                 <span style={{ fontSize: 22, fontWeight: 900, color: "var(--forest-dark)" }}>{fcfa(sousTotal, activeCurrency)}</span>
               </div>
+            </div>
+
+            {/* ENCAISSEMENT & CALCUL MONNAIE */}
+            <div style={{
+              background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12,
+              padding: 12, marginBottom: 16
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
+                  Montant reçu du client :
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="50"
+                    placeholder="0"
+                    className="bs-input"
+                    value={montantRecu}
+                    onChange={(e) => setMontantRecu(e.target.value)}
+                    style={{
+                      width: 110, height: 32, fontSize: 13, fontWeight: 800,
+                      textAlign: "right", color: "#0F172A"
+                    }}
+                  />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B" }}>{activeCurrency}</span>
+                </div>
+              </div>
+
+              {/* Raccourcis billets */}
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
+                {quickBills.map(val => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setMontantRecu(String(numMontantRecu + val))}
+                    style={{
+                      background: "#fff", border: "1px solid #CBD5E1", borderRadius: 6,
+                      padding: "3px 7px", fontSize: 11, fontWeight: 700, color: "#334155", cursor: "pointer"
+                    }}
+                  >
+                    +{val >= 1000 ? `${val / 1000}k` : val}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setMontantRecu(String(sousTotal))}
+                  style={{
+                    background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 6,
+                    padding: "3px 8px", fontSize: 11, fontWeight: 800, color: "#2563EB", cursor: "pointer"
+                  }}
+                >
+                  Exact
+                </button>
+                {montantRecu !== "" && (
+                  <button
+                    type="button"
+                    onClick={() => setMontantRecu("")}
+                    style={{
+                      background: "#FEE2E2", border: "1px solid #FECACA", borderRadius: 6,
+                      padding: "3px 6px", fontSize: 11, fontWeight: 700, color: "#DC2626", cursor: "pointer"
+                    }}
+                  >
+                    Effacer
+                  </button>
+                )}
+              </div>
+
+              {/* Résultat Monnaie ou Reste à payer */}
+              {numMontantRecu > 0 && (
+                <div>
+                  {numMontantRecu >= sousTotal ? (
+                    <div style={{
+                      background: "#DCFCE7", border: "1.5px solid #86EFAC", borderRadius: 8,
+                      padding: "6px 10px", display: "flex", justifyContent: "space-between", alignItems: "center"
+                    }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: "#166534" }}>
+                        Monnaie à rendre :
+                      </span>
+                      <span style={{ fontSize: 15, fontWeight: 900, color: "#15803D" }}>
+                        {fcfa(monnaieARendre, activeCurrency)}
+                      </span>
+                    </div>
+                  ) : (
+                    <div style={{
+                      background: "#FEF2F2", border: "1.5px solid #FECACA", borderRadius: 8,
+                      padding: "6px 10px", display: "flex", justifyContent: "space-between", alignItems: "center"
+                    }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: "#991B1B" }}>
+                        Reste à payer :
+                      </span>
+                      <span style={{ fontSize: 15, fontWeight: 900, color: "#DC2626" }}>
+                        {fcfa(resteAPayer, activeCurrency)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <button
@@ -386,99 +806,144 @@ export default function VenteDirecte() {
         </button>
       )}
 
-      {/* TICKET DE CAISSE MODAL / PRINT VIEW */}
-      {completedSale && (
+      {/* MODAL DE SÉLECTION D'UNE VARIANTE SPÉCIFIQUE */}
+      {selectedProductForVariants && (
         <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
-          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 20
+          position: "fixed", inset: 0, zIndex: 99999,
+          background: "rgba(15, 23, 42, 0.75)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 16
         }}>
           <div style={{
-            background: "#fff", borderRadius: 16, padding: 24,
-            maxWidth: 420, width: "100%", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.15)",
-            fontFamily: "Courier, monospace, sans-serif"
+            background: "#fff", borderRadius: 20, width: "100%", maxWidth: 640,
+            maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+            animation: "popIn 0.2s ease-out"
           }}>
-
-            {/* Header Ticket */}
-            <div style={{ textAlign: "center", borderBottom: "1px dashed #64748B", paddingBottom: 12, marginBottom: 12 }}>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#0F172A", letterSpacing: 1 }}>{storeName.toUpperCase()}</div>
-              {boutique?.adresse && <div style={{ fontSize: 10.5, color: "#475569", marginTop: 2 }}>{boutique.adresse}</div>}
-              {boutique?.telephone && <div style={{ fontSize: 10.5, color: "#475569", marginTop: 1 }}>Tél: {boutique.telephone}</div>}
-              <div style={{ fontSize: 11, color: "#64748B", marginTop: 4 }}>TICKET DE CAISSE — VENTE DIRECTE</div>
-              <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
-                N° #COM-B{String(completedSale.id).padStart(3, "0")}
+            {/* EN-TÊTE MODAL */}
+            <div style={{
+              padding: "16px 20px", background: "linear-gradient(135deg, #1E293B, #0F172A)",
+              color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <img
+                  src={selectedProductForVariants.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80"}
+                  alt={selectedProductForVariants.nom}
+                  style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover" }}
+                />
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#fff" }}>
+                    {selectedProductForVariants.nom}
+                  </h3>
+                  <span style={{ fontSize: 12, color: "#94A3B8" }}>
+                    Sélectionnez la couleur, le modèle ou la senteur spécifique vendue
+                  </span>
+                </div>
               </div>
-              <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>
-                {new Date(completedSale.createdAt).toLocaleString("fr-FR")}
-              </div>
-            </div>
-
-            {/* Client & Metadata Info */}
-            <div style={{ fontSize: 11.5, color: "#334155", marginBottom: 12, lineHeight: 1.5 }}>
-              <div><strong>Client :</strong> {completedSale.client?.nom || "Client comptoir"}</div>
-              {completedSale.client?.telephone && completedSale.client.telephone !== "non_renseigne" && (
-                <div><strong>Téléphone :</strong> {completedSale.client.telephone}</div>
-              )}
-              <div><strong>Caissier :</strong> {completedSale.employeAssigne?.nom || "Caisse"}</div>
-              <div><strong>Paiement :</strong> {completedSale.moyenPaiement?.replace("_", " ").toUpperCase()}</div>
-            </div>
-
-            {/* Articles Table */}
-            <div style={{ borderTop: "1px dashed #64748B", borderBottom: "1px dashed #64748B", padding: "10px 0", marginBottom: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2.2fr 0.6fr 1fr 1fr", fontSize: 11, fontWeight: 800, color: "#0F172A", borderBottom: "1px solid #E2E8F0", paddingBottom: 4, marginBottom: 6 }}>
-                <span>ARTICLE</span>
-                <span style={{ textAlign: "center" }}>QTÉ</span>
-                <span style={{ textAlign: "right" }}>PRIX U.</span>
-                <span style={{ textAlign: "right" }}>TOTAL</span>
-              </div>
-
-              {completedSale.items?.map((it, idx) => {
-                const saleDev = completedSale.devise || activeCurrency;
-                const pu = Number(it.prixUnitaire || it.product?.prix || 0);
-                const totLine = pu * it.quantite;
-
-                return (
-                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "2.2fr 0.6fr 1fr 1fr", fontSize: 11.5, color: "#1E293B", marginBottom: 5 }}>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {it.product?.nom || "Produit"}
-                    </span>
-                    <span style={{ textAlign: "center" }}>{it.quantite}</span>
-                    <span style={{ textAlign: "right" }}>{fcfa(pu, saleDev)}</span>
-                    <span style={{ textAlign: "right", fontWeight: 700 }}>{fcfa(totLine, saleDev)}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Total */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#1E293B", marginBottom: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 900, color: "#0F172A" }}>
-                <span>TOTAL RÉGLÉ :</span>
-                <span>{fcfa(completedSale.total, completedSale.devise || activeCurrency)}</span>
-              </div>
-            </div>
-
-            {/* Footer Message */}
-            <div style={{ textAlign: "center", fontSize: 11, color: "#64748B", borderTop: "1px dashed #64748B", paddingTop: 10, marginBottom: 16 }}>
-              Merci de votre visite !<br />À très bientôt chez {storeName}.
-            </div>
-
-            {/* Action Buttons */}
-            <div style={{ display: "flex", gap: 10 }}>
               <button
-                onClick={handlePrintTicket}
-                style={{ flex: 1, padding: "10px", borderRadius: 8, background: "var(--forest)", color: "#fff", border: "none", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "sans-serif" }}
+                type="button"
+                onClick={() => setSelectedProductForVariants(null)}
+                style={{ background: "none", border: "none", color: "#94A3B8", cursor: "pointer" }}
               >
-                <Printer size={16} /> Imprimer Ticket
+                <X size={20} />
               </button>
+            </div>
+
+            {/* CORPS : LISTE DES VARIANTES DISPONIBLES */}
+            <div style={{ padding: 20 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
+                {getProductVariants(selectedProductForVariants).map(v => {
+                  const isAvailable = v.stock > 0;
+                  const priceToShow = v.prixSpecifique || getEffectivePrice(selectedProductForVariants, activeCurrency);
+
+                  return (
+                    <div
+                      key={v.key}
+                      style={{
+                        border: isAvailable ? "1.5px solid #E2E8F0" : "1px dashed #CBD5E1",
+                        background: isAvailable ? "#fff" : "#F8FAFC",
+                        borderRadius: 14, padding: 12, display: "flex", alignItems: "center", gap: 12,
+                        opacity: isAvailable ? 1 : 0.6,
+                        boxShadow: isAvailable ? "0 2px 8px rgba(0,0,0,0.03)" : "none"
+                      }}
+                    >
+                      <img
+                        src={v.photo || selectedProductForVariants.imageUrl}
+                        alt={v.nom}
+                        style={{
+                          width: 54, height: 54, borderRadius: 10, objectFit: "cover",
+                          background: "#F1F5F9", border: "1px solid #E2E8F0"
+                        }}
+                      />
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{
+                            fontSize: 10, fontWeight: 800, textTransform: "uppercase",
+                            background: "#EFF6FF", color: "#2563EB", padding: "1px 6px", borderRadius: 4
+                          }}>
+                            {v.typeLabel}
+                          </span>
+                          <span style={{
+                            fontSize: 11, fontWeight: 700,
+                            color: isAvailable ? "#16A34A" : "#DC2626"
+                          }}>
+                            {isAvailable ? `${v.stock} dispo` : "Épuisé"}
+                          </span>
+                        </div>
+
+                        <div style={{ fontWeight: 800, fontSize: 13.5, color: "var(--ink)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {v.nom}
+                        </div>
+
+                        <div style={{ fontSize: 13, fontWeight: 900, color: "var(--forest-dark)", marginTop: 2 }}>
+                          {fcfa(priceToShow, activeCurrency)}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!isAvailable}
+                        onClick={() => addVariantToCart(selectedProductForVariants, v)}
+                        style={{
+                          background: isAvailable ? "#2563EB" : "#E2E8F0",
+                          color: isAvailable ? "#fff" : "#94A3B8",
+                          border: "none", padding: "8px 12px", borderRadius: 8,
+                          fontSize: 12, fontWeight: 800, cursor: isAvailable ? "pointer" : "not-allowed",
+                          display: "flex", alignItems: "center", gap: 4, flexShrink: 0
+                        }}
+                      >
+                        <Plus size={14} /> Choisir
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ padding: "14px 20px", borderTop: "1px solid #E2E8F0", display: "flex", justifyContent: "flex-end" }}>
               <button
-                onClick={() => setCompletedSale(null)}
-                style={{ flex: 1, padding: "10px", borderRadius: 8, background: "#F1F5F9", border: "1px solid #CBD5E1", color: "#334155", fontWeight: 700, cursor: "pointer", fontFamily: "sans-serif" }}
+                type="button"
+                onClick={() => setSelectedProductForVariants(null)}
+                style={{
+                  background: "#F1F5F9", border: "none", color: "#475569",
+                  padding: "8px 16px", borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: "pointer"
+                }}
               >
                 Fermer
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL TICKET DE CAISSE AVEC ANIMATION RECEIPT PRINTER */}
+      {completedSale && (
+        <ReceiptModal
+          order={completedSale}
+          boutique={boutique}
+          onClose={() => setCompletedSale(null)}
+          onContinue={() => setCompletedSale(null)}
+          autoAnimate={true}
+        />
       )}
     </>
   );

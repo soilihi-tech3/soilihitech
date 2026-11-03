@@ -53,46 +53,46 @@ export default function AdminLayout() {
   const storeName = boutique?.nom || "Boutique";
 
   const isEmploye = user?.role === "employe";
-  const forbiddenForEmploye = [
-    "/admin/avis",
-    "/admin/demandes",
-    "/admin/clients",
-    "/admin/employes",
-    "/admin/utilisateurs"
-  ];
 
   const allLinks = [
-    { to: "/admin", label: "Tableau de bord", icon: LayoutDashboard, exact: true, permKey: "voir_dashboard" },
+    { to: "/admin", label: "Tableau de bord", icon: LayoutDashboard, exact: true, permKey: ["voir_dashboard"] },
     { to: "/admin/vente", label: "Vente Directe (POS)", icon: CreditCard, permKey: ["vente_directe", "gerer_commandes"], moduleKey: "vente" },
-    { to: "/admin/ventes-historique", label: "Historique Ventes", icon: History, permKey: ["historique_ventes", "vente_directe", "gerer_commandes", "voir_dashboard"], moduleKey: "ventesHistorique" },
-    { to: "/admin/achats", label: "Achats & Stocks", icon: ShoppingBag, permKey: ["achats_stocks", "gerer_produits", "gerer_parametres"], moduleKey: "achats" },
-    { to: "/admin/fournisseurs", label: "Fournisseurs", icon: Truck, permKey: ["achats_stocks", "gerer_produits", "gerer_parametres"], moduleKey: "fournisseurs" },
-    { to: "/admin/unites", label: "Unités de vente", icon: Scale, permKey: ["gerer_produits", "gerer_categories"], moduleKey: "unites" },
-    { to: "/admin/marques", label: "Marques", icon: Award, permKey: ["gerer_categories", "gerer_produits"] },
-    { to: "/admin/telephones", label: "Modèles Téléphones", icon: Smartphone, permKey: ["gerer_categories", "gerer_produits"], moduleKey: "telephones" },
-    { to: "/admin/categories", label: "Catégories", icon: Layers, permKey: "gerer_categories", moduleKey: "categories" },
-    { to: "/admin/produits", label: "Produits", icon: Package, permKey: ["voir_produits", "ajouter_modifier_produit", "supprimer_produit", "gerer_produits"], moduleKey: "produits" },
-    { to: "/admin/avis", label: "Avis Clients WhatsApp", icon: MessageCircle, adminOnly: true, moduleKey: "avis" },
+    { to: "/admin/ventes-historique", label: "Historique Ventes", icon: History, permKey: ["historique_ventes", "vente_directe", "gerer_commandes"], moduleKey: "ventesHistorique" },
+    { to: "/admin/demandes", label: "Demandes & Devis", icon: ClipboardList, permKey: ["voir_demandes", "gerer_demandes", "supprimer_demandes", "demandes_devis"], moduleKey: "demandes" },
     { to: "/admin/commandes", label: "Commandes", icon: ShoppingCart, permKey: ["gerer_commandes", "valider_commande", "changer_statut_commande", "assigner_commande"], moduleKey: "commandes" },
-    { to: "/admin/demandes", label: "Demandes & Devis", icon: ClipboardList, adminOnly: true, moduleKey: "demandes" },
-    { to: "/admin/clients", label: "Clients", icon: UserCheck, adminOnly: true, moduleKey: "clients" },
+    { to: "/admin/produits", label: "Produits", icon: Package, permKey: ["voir_produits", "ajouter_modifier_produit", "supprimer_produit", "gerer_produits"], moduleKey: "produits" },
+    { to: "/admin/categories", label: "Catégories", icon: Layers, permKey: ["gerer_categories"], moduleKey: "categories" },
+    { to: "/admin/marques", label: "Marques", icon: Award, permKey: ["voir_marques", "gerer_marques", "gerer_categories", "gerer_produits"], moduleKey: "marques" },
+    { to: "/admin/telephones", label: "Modèles Téléphones", icon: Smartphone, permKey: ["voir_telephones", "gerer_telephones", "gerer_categories", "gerer_produits"], moduleKey: "telephones" },
+    { to: "/admin/achats", label: "Achats & Stocks", icon: ShoppingBag, permKey: ["achats_stocks", "gerer_produits"], moduleKey: "achats" },
+    { to: "/admin/fournisseurs", label: "Fournisseurs", icon: Truck, permKey: ["gerer_fournisseurs", "achats_stocks"], moduleKey: "fournisseurs" },
+    { to: "/admin/unites", label: "Unités de vente", icon: Scale, permKey: ["gerer_unites", "gerer_categories", "gerer_produits"], moduleKey: "unites" },
+    { to: "/admin/avis", label: "Avis Clients WhatsApp", icon: MessageCircle, permKey: ["gerer_avis"], moduleKey: "avis" },
+    { to: "/admin/clients", label: "Clients", icon: UserCheck, permKey: ["voir_clients", "gerer_clients"], moduleKey: "clients" },
+    { to: "/admin/home-banners", label: "Bannières d'accueil", icon: Image, permKey: ["gerer_banners", "gerer_parametres"], moduleKey: "homeBanners" },
+    { to: "/admin/parametres", label: "Paramètres Boutique", icon: Store, permKey: ["gerer_parametres"], moduleKey: "parametres" },
     { to: "/admin/employes", label: "Équipe & Rôles", icon: Users, adminOnly: true, moduleKey: "employes" },
-    { to: "/admin/parametres", label: "Paramètres Boutique", icon: Store, permKey: "gerer_parametres", moduleKey: "parametres" },
   ];
 
   const links = allLinks.filter(item => {
     if (user?.role === "admin" || user?.role === "super_admin") return true;
     if (item.adminOnly) return false;
-    if (isEmploye && forbiddenForEmploye.includes(item.to)) return false;
-    if (!item.permKey) return true;
-    if (Array.isArray(item.permKey)) {
-      return item.permKey.some(pk => perms.includes(pk));
-    }
-    return perms.includes(item.permKey);
+    if (!item.permKey) return false;
+    const requiredKeys = Array.isArray(item.permKey) ? item.permKey : [item.permKey];
+    return requiredKeys.some(pk => perms.includes(pk));
   });
 
-  if (isEmploye && forbiddenForEmploye.some(p => location.pathname === p || location.pathname.startsWith(p + "/"))) {
-    return <Navigate to="/admin" replace />;
+  // Navigation guard : si l'employé essaie d'accéder à une URL non autorisée, le rediriger vers son premier menu permis
+  if (isEmploye) {
+    const isAllowed = links.some(item => {
+      if (item.exact) return location.pathname === item.to;
+      return location.pathname === item.to || location.pathname.startsWith(item.to + "/");
+    });
+
+    if (!isAllowed) {
+      const fallback = links[0]?.to || "/";
+      return <Navigate to={fallback} replace />;
+    }
   }
 
   const currentModule = ROUTE_MODULE_MAP[location.pathname];

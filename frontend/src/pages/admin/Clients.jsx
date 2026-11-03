@@ -20,7 +20,7 @@ export default function AdminClients() {
   const [succes, setSucces] = useState("");
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(20);
 
   function loadClients() {
     setLoading(true);

@@ -3,21 +3,25 @@ import { toast } from "react-hot-toast";
 import { PlusCircle, Edit, Trash2, Scale, X, CheckCircle, AlertCircle } from "lucide-react";
 import api from "../../api";
 import TablePagination from "../../components/TablePagination";
+import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 
 export default function UnitesVente() {
   const [unites, setUnites] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [modalType, setModalType] = useState(null); // 'create' | 'edit' | null
   const [selectedUnite, setSelectedUnite] = useState(null);
   const [form, setForm] = useState({ nom: "", abbreviation: "" });
   const [erreur, setErreur] = useState("");
   const [succes, setSucces] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(20);
 
   function load() {
+    setLoading(true);
     api.get("/admin/unites")
       .then(res => setUnites(res.data || []))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }
 
   useEffect(load, []);
@@ -102,7 +106,9 @@ export default function UnitesVente() {
             </tr>
           </thead>
           <tbody>
-            {unites.length === 0 ? (
+            {loading ? (
+              <SkeletonTableRows rows={4} cols={3} />
+            ) : unites.length === 0 ? (
               <tr>
                 <td colSpan={3} style={{ padding: 36, textAlign: "center", color: "var(--muted)", fontSize: 14 }}>
                   Aucune unité de vente configurée.

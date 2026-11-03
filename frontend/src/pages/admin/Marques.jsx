@@ -4,8 +4,16 @@ import { PlusCircle, Edit, Trash2, Award, X, Search, Package } from "lucide-reac
 import api from "../../api";
 import TablePagination from "../../components/TablePagination";
 import ImageUploader from "../../components/ImageUploader";
+import { SkeletonTableRows } from "../../components/Skeleton.jsx";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 export default function Marques() {
+  const { user } = useAuth();
+  const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const canManage = isAdmin || perms.includes("gerer_marques") || perms.includes("gerer_categories");
+  const canDelete = isAdmin || perms.includes("gerer_marques") || perms.includes("supprimer_marques");
+
   const [marques, setMarques] = useState([]);
   const [modalType, setModalType] = useState(null); // 'create' | 'edit' | null
   const [selectedMarque, setSelectedMarque] = useState(null);
@@ -14,8 +22,8 @@ export default function Marques() {
   const [erreur, setErreur] = useState("");
   const [succes, setSucces] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [loading, setLoading] = useState(false);
+  const [pageSize, setPageSize] = useState(20);
+  const [loading, setLoading] = useState(true);
 
   function load() {
     setLoading(true);
@@ -107,13 +115,15 @@ export default function Marques() {
             Gérez la liste des constructeurs et marques officielles (Schneider, Legrand, Philips, Bosch...). Chaque produit peut être associé à sa marque.
           </p>
         </div>
-        <button 
-          className="bs-btn-primary" 
-          style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 12, fontWeight: 700 }} 
-          onClick={openCreateModal}
-        >
-          <PlusCircle size={18} /> Ajouter une Marque
-        </button>
+        {canManage && (
+          <button 
+            className="bs-btn-primary" 
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 12, fontWeight: 700 }} 
+            onClick={openCreateModal}
+          >
+            <PlusCircle size={18} /> Ajouter une Marque
+          </button>
+        )}
       </div>
 
       <div className="bs-card" style={{ padding: 20, marginBottom: 20 }}>
@@ -148,10 +158,12 @@ export default function Marques() {
               </tr>
             </thead>
             <tbody>
-              {filteredMarques.length === 0 ? (
+              {loading ? (
+                <SkeletonTableRows rows={5} cols={5} />
+              ) : filteredMarques.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ textAlign: "center", padding: "40px 20px", color: "var(--muted)" }}>
-                    {loading ? "Chargement des marques..." : "Aucune marque trouvée. Cliquez sur \"Ajouter une Marque\"."}
+                    Aucune marque trouvée. Cliquez sur "Ajouter une Marque".
                   </td>
                 </tr>
               ) : (
@@ -197,22 +209,26 @@ export default function Marques() {
                         </td>
                         <td style={{ textAlign: "right" }}>
                           <div style={{ display: "inline-flex", gap: 8 }}>
-                            <button 
-                              className="bs-icon-btn" 
-                              title="Modifier la marque"
-                              onClick={() => openEditModal(m)}
-                              style={{ color: "var(--forest)" }}
-                            >
-                              <Edit size={16} />
-                            </button>
-                            <button 
-                              className="bs-icon-btn" 
-                              title="Supprimer la marque"
-                              onClick={() => handleDelete(m.id, m.nom)}
-                              style={{ color: "#DC2626" }}
-                            >
-                              <Trash2 size={16} />
-                            </button>
+                            {canManage && (
+                              <button 
+                                className="bs-icon-btn" 
+                                title="Modifier la marque"
+                                onClick={() => openEditModal(m)}
+                                style={{ color: "var(--forest)" }}
+                              >
+                                <Edit size={16} />
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button 
+                                className="bs-icon-btn" 
+                                title="Supprimer la marque"
+                                onClick={() => handleDelete(m.id, m.nom)}
+                                style={{ color: "#DC2626" }}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

@@ -66,6 +66,9 @@ export default function AdminProduits() {
   });
   const [restockSubmitting, setRestockSubmitting] = useState(false);
 
+  // Modal d'inspection du stock des variantes (coin d'œil)
+  const [selectedProductForVariantView, setSelectedProductForVariantView] = useState(null);
+
   const initialForm = {
     nom: "",
     categoryId: "",
@@ -153,7 +156,10 @@ export default function AdminProduits() {
   }
 
   function silentSyncProducts() {
-    api.get("/admin/products").then((res) => setProducts(res.data)).catch(() => {});
+    api.get("/admin/products").then((res) => {
+      const list = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+      setProducts(list);
+    }).catch(() => {});
     api.get("/admin/categories").then((res) => setCategories(res.data)).catch(() => {});
     api.get("/admin/familles").then((res) => setFamilles(res.data || [])).catch(() => {});
     api.get("/admin/unites").then((res) => setUnites(res.data || [])).catch(() => {});
@@ -164,7 +170,10 @@ export default function AdminProduits() {
 
   function load() {
     setLoading(true);
-    api.get("/admin/products").then((res) => setProducts(res.data)).finally(() => setLoading(false));
+    api.get("/admin/products").then((res) => {
+      const list = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+      setProducts(list);
+    }).finally(() => setLoading(false));
     api.get("/admin/categories").then((res) => setCategories(res.data));
     api.get("/admin/familles").then((res) => setFamilles(res.data || [])).catch(() => {});
     api.get("/admin/unites").then((res) => setUnites(res.data || [])).catch(() => {});
@@ -235,6 +244,62 @@ export default function AdminProduits() {
       try { return JSON.parse(val); } catch (e) { return []; }
     }
     return [];
+  }
+
+  function getProductVariantsList(p) {
+    if (!p) return [];
+    const list = [];
+    const modeles = parseJsonField(p.modelesCompatibles);
+    const couleurs = parseJsonField(p.couleurs);
+    const senteurs = parseJsonField(p.senteurs);
+
+    modeles.forEach((m, idx) => {
+      const nom = typeof m === "string" ? m : (m.nomComplet || m.nom || m.modele || `Modèle ${idx + 1}`);
+      const stk = typeof m === "object" && (m.quantite !== undefined || m.stock !== undefined)
+        ? Number(m.quantite !== undefined ? m.quantite : m.stock)
+        : Number(p.stock || 0);
+      const photo = typeof m === "object" ? (m.photo || m.photoUrl || m.image || null) : null;
+      const prix = typeof m === "object" && m.prix ? Number(m.prix) : null;
+      list.push({
+        type: "Modèle",
+        nom,
+        stock: stk,
+        photo: photo || p.imageUrl,
+        prix
+      });
+    });
+
+    couleurs.forEach((c, idx) => {
+      const nom = typeof c === "string" ? c : (c.nom || c.couleur || `Couleur ${idx + 1}`);
+      const stk = typeof c === "object" && (c.quantite !== undefined || c.stock !== undefined)
+        ? Number(c.quantite !== undefined ? c.quantite : c.stock)
+        : Number(p.stock || 0);
+      const photo = typeof c === "object" ? (c.photo || c.photoUrl || c.image || null) : null;
+      list.push({
+        type: "Couleur",
+        nom,
+        stock: stk,
+        photo: photo || p.imageUrl,
+        prix: null
+      });
+    });
+
+    senteurs.forEach((s, idx) => {
+      const nom = typeof s === "string" ? s : (s.nom || s.senteur || `Senteur ${idx + 1}`);
+      const stk = typeof s === "object" && (s.quantite !== undefined || s.stock !== undefined)
+        ? Number(s.quantite !== undefined ? s.quantite : s.stock)
+        : Number(p.stock || 0);
+      const photo = typeof s === "object" ? (s.photo || s.photoUrl || s.image || null) : null;
+      list.push({
+        type: "Senteur",
+        nom,
+        stock: stk,
+        photo: photo || p.imageUrl,
+        prix: null
+      });
+    });
+
+    return list;
   }
 
   // Helpers Galerie Photos
@@ -595,7 +660,7 @@ export default function AdminProduits() {
   }
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(20);
 
   // Filter products by search query, category, low stock, etat, marque, visibilite
   const filteredProducts = products.filter((p) => {
@@ -1024,8 +1089,28 @@ export default function AdminProduits() {
                     </td>
                     <td style={{ color: "var(--muted)" }}>{formatPrice(p.coutAchat || 0, "FCFA")}</td>
                     <td className={p.stock <= p.seuilAlerte ? "bs-stock-low" : ""}>
-                      <span style={{ fontWeight: 700 }}>{p.stock}</span> {p.unite}
-                      {p.stock <= p.seuilAlerte && <AlertTriangle size={14} color="#B4483A" style={{ marginLeft: 6, verticalAlign: "-2px" }} />}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                        <div>
+                          <span style={{ fontWeight: 700 }}>{p.stock}</span> {p.unite}
+                          {p.stock <= p.seuilAlerte && <AlertTriangle size={14} color="#B4483A" style={{ marginLeft: 6, verticalAlign: "-2px" }} />}
+                        </div>
+
+                        {getProductVariantsList(p).length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedProductForVariantView(p)}
+                            title="Voir le stock détaillé de chaque variante (couleur, modèle, senteur...)"
+                            style={{
+                              background: "#EFF6FF", border: "1.5px solid #BFDBFE", color: "#2563EB",
+                              padding: "2px 7px", borderRadius: 8, fontSize: 11, fontWeight: 800,
+                              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0
+                            }}
+                          >
+                            <Eye size={12} />
+                            <span>{getProductVariantsList(p).length}</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
 
                     <td>
@@ -2675,6 +2760,135 @@ export default function AdminProduits() {
                   Générer et Imprimer
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DU COIN D'OEIL / STOCK DÉTAILLÉ DES VARIANTES */}
+      {selectedProductForVariantView && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 99999,
+          background: "rgba(15, 23, 42, 0.75)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 16
+        }}>
+          <div style={{
+            background: "#fff", borderRadius: 20, width: "100%", maxWidth: 640,
+            maxHeight: "88vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+            animation: "popIn 0.2s ease-out"
+          }}>
+            {/* EN-TÊTE MODAL */}
+            <div style={{
+              padding: "16px 20px", background: "linear-gradient(135deg, #1E293B, #0F172A)",
+              color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <img
+                  src={selectedProductForVariantView.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80"}
+                  alt={selectedProductForVariantView.nom}
+                  style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover" }}
+                />
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#fff" }}>
+                    {selectedProductForVariantView.nom}
+                  </h3>
+                  <span style={{ fontSize: 12, color: "#94A3B8" }}>
+                    Stock global : <strong>{selectedProductForVariantView.stock} {selectedProductForVariantView.unite}</strong> · Stock détaillé par variante
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedProductForVariantView(null)}
+                style={{ background: "none", border: "none", color: "#94A3B8", cursor: "pointer" }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* CORPS : TABLE DES VARIANTES */}
+            <div style={{ padding: 20 }}>
+              {(() => {
+                const variants = getProductVariantsList(selectedProductForVariantView);
+                if (variants.length === 0) {
+                  return (
+                    <div style={{ padding: 30, textAlign: "center", color: "var(--muted)" }}>
+                      Aucune variante spécifique enregistrée pour ce produit.
+                    </div>
+                  );
+                }
+
+                return (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+                      <thead>
+                        <tr style={{ background: "#F8FAFC", borderBottom: "1.5px solid #E2E8F0" }}>
+                          <th style={{ padding: "10px 12px", fontSize: 11.5, fontWeight: 800, color: "#64748B" }}>VISUEL</th>
+                          <th style={{ padding: "10px 12px", fontSize: 11.5, fontWeight: 800, color: "#64748B" }}>TYPE</th>
+                          <th style={{ padding: "10px 12px", fontSize: 11.5, fontWeight: 800, color: "#64748B" }}>NOM VARIANTE</th>
+                          <th style={{ padding: "10px 12px", fontSize: 11.5, fontWeight: 800, color: "#64748B" }}>PRIX SPÉCIFIQUE</th>
+                          <th style={{ padding: "10px 12px", fontSize: 11.5, fontWeight: 800, color: "#64748B", textAlign: "right" }}>STOCK DISPONIBLE</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {variants.map((v, i) => {
+                          const isLow = v.stock <= (selectedProductForVariantView.seuilAlerte || 5);
+                          const isOut = v.stock <= 0;
+
+                          return (
+                            <tr key={i} style={{ borderBottom: "1px solid #E2E8F0" }}>
+                              <td style={{ padding: "10px 12px", width: 50 }}>
+                                <img
+                                  src={v.photo || selectedProductForVariantView.imageUrl}
+                                  alt={v.nom}
+                                  style={{ width: 38, height: 38, borderRadius: 8, objectFit: "cover", background: "#F1F5F9", border: "1px solid #E2E8F0" }}
+                                />
+                              </td>
+                              <td style={{ padding: "10px 12px" }}>
+                                <span style={{
+                                  fontSize: 10.5, fontWeight: 800, textTransform: "uppercase",
+                                  background: "#EFF6FF", color: "#2563EB", padding: "2px 6px", borderRadius: 4
+                                }}>
+                                  {v.type}
+                                </span>
+                              </td>
+                              <td style={{ padding: "10px 12px", fontWeight: 700, color: "var(--ink)", fontSize: 13 }}>
+                                {v.nom}
+                              </td>
+                              <td style={{ padding: "10px 12px", fontSize: 12.5, fontWeight: 600 }}>
+                                {v.prix ? formatPrice(v.prix, "KMF") : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>Standard</span>}
+                              </td>
+                              <td style={{ padding: "10px 12px", textAlign: "right" }}>
+                                <span style={{
+                                  display: "inline-block", padding: "3px 10px", borderRadius: 12,
+                                  fontSize: 12, fontWeight: 800,
+                                  background: isOut ? "#FEE2E2" : (isLow ? "#FEF3C7" : "#DCFCE7"),
+                                  color: isOut ? "#DC2626" : (isLow ? "#D97706" : "#16A34A")
+                                }}>
+                                  {isOut ? "Épuisé (0)" : `${v.stock} restant(s)`}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div style={{ padding: "14px 20px", borderTop: "1px solid #E2E8F0", display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setSelectedProductForVariantView(null)}
+                style={{
+                  background: "#F1F5F9", border: "none", color: "#475569",
+                  padding: "8px 18px", borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: "pointer"
+                }}
+              >
+                Fermer
+              </button>
             </div>
           </div>
         </div>

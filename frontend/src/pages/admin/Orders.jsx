@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import {
   Search, Filter, ShoppingBag, DollarSign, Clock, CheckCircle2,
-  Truck, UserCheck, Eye, X, Phone, MapPin, CreditCard, Calendar, Smartphone
+  Truck, UserCheck, Eye, X, Phone, MapPin, CreditCard, Calendar, Smartphone, Printer
 } from "lucide-react";
 import api from "../../api";
 import TablePagination from "../../components/TablePagination";
 import { SkeletonStatCards, SkeletonTableRows } from "../../components/Skeleton.jsx";
 import { readCache, writeCache } from "../../utils/swrCache.js";
+import ReceiptModal from "../../components/ReceiptModal.jsx";
 
 import { formatPrice as fcfa } from "../../utils/currency.js";
 const formatOrderNum = (id) => `COM-B${String(id).padStart(3, "0")}`;
@@ -90,8 +91,9 @@ export default function AdminOrders() {
   const [monthFilter, setMonthFilter] = useState("tous");
   const [yearFilter, setYearFilter] = useState("tous");
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [printingOrder, setPrintingOrder] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(20);
 
   function load() {
     const cacheKey = `admin_orders:${statusFilter}`;
@@ -744,17 +746,32 @@ export default function AdminOrders() {
 
                     {/* 10. Action Button */}
                     <td style={{ textAlign: "center" }}>
-                      <button
-                        onClick={() => setSelectedOrder(o)}
-                        style={{
-                          background: "var(--paper)", border: "1px solid var(--line)",
-                          borderRadius: 8, padding: "6px 12px", cursor: "pointer",
-                          display: "inline-flex", alignItems: "center", gap: 4,
-                          fontSize: 12, fontWeight: 600, color: "var(--forest)"
-                        }}
-                      >
-                        <Eye size={14} /> Voir
-                      </button>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <button
+                          onClick={() => setSelectedOrder(o)}
+                          style={{
+                            background: "var(--paper)", border: "1px solid var(--line)",
+                            borderRadius: 8, padding: "6px 10px", cursor: "pointer",
+                            display: "inline-flex", alignItems: "center", gap: 4,
+                            fontSize: 12, fontWeight: 600, color: "var(--forest)"
+                          }}
+                        >
+                          <Eye size={13} /> Voir
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPrintingOrder(o)}
+                          title="Imprimer / Télécharger le ticket de caisse"
+                          style={{
+                            background: "#F1F5F9", border: "1px solid #CBD5E1",
+                            borderRadius: 8, padding: "6px 10px", cursor: "pointer",
+                            display: "inline-flex", alignItems: "center", gap: 4,
+                            fontSize: 12, fontWeight: 700, color: "#1E293B"
+                          }}
+                        >
+                          <Printer size={13} /> Ticket
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -957,18 +974,50 @@ export default function AdminOrders() {
                   </button>
                 </div>
               )}
+              {/* Imprimer / Télécharger le Ticket de caisse */}
+              <button
+                type="button"
+                onClick={() => setPrintingOrder(selectedOrder)}
+                style={{
+                  width: "100%",
+                  marginTop: 14,
+                  padding: "11px 16px",
+                  borderRadius: 10,
+                  background: "var(--forest)",
+                  color: "#fff",
+                  border: "none",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  boxShadow: "0 2px 8px rgba(34, 75, 53, 0.25)"
+                }}
+              >
+                <Printer size={15} /> Imprimer / Télécharger le Ticket de caisse
+              </button>
             </div>
 
             {/* Close button */}
             <button
               onClick={() => setSelectedOrder(null)}
-              className="bs-btn-primary"
-              style={{ width: "100%", marginTop: 24, padding: "12px" }}
+              className="bs-btn-secondary"
+              style={{ width: "100%", marginTop: 12, padding: "10px" }}
             >
               Fermer les détails
             </button>
           </div>
         </div>
+      )}
+
+      {/* MODAL TICKET DE CAISSE THERMIQUE & PDF */}
+      {printingOrder && (
+        <ReceiptModal
+          order={printingOrder}
+          onClose={() => setPrintingOrder(null)}
+        />
       )}
     </>
   );

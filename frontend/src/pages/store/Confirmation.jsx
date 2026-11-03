@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { useParams, useNavigate } from "react-router-dom";
-import { CheckCircle, ShoppingBag, ArrowRight, Package, Truck, MapPin, Store } from "lucide-react";
+import { CheckCircle, ShoppingBag, ArrowRight, Package, Truck, MapPin, Store, Printer } from "lucide-react";
 import api, { SLUG } from "../../api";
 import { useAuth } from "../../context/AuthContext.jsx";
+import ReceiptModal from "../../components/ReceiptModal.jsx";
 
 import { formatPrice as fcfa } from "../../utils/currency.js";
 
@@ -12,6 +13,7 @@ export default function Confirmation() {
   const navigate = useNavigate();
   const { boutique } = useAuth();
   const [order, setOrder] = useState(null);
+  const [showReceipt, setShowReceipt] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -53,6 +55,31 @@ export default function Confirmation() {
       <h1 style={{ fontFamily: "var(--font-heading)", fontSize: 32, color: "var(--forest-dark)", margin: "0 0 10px" }}>
         Commande confirmée !
       </h1>
+
+      {order && (
+        <div style={{ marginBottom: 22 }}>
+          <button
+            type="button"
+            onClick={() => setShowReceipt(true)}
+            style={{
+              background: "linear-gradient(135deg, #18181B, #27272A)",
+              color: "#fff",
+              border: "1px solid rgba(255,255,255,0.15)",
+              borderRadius: 14,
+              padding: "10px 22px",
+              fontWeight: 800,
+              fontSize: 13.5,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              cursor: "pointer",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.25)"
+            }}
+          >
+            <Printer size={16} /> Voir mon ticket de caisse imprimé
+          </button>
+        </div>
+      )}
       {/* BARRE DE PROGRESSION DU PROCESSUS DE COMMANDE */}
       <div style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 20, padding: "20px 24px", marginBottom: 28, boxShadow: "0 2px 12px rgba(34,75,53,0.06)", textAlign: "left" }}>
         <div style={{ fontWeight: 800, fontSize: 15, color: "var(--forest-dark)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
@@ -167,6 +194,15 @@ export default function Confirmation() {
           Suivre ma commande <ArrowRight size={16} />
         </button>
       </div>
+
+      {showReceipt && order && (
+        <ReceiptModal
+          order={order}
+          boutique={boutique}
+          onClose={() => setShowReceipt(false)}
+          autoAnimate={true}
+        />
+      )}
     </div>
   );
 }

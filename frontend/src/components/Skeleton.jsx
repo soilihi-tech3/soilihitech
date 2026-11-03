@@ -68,6 +68,88 @@ export function SkeletonProductGrid({ count = 8 }) {
   );
 }
 
+export function SkeletonPOSGrid({ count = 10 }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+        gap: 14
+      }}
+      role="status"
+      aria-label="Chargement des produits"
+    >
+      {Array.from({ length: count }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            background: "#fff",
+            borderRadius: 14,
+            border: "1px solid var(--line)",
+            padding: 12,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
+          }}
+        >
+          <div>
+            <Skel h={110} r={10} style={{ marginBottom: 10 }} />
+            <Skel w="40%" h={10} style={{ marginBottom: 6 }} />
+            <Skel w="85%" h={14} style={{ marginBottom: 10 }} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+              <Skel w="45%" h={16} />
+              <Skel w="30%" h={12} />
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 12 }}>
+            <Skel h={34} r={8} />
+            <Skel h={34} r={8} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function SkeletonTable({ cols = 6, rows = 8, headers = [] }) {
+  return (
+    <div style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 16, overflow: "hidden" }}>
+      <table className="bs-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+        {headers.length > 0 && (
+          <thead>
+            <tr>
+              {headers.map((h, idx) => (
+                <th key={idx} style={{ padding: "12px 14px", textAlign: "left", fontSize: 12, color: "var(--muted)", fontWeight: 800 }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+        )}
+        <tbody>
+          <SkeletonTableRows rows={rows} cols={headers.length || cols} />
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function SkeletonVariantGrid({ count = 6 }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} style={{ border: "1.5px solid var(--line)", borderRadius: 12, padding: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+          <Skel w={70} h={70} r={8} />
+          <Skel w="75%" h={12} />
+          <Skel w="50%" h={10} />
+          <Skel w="90%" h={26} r={6} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function SkeletonOrdersPage() {
   return (
     <div className="container" style={{ padding: "32px 16px", maxWidth: 1000, margin: "0 auto" }}>

@@ -59,9 +59,11 @@ export default function Catalogue() {
   });
 
   const [favIds, setFavIds] = useState([]);
+  const [visibleCount, setVisibleCount] = useState(20);
 
   // Scroll to top on filter change & remember catalogue query state
   useEffect(() => {
+    setVisibleCount(20);
     window.scrollTo({ top: 0, behavior: "smooth" });
     try {
       const activeUrl = window.location.pathname + window.location.search;
@@ -124,11 +126,12 @@ export default function Catalogue() {
     
     api.get(`/store/${SLUG}/products`, { params: query })
       .then((res) => {
-        setData(ck, res.data, 120000);
-        setProducts(res.data);
+        const list = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+        setData(ck, list, 120000);
+        setProducts(list);
         if (!categoryId && !famille && !search && !marqueId) {
-          try { localStorage.setItem(`cached_products_${SLUG}`, JSON.stringify(res.data)); } catch(e) {}
-          setAllFallbackProducts(res.data);
+          try { localStorage.setItem(`cached_products_${SLUG}`, JSON.stringify(list)); } catch(e) {}
+          setAllFallbackProducts(list);
         }
         setLoading(false);
       })
@@ -816,11 +819,39 @@ export default function Catalogue() {
 
           {/* Grille principale des produits correspondants */}
           {displayedProducts.length > 0 && (
-            <div className="bs-grid-catalogue">
-              {displayedProducts.map((p) => (
-                <ProductCard key={p.id} product={p} isFavorisPage={onlyFavoris} />
-              ))}
-            </div>
+            <>
+              <div className="bs-grid-catalogue">
+                {displayedProducts.slice(0, visibleCount).map((p) => (
+                  <ProductCard key={p.id} product={p} isFavorisPage={onlyFavoris} />
+                ))}
+              </div>
+
+              {displayedProducts.length > visibleCount && (
+                <div style={{ textAlign: "center", marginTop: 28, marginBottom: 20 }}>
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((prev) => prev + 20)}
+                    style={{
+                      background: "#0F172A",
+                      color: "#fff",
+                      border: "none",
+                      padding: "12px 28px",
+                      borderRadius: 14,
+                      fontWeight: 700,
+                      fontSize: 14,
+                      cursor: "pointer",
+                      boxShadow: "0 4px 14px rgba(15,23,42,0.15)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      transition: "all 0.15s"
+                    }}
+                  >
+                    Charger plus de produits (+20) — {Math.min(visibleCount, displayedProducts.length)} sur {displayedProducts.length}
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
           {/* ── SECTION RECOMMANDATIONS SI RECHERCHE SANS RÉSULTAT ── */}

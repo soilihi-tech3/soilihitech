@@ -1,8 +1,96 @@
-import React from "react";
-import { Printer, X, CheckCircle, Smartphone, CreditCard, ShoppingBag, Clock, Package, Truck } from "lucide-react";
+import React, { useEffect, useState, useRef } from "react";
+import { Printer, Download, X, RotateCcw, ShoppingBag, Store, Truck, Sparkles } from "lucide-react";
+import { toast } from "react-hot-toast";
+import jsPDF from "jspdf";
 import { useAuth } from "../context/AuthContext.jsx";
-
 import { formatPrice as fcfa } from "../utils/currency.js";
+import { ReceiptPrinter, BarcodeSvg } from "./ReceiptPrinter.jsx";
+
+function cleanPdfText(text) {
+  if (!text) return "";
+  return String(text)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’']/g, "'")
+    .replace(/[«»“”]/g, '"')
+    .trim();
+}
+
+function pdfPrice(val, devise) {
+  const num = Number(val || 0);
+  const formatted = num.toLocaleString("fr-FR").replace(/\s/g, " ");
+  return `${formatted} ${cleanPdfText(devise || "FCFA")}`;
+}
+
+function drawVectorBarcode(doc, value, centerX, y, totalW, h) {
+  doc.setFillColor(15, 23, 42);
+  const barCount = 44;
+  let seed = 0;
+  for (let i = 0; i < value.length; i++) {
+    seed = (seed + value.charCodeAt(i) * (i + 1)) % 1000;
+  }
+  const startX = centerX - totalW / 2;
+  const unitW = totalW / (barCount * 1.5);
+  let curX = startX;
+
+  for (let i = 0; i < barCount; i++) {
+    const isBlack = (i % 2 === 0) || (i % 5 === 0);
+    const pseudo = (seed * (i + 7) + 13) % 10;
+    const w = unitW * (isBlack ? (pseudo > 7 ? 2.2 : pseudo > 3 ? 1.5 : 1) : (pseudo > 6 ? 1.5 : 1));
+    if (isBlack) {
+      doc.rect(curX, y, w, h, "F");
+    }
+    curX += w + 0.3;
+  }
+}
+
+export function getArticleDetails(it) {
+  const pu = Number(it.prixUnitaire || it.product?.prix || 0);
+  const qte = Number(it.quantite || 1);
+  const lineTotal = pu * qte;
+  const productName = (
+    it.product?.nom ||
+    it.product?.titre ||
+    it.nom ||
+    it.nomProduit ||
+    it.designation ||
+    "Article"
+  ).trim();
+
+  const resolveVal = (val) => {
+    if (!val) return null;
+    if (typeof val === "object") return val.nom || val.label || val.name || null;
+    return String(val).trim();
+  };
+
+  const parts = [];
+
+  const brand = resolveVal(it.marqueTelephone || it.selectedBrand || it.marque || it.product?.marque?.nom);
+  const model = resolveVal(it.modele || it.selectedModele || it.modeleTelephone);
+  const color = resolveVal(it.couleur || it.selectedCouleur);
+  const scent = resolveVal(it.senteur || it.selectedSenteur);
+  const size = resolveVal(it.taille || it.selectedTaille || it.pointure);
+  const customVar = resolveVal(it.variante);
+
+  if (brand && !productName.toLowerCase().includes(brand.toLowerCase())) {
+    parts.push(brand);
+  }
+  if (model) parts.push(model);
+  if (color) parts.push(color);
+  if (scent) parts.push(scent);
+  if (size) parts.push(`Taille: ${size}`);
+  if (customVar) parts.push(customVar);
+
+  const variantText = parts.length > 0 ? parts.join(" · ") : "";
+
+  return {
+    productName,
+    pu,
+    qte,
+    lineTotal,
+    variantText
+  };
+}
 
 const STATUT_LABELS = {
   en_attente_paiement: "PAIEMENT EN ATTENTE",
@@ -22,198 +110,902 @@ const MOYEN_LABELS = {
   mvola: "MVOLA MOBILE MONEY",
   wero: "WERO",
   holam: "WERO",
-  carte: "CARTE BANCAIRE (VISA / MASTERCARD)",
+  carte: "CARTE BANCAIRE",
   wave: "WAVE (UNITECHPAY)",
   orange: "ORANGE MONEY (UNITECHPAY)",
-  unitechpay: "UNITECHPAY (MOBILE MONEY)",
+  unitechpay: "MOBILE MONEY",
   whatsapp: "COMMANDE WHATSAPP"
 };
 
-export default function ReceiptModal({ order, boutique, onClose }) {
-  const { user } = useAuth();
+export default function ReceiptModal({
+  order,
+  boutique: boutiqueProp,
+  onClose,
+  onContinue,
+  autoAnimate = true
+}) {
+  const { user, boutique: boutiqueContext } = useAuth();
+  const boutique = boutiqueProp || boutiqueContext;
+
+  const [stage, setStage] = useState(autoAnimate ? "processing" : "complete");
+  const timersRef = useRef([]);
+
+  const runAnimation = () => {
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+    setStage("processing");
+
+    const t1 = setTimeout(() => {
+      setStage("printing");
+    }, 450);
+
+    const t2 = setTimeout(() => {
+      setStage("complete");
+    }, 2400);
+
+    timersRef.current = [t1, t2];
+  };
+
+  useEffect(() => {
+    if (autoAnimate) {
+      runAnimation();
+    } else {
+      setStage("complete");
+    }
+    return () => {
+      timersRef.current.forEach(clearTimeout);
+    };
+  }, [order?.id, autoAnimate]);
+
   if (!order) return null;
 
-  const storeName = boutique?.nom || "Marché Vert";
+  const storeName = boutique?.nom || "Soilihitech";
   const activeDevise = order.devise || boutique?.devise || "KMF";
 
-  // 1. DYNAMIC CLIENT NAME
-  const clientName = order.client?.nom || order.nomClient || user?.nom || "Client connecté";
-  const clientPhone = order.client?.telephone || order.telephoneClient || user?.telephone || "";
+  const clientName =
+    order.client?.nom || order.clientNom || order.nomClient || user?.nom || "Client comptoir";
+  const clientPhone =
+    order.client?.telephone || order.clientTelephone || order.telephoneClient || "";
 
-  // 2. DYNAMIC SALE TYPE
-  const isRecharge = order.typeVente === "recharge_mobile" || order.notes?.includes("recharge_mobile") || order.items?.some(it => it.product?.nom?.toLowerCase().includes("recharge"));
-  const isPOS = !isRecharge && (order.typeVente === "vente_directe" || order.adresseLivraison?.includes("Achat direct"));
-  const isRetraitEnLigne = !isRecharge && !isPOS && order.modeLivraison === "retrait";
+  const isRecharge =
+    order.typeVente === "recharge_mobile" ||
+    order.notes?.includes("recharge_mobile") ||
+    order.items?.some((it) => it.product?.nom?.toLowerCase().includes("recharge"));
 
-  const typeLabel = isRecharge 
-    ? "Recharge Crédit Mobile" 
-    : isPOS 
-      ? "Vente Directe POS (Comptoir)" 
-      : isRetraitEnLigne
-        ? "Commande en Ligne (Retrait boutique)"
-        : "Commande en Ligne (Livraison à domicile)";
+  const isPOS =
+    !isRecharge &&
+    (order.typeVente === "vente_directe" ||
+      order.adresseLivraison?.includes("Achat direct") ||
+      Boolean(order.montantRecu));
 
-  // 3. DYNAMIC STATUS & PAYMENT
-  const statusLabel = STATUT_LABELS[order.statut] || (order.statut ? order.statut.toUpperCase() : "RÉGLÉ / CONFIRMÉ");
-  const isPaidOrDelivered = ["livree", "recuperee", "validee", "pret_retrait", "en_livraison"].includes(order.statut);
-  const statusColor = order.statut === "annulee" ? "#B4483A" : isPaidOrDelivered ? "#15803D" : "#CA8A04";
-  
-  const paymentLabel = MOYEN_LABELS[order.moyenPaiement] || (order.moyenPaiement ? order.moyenPaiement.toUpperCase() : "CARTE BANCAIRE");
+  const isRetrait = !isRecharge && !isPOS && order.modeLivraison === "retrait";
 
-  const handlePrint = () => {
-    window.print();
+  const typeHeader = isRecharge
+    ? "RECHARGE CRÉDIT MOBILE"
+    : isPOS
+    ? "VENTE DIRECTE EN BOUTIQUE"
+    : isRetrait
+    ? "COMMANDE EN LIGNE (RETRAIT)"
+    : "COMMANDE EN LIGNE (LIVRAISON)";
+
+  const orderNumber =
+    order.reference ||
+    (order.id ? `#COM-B${String(order.id).padStart(3, "0")}` : "#COM-2026");
+
+  const formattedDate = order.createdAt
+    ? new Date(order.createdAt).toLocaleString("fr-FR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      })
+    : new Date().toLocaleString("fr-FR");
+
+  const totalAmount = Number(order.total || 0);
+  const paymentLabel =
+    MOYEN_LABELS[order.moyenPaiement] ||
+    (order.moyenPaiement ? order.moyenPaiement.toUpperCase() : "PAIEMENT SÉCURISÉ");
+
+  const handleDownloadPDF = () => {
+    try {
+      const items = order.items || [];
+      const isCash = order.moyenPaiement === "cash" || order.moyenPaiement === "especes";
+      const hasChange = isCash && Boolean(order.montantRecu);
+
+      let estimatedItemsH = 0;
+      items.forEach((it) => {
+        const { productName, variantText } = getArticleDetails(it);
+        const nameLen = productName.length;
+        const extraLines = Math.max(1, Math.ceil(nameLen / 26));
+        const varLines = variantText ? Math.max(1, Math.ceil(variantText.length / 36)) : 0;
+        estimatedItemsH += (extraLines * 3.5) + (varLines * 3.2) + 9;
+      });
+
+      const dynamicHeight = Math.max(170, 130 + estimatedItemsH + (hasChange ? 15 : 0));
+
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: [80, dynamicHeight]
+      });
+
+      let y = 10;
+      const centerX = 40;
+      const leftX = 6;
+      const rightX = 74;
+
+      // 1. Boutique Header
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(15, 23, 42);
+      doc.text(cleanPdfText(storeName).toUpperCase(), centerX, y, { align: "center" });
+      y += 5;
+
+      if (boutique?.adresse) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(cleanPdfText(boutique.adresse), centerX, y, { align: "center" });
+        y += 3.5;
+      }
+
+      if (boutique?.telephone) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Tel : ${boutique.telephone}`, centerX, y, { align: "center" });
+        y += 4;
+      }
+
+      // 2. Dashed Line
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineDashPattern([1.2, 1.2], 0);
+      doc.line(leftX, y, rightX, y);
+      y += 5;
+
+      // 3. Ticket Title & Reference
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(cleanPdfText(typeHeader), centerX, y, { align: "center" });
+      y += 4;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`N* ${cleanPdfText(orderNumber)}  ·  ${formattedDate}`, centerX, y, { align: "center" });
+      y += 5;
+
+      // 4. Dashed Line
+      doc.line(leftX, y, rightX, y);
+      y += 4.5;
+
+      // 5. Client & Sale Details
+      doc.setFontSize(7.5);
+      doc.setTextColor(51, 65, 85);
+
+      doc.setFont("helvetica", "bold");
+      doc.text("Client :", leftX, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(cleanPdfText(clientName), leftX + 13, y);
+      y += 4;
+
+      if (clientPhone && clientPhone !== "non_renseigne") {
+        doc.setFont("helvetica", "bold");
+        doc.text("Tel :", leftX, y);
+        doc.setFont("helvetica", "normal");
+        doc.text(cleanPdfText(clientPhone), leftX + 13, y);
+        y += 4;
+      }
+
+      if (order.employeAssigne?.nom) {
+        doc.setFont("helvetica", "bold");
+        doc.text("Caissier :", leftX, y);
+        doc.setFont("helvetica", "normal");
+        doc.text(cleanPdfText(order.employeAssigne.nom), leftX + 16, y);
+        y += 4;
+      }
+
+      doc.setFont("helvetica", "bold");
+      doc.text("Paiement :", leftX, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(cleanPdfText(paymentLabel), leftX + 17, y);
+      y += 5;
+
+      // 6. Dashed Line
+      doc.line(leftX, y, rightX, y);
+      y += 4;
+
+      // 7. Table Header
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text("ARTICLE / DETAILS", leftX, y);
+      doc.text("TOTAL", rightX, y, { align: "right" });
+      y += 2.5;
+
+      doc.setLineDashPattern([], 0);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(leftX, y, rightX, y);
+      doc.setLineDashPattern([1.2, 1.2], 0);
+      doc.setDrawColor(203, 213, 225);
+      y += 4;
+
+      // 8. Articles Rows (Full Names & Details, No Truncation)
+      if (items.length > 0) {
+        items.forEach((it) => {
+          const { productName, pu, qte, lineTotal, variantText } = getArticleDetails(it);
+          const cleanNom = cleanPdfText(productName);
+
+          // Full article name wrapping across lines without cutting off
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(7.5);
+          doc.setTextColor(15, 23, 42);
+          const splitName = doc.splitTextToSize(cleanNom, 48);
+          doc.text(splitName, leftX, y);
+
+          // Total aligned on the right of the first line
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(8);
+          doc.text(pdfPrice(lineTotal, activeDevise), rightX, y, { align: "right" });
+          y += splitName.length * 3.4;
+
+          // Variant details if present (Full text, wrapped if needed)
+          if (variantText) {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(6.8);
+            doc.setTextColor(37, 99, 235);
+            const splitVar = doc.splitTextToSize(`(${cleanPdfText(variantText)})`, 66);
+            doc.text(splitVar, leftX + 1.5, y);
+            y += splitVar.length * 3;
+          }
+
+          // Quantity x Unit Price subline
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          doc.setTextColor(100, 116, 139);
+          doc.text(`${qte}  x  ${pdfPrice(pu, activeDevise)}`, leftX + 1.5, y);
+          y += 4.5;
+        });
+      } else {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text("Detail des articles enregistre", centerX, y, { align: "center" });
+        y += 5;
+      }
+
+      // 9. Dashed Line
+      doc.line(leftX, y, rightX, y);
+      y += 4.5;
+
+      // 10. Totals Breakdown
+      doc.setFontSize(7.5);
+      doc.setTextColor(51, 65, 85);
+
+      if (order.sousTotal && Number(order.sousTotal) !== totalAmount) {
+        doc.setFont("helvetica", "normal");
+        doc.text("Sous-total :", leftX, y);
+        doc.text(pdfPrice(order.sousTotal, activeDevise), rightX, y, { align: "right" });
+        y += 4;
+      }
+
+      if (order.fraisLivraison !== undefined && order.fraisLivraison !== null) {
+        doc.setFont("helvetica", "normal");
+        doc.text("Livraison :", leftX, y);
+        const feeText =
+          Number(order.fraisLivraison) === 0
+            ? "Gratuite"
+            : pdfPrice(order.fraisLivraison, activeDevise);
+        doc.text(feeText, rightX, y, { align: "right" });
+        y += 4;
+      }
+
+      // TOTAL REGLE HIGHLIGHT BOX
+      doc.setFillColor(241, 245, 249);
+      doc.roundedRect(leftX, y, rightX - leftX, 7.5, 1, 1, "F");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text("TOTAL REGLE :", leftX + 2.5, y + 5);
+      doc.text(pdfPrice(totalAmount, activeDevise), rightX - 2.5, y + 5, { align: "right" });
+      y += 11;
+
+      if (hasChange) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(71, 85, 105);
+        doc.text("Montant recu :", leftX + 1, y);
+        doc.text(pdfPrice(order.montantRecu, activeDevise), rightX - 1, y, { align: "right" });
+        y += 3.8;
+
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(22, 163, 74);
+        doc.text("Monnaie rendue :", leftX + 1, y);
+        doc.text(pdfPrice(order.monnaieRendue || 0, activeDevise), rightX - 1, y, {
+          align: "right"
+        });
+        y += 5;
+      }
+
+      // 11. Dashed Line
+      doc.setLineDashPattern([1.2, 1.2], 0);
+      doc.line(leftX, y, rightX, y);
+      y += 5;
+
+      // 12. Vector Barcode in jsPDF
+      const cleanId = orderNumber.replace(/[^a-zA-Z0-9]/g, "");
+      drawVectorBarcode(doc, cleanId, centerX, y, 46, 7.5);
+      y += 11;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(cleanPdfText(orderNumber), centerX, y, { align: "center" });
+      y += 5;
+
+      // 13. Footer
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text("Merci de votre confiance !", centerX, y, { align: "center" });
+      y += 3.5;
+      doc.text(`A tres bientot chez ${cleanPdfText(storeName)}.`, centerX, y, { align: "center" });
+
+      // 14. Direct Save / Download
+      const fileName = `Ticket-${cleanId || "Commande"}.pdf`;
+      doc.save(fileName);
+      toast.success("Ticket de caisse PDF téléchargé !");
+    } catch (err) {
+      console.error("Erreur téléchargement PDF ticket:", err);
+      toast.error("Erreur lors de la génération du PDF.");
+    }
   };
 
   return (
     <div
       onClick={onClose}
       style={{
-        position: "fixed", inset: 0, zIndex: 99999,
-        background: "rgba(15, 23, 42, 0.75)", backdropFilter: "blur(4px)",
-        display: "flex", alignItems: "center", justifyContent: "center", padding: 16
+        position: "fixed",
+        inset: 0,
+        zIndex: 99999,
+        background: "rgba(10, 15, 29, 0.75)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "16px 12px",
+        overflowY: "auto"
       }}
     >
       <div
-        className="bs-receipt-paper"
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#FFFFFF", color: "#0F172A", borderRadius: 16, padding: 24,
-          maxWidth: 420, width: "100%", boxShadow: "0 20px 30px rgba(0,0,0,0.4)",
-          fontFamily: "Courier, monospace, sans-serif", border: "1px solid #CBD5E1",
-          position: "relative"
+          width: "100%",
+          maxWidth: 440,
+          margin: "auto",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center"
         }}
       >
-        {/* CLOSE BUTTON */}
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            position: "absolute", top: 12, right: 12, background: "#F1F5F9",
-            border: "none", borderRadius: "50%", width: 30, height: 30,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", color: "#64748B"
-          }}
+        <ReceiptPrinter.Root
+          stage={stage}
+          feedMotion="stepped"
+          animate={true}
         >
-          <X size={16} />
-        </button>
-
-        {/* TICKET HEADER */}
-        <div style={{ textAlign: "center", borderBottom: "1px dashed #64748B", paddingBottom: 12, marginBottom: 12 }}>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#0F172A", letterSpacing: 1 }}>{storeName.toUpperCase()}</div>
-          <div style={{ fontSize: 11, color: "#475569", marginTop: 2, fontWeight: 600 }}>BOUTIQUE & SERVICE EN LIGNE</div>
-          <div style={{ fontSize: 11, color: "#475569", marginTop: 4, fontWeight: 700 }}>
-            REÇU OFFICIEL N° #COM-B{String(order.id).padStart(3, "0")}
-          </div>
-          <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
-            {new Date(order.createdAt).toLocaleString("fr-FR")}
-          </div>
-        </div>
-
-        {/* DYNAMIC METADATA */}
-        <div style={{ fontSize: 12, color: "#1E293B", marginBottom: 12, lineHeight: 1.6 }}>
-          <div><strong style={{ color: "#0F172A" }}>Client:</strong> {clientName}</div>
-          {clientPhone && clientPhone !== "non_renseigne" && (
-            <div><strong style={{ color: "#0F172A" }}>Téléphone:</strong> {clientPhone}</div>
-          )}
-          <div><strong style={{ color: "#0F172A" }}>Type:</strong> {typeLabel}</div>
-          <div><strong style={{ color: "#0F172A" }}>Statut:</strong> <span style={{ color: statusColor, fontWeight: 800 }}>{statusLabel}</span></div>
-        </div>
-
-        {/* ITEMS TABLE */}
-        <div style={{ borderTop: "1px dashed #64748B", borderBottom: "1px dashed #64748B", padding: "10px 0", marginBottom: 12 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "2.2fr 0.6fr 1fr 1fr", fontSize: 11, fontWeight: 800, color: "#0F172A", borderBottom: "1px solid #E2E8F0", paddingBottom: 4, marginBottom: 6 }}>
-            <span>{isRecharge ? "N° DESTINATAIRE" : "ARTICLE"}</span>
-            <span style={{ textAlign: "center" }}>QTÉ</span>
-            <span style={{ textAlign: "right" }}>PRIX U.</span>
-            <span style={{ textAlign: "right" }}>TOTAL</span>
-          </div>
-
-          {(order.items && order.items.length > 0 ? order.items : (isRecharge ? [{
-            nom: order.notes ? order.notes.replace('Recharge Crédit Mobile ', '') : "Recharge Crédit",
-            quantite: 1,
-            prixUnitaire: order.total
-          }] : [])).map((it, idx) => {
-            const pu = Number(it.prixUnitaire || it.product?.prix || 0);
-            const totLine = pu * (it.quantite || 1);
-
-            let displayName = it.product?.nom || it.nom || "Article";
-            if (isRecharge) {
-               const phoneMatch = (order.notes || "").match(/\+?\d{7,15}/);
-               const destPhone = phoneMatch ? phoneMatch[0] : (clientPhone && clientPhone !== "non_renseigne" ? clientPhone : "Inconnu");
-               const matchKmf = (order.notes || "").match(/(\d[\d\s]*)\s*KMF/i);
-               const creditKmf = matchKmf ? matchKmf[1].trim() + " KMF" : "";
-               
-               displayName = `N° ${destPhone}${creditKmf ? ` (${creditKmf})` : ""}`;
-            }
-
-            return (
-              <div key={idx} style={{ display: "grid", gridTemplateColumns: "2.2fr 0.6fr 1fr 1fr", fontSize: 11.5, color: "#0F172A", marginBottom: 5, fontWeight: 600 }}>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={displayName}>
-                  {displayName}
+          {/* PRINTER DEVICE */}
+          <ReceiptPrinter.Machine>
+            {/* Top header on the printer device */}
+            <ReceiptPrinter.Header>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 8,
+                    background: "linear-gradient(135deg, var(--forest), #3D8C5D)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#fff",
+                    boxShadow: "0 2px 8px rgba(34, 75, 53, 0.4)"
+                  }}
+                >
+                  <Sparkles size={14} />
+                </div>
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    letterSpacing: 0.5,
+                    color: "#E4E4E7",
+                    textTransform: "uppercase"
+                  }}
+                >
+                  {storeName}
                 </span>
-                <span style={{ textAlign: "center" }}>{it.quantite || 1}</span>
-                <span style={{ textAlign: "right" }}>{fcfa(pu, activeDevise)}</span>
-                <span style={{ textAlign: "right", fontWeight: 800 }}>{fcfa(totLine, activeDevise)}</span>
               </div>
-            );
-          })}
-        </div>
 
-        {/* TOTALS SUMMARY */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#0F172A", marginBottom: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: "#475569" }}>Sous-Total:</span>
-            <span style={{ fontWeight: 700 }}>{fcfa(order.sousTotal || order.total, activeDevise)}</span>
-          </div>
-          {(order.fraisLivraison && order.fraisLivraison !== 0 && order.fraisLivraison !== "0") && (
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "#475569" }}>Frais de livraison:</span>
-              <span style={{ fontWeight: 700 }}>{isNaN(Number(order.fraisLivraison)) ? order.fraisLivraison : fcfa(Number(order.fraisLivraison), activeDevise)}</span>
-            </div>
-          )}
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 900, color: "#0F172A", borderTop: "1px dashed #64748B", paddingTop: 8, marginTop: 4 }}>
-            <span>TOTAL RÉGLÉ:</span>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ color: "#15803D" }}>{fcfa(order.total, activeDevise)}</div>
-              {(order.moyenPaiement === "wave" || order.moyenPaiement === "orange") && (
-                <div style={{ fontSize: 12, color: "#0284C7", fontWeight: 800, marginTop: 2 }}>
-                  ≈ {Math.round(Number(order.total) * 655.957).toLocaleString("fr-FR")} FCFA
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={runAnimation}
+                  title="Rejouer l'impression"
+                  style={{
+                    background: "#27272A",
+                    color: "#E4E4E7",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: 20,
+                    padding: "4px 10px",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    cursor: "pointer",
+                    transition: "all 0.15s ease"
+                  }}
+                >
+                  <RotateCcw size={12} /> Rejouer
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  style={{
+                    background: "rgba(255, 255, 255, 0.08)",
+                    border: "none",
+                    borderRadius: "50%",
+                    width: 28,
+                    height: 28,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#A1A1AA",
+                    cursor: "pointer"
+                  }}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            </ReceiptPrinter.Header>
+
+            {/* OLED SCREEN */}
+            <ReceiptPrinter.Screen>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  gap: 12
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      color: "#FFFFFF",
+                      letterSpacing: 0.2
+                    }}
+                  >
+                    {isPOS ? "Vente en Caisse" : "Achat en Ligne"}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#71717A", marginTop: 2 }}>
+                    Réf. {orderNumber}
+                  </div>
                 </div>
-              )}
-              {isRecharge && (
-                <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, marginTop: 2 }}>
-                  {(() => {
-                    const match = (order.notes || "").match(/(\d[\d\s]*)\s*KMF/i);
-                    return match ? `Crédit destiné : ${match[1].trim()} KMF` : "";
-                  })()}
+
+                <div style={{ textAlign: "right" }}>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: "#A1A1AA",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5
+                    }}
+                  >
+                    Total
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 900,
+                      color: "#4ADE80",
+                      letterSpacing: -0.2
+                    }}
+                  >
+                    {fcfa(totalAmount, activeDevise)}
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#475569", marginTop: 4 }}>
-            <span>Paiement:</span>
-            <span style={{ fontWeight: 800, textTransform: "uppercase", color: "#0F172A" }}>{paymentLabel}</span>
-          </div>
-        </div>
+              </div>
 
-        {/* FOOTER MESSAGE */}
-        <div style={{ textAlign: "center", fontSize: 11, color: "#475569", borderTop: "1px dashed #64748B", paddingTop: 10, marginBottom: 16, fontWeight: 600 }}>
-          Merci pour votre confiance !<br />
-          À bientôt chez {storeName}.
-        </div>
+              {/* Status Indicator */}
+              <ReceiptPrinter.Status
+                statusLabels={{
+                  processing: "Traitement de votre commande...",
+                  printing: "Impression du ticket de caisse...",
+                  complete: "Commande validée avec succès !"
+                }}
+              />
+            </ReceiptPrinter.Screen>
+          </ReceiptPrinter.Machine>
 
-        {/* PRINT BUTTON */}
-        <button
-          type="button"
-          onClick={handlePrint}
+          {/* OUTPUT CONTAINER (PAPER ROLLS OUT STEP-BY-STEP) */}
+          <ReceiptPrinter.Output maxHeight="32rem">
+            <ReceiptPrinter.Paper className="bs-receipt-paper-printable">
+              {/* STORE BRANDING */}
+              <div
+                style={{
+                  textAlign: "center",
+                  borderBottom: "1px dashed #CBD5E1",
+                  paddingBottom: 12,
+                  marginBottom: 12
+                }}
+              >
+                {boutique?.logoUrl && (
+                  <img
+                    src={boutique.logoUrl}
+                    alt={storeName}
+                    style={{
+                      maxHeight: 36,
+                      maxWidth: 120,
+                      objectFit: "contain",
+                      margin: "0 auto 6px",
+                      display: "block"
+                    }}
+                  />
+                )}
+                <div
+                  style={{
+                    fontSize: 16,
+                    fontWeight: 900,
+                    letterSpacing: 1.5,
+                    color: "#0F172A",
+                    textTransform: "uppercase"
+                  }}
+                >
+                  {storeName}
+                </div>
+                {boutique?.adresse && (
+                  <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>
+                    {boutique.adresse}
+                  </div>
+                )}
+                {boutique?.telephone && (
+                  <div style={{ fontSize: 10, color: "#64748B", marginTop: 1 }}>
+                    Tél : {boutique.telephone}
+                  </div>
+                )}
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    color: "#0F172A",
+                    marginTop: 6,
+                    letterSpacing: 0.8
+                  }}
+                >
+                  {typeHeader}
+                </div>
+                <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>
+                  N° {orderNumber} · {formattedDate}
+                </div>
+              </div>
+
+              {/* CLIENT INFO */}
+              <div
+                style={{
+                  fontSize: 10.5,
+                  color: "#334155",
+                  marginBottom: 10,
+                  lineHeight: 1.5
+                }}
+              >
+                <div>
+                  <strong>Client :</strong> {clientName}
+                </div>
+                {clientPhone && clientPhone !== "non_renseigne" && (
+                  <div>
+                    <strong>Tél :</strong> {clientPhone}
+                  </div>
+                )}
+                {order.employeAssigne?.nom && (
+                  <div>
+                    <strong>Caissier :</strong> {order.employeAssigne.nom}
+                  </div>
+                )}
+                <div>
+                  <strong>Paiement :</strong> {paymentLabel}
+                </div>
+              </div>
+
+              {/* ITEMS TABLE */}
+              <div
+                style={{
+                  borderTop: "1px dashed #CBD5E1",
+                  borderBottom: "1px dashed #CBD5E1",
+                  padding: "8px 0",
+                  marginBottom: 10
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 9.5,
+                    fontWeight: 900,
+                    color: "#0F172A",
+                    borderBottom: "1px solid #E2E8F0",
+                    paddingBottom: 4,
+                    marginBottom: 8,
+                    letterSpacing: 0.5
+                  }}
+                >
+                  <span>ARTICLE / DÉTAILS</span>
+                  <span>TOTAL</span>
+                </div>
+
+                {order.items && order.items.length > 0 ? (
+                  order.items.map((it, idx) => {
+                    const { productName, pu, qte, lineTotal, variantText } = getArticleDetails(it);
+
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          marginBottom: 8,
+                          paddingBottom: 6,
+                          borderBottom:
+                            idx < order.items.length - 1 ? "1px dotted #E2E8F0" : "none"
+                        }}
+                      >
+                        {/* Article full name & total */}
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            gap: 10
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontWeight: 800,
+                              fontSize: 11,
+                              color: "#0F172A",
+                              lineHeight: 1.35,
+                              wordBreak: "break-word",
+                              flex: 1
+                            }}
+                          >
+                            {productName}
+                          </span>
+                          <span
+                            style={{
+                              textAlign: "right",
+                              fontWeight: 900,
+                              fontSize: 11.5,
+                              color: "#0F172A",
+                              whiteSpace: "nowrap"
+                            }}
+                          >
+                            {fcfa(lineTotal, activeDevise)}
+                          </span>
+                        </div>
+
+                        {/* Variant details (model, color, etc.) */}
+                        {variantText && (
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: "#2563EB",
+                              fontWeight: 700,
+                              marginTop: 2,
+                              wordBreak: "break-word"
+                            }}
+                          >
+                            ({variantText})
+                          </div>
+                        )}
+
+                        {/* Qty x Price */}
+                        <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>
+                          {qte} × {fcfa(pu, activeDevise)}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div style={{ fontSize: 10, color: "#64748B", textAlign: "center" }}>
+                    Détail des articles enregistré
+                  </div>
+                )}
+              </div>
+
+              {/* TOTALS & BREAKDOWN */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 3,
+                  fontSize: 10.5,
+                  color: "#1E293B",
+                  marginBottom: 12
+                }}
+              >
+                {order.sousTotal && Number(order.sousTotal) !== totalAmount && (
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#64748B" }}>Sous-total :</span>
+                    <span>{fcfa(order.sousTotal, activeDevise)}</span>
+                  </div>
+                )}
+
+                {order.fraisLivraison !== undefined && order.fraisLivraison !== null && (
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#64748B" }}>Livraison :</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {Number(order.fraisLivraison) === 0
+                        ? "Gratuite"
+                        : fcfa(order.fraisLivraison, activeDevise)}
+                    </span>
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 14,
+                    fontWeight: 900,
+                    color: "#0F172A",
+                    paddingTop: 4,
+                    marginTop: 2,
+                    borderTop: "1px solid #E2E8F0"
+                  }}
+                >
+                  <span>TOTAL RÉGLÉ :</span>
+                  <span>{fcfa(totalAmount, activeDevise)}</span>
+                </div>
+
+                {order.montantRecu && (
+                  <>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: 10.5,
+                        color: "#475569",
+                        marginTop: 3
+                      }}
+                    >
+                      <span>Montant reçu :</span>
+                      <span>{fcfa(order.montantRecu, activeDevise)}</span>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: 11.5,
+                        fontWeight: 800,
+                        color: "#16A34A"
+                      }}
+                    >
+                      <span>Monnaie rendue :</span>
+                      <span>{fcfa(order.monnaieRendue || 0, activeDevise)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* AUTHENTIC BARCODE */}
+              <div
+                style={{
+                  borderTop: "1px dashed #CBD5E1",
+                  paddingTop: 10,
+                  marginBottom: 10,
+                  textAlign: "center"
+                }}
+              >
+                <BarcodeSvg value={orderNumber.replace("#", "")} height={36} />
+              </div>
+
+              {/* FOOTER MESSAGE */}
+              <div
+                style={{
+                  textAlign: "center",
+                  fontSize: 9.5,
+                  color: "#64748B",
+                  lineHeight: 1.4
+                }}
+              >
+                Merci de votre confiance !<br />
+                À très bientôt chez {storeName}.
+              </div>
+            </ReceiptPrinter.Paper>
+          </ReceiptPrinter.Output>
+        </ReceiptPrinter.Root>
+
+        {/* BOTTOM ACTION BUTTONS */}
+        <div
           style={{
-            width: "100%", padding: "12px", borderRadius: 10, background: "#0F172A",
-            color: "#FFFFFF", border: "none", fontWeight: 700, fontSize: 13,
-            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8
+            display: "flex",
+            gap: 10,
+            width: "100%",
+            maxWidth: 380,
+            marginTop: 14,
+            padding: "0 6px"
           }}
         >
-          <Printer size={16} /> Imprimer le reçu / Sauvegarder PDF
-        </button>
+          <button
+            type="button"
+            onClick={handleDownloadPDF}
+            style={{
+              flex: 1,
+              padding: "11px 16px",
+              borderRadius: 12,
+              background: "var(--forest)",
+              color: "#fff",
+              border: "none",
+              fontWeight: 800,
+              fontSize: 13,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              boxShadow: "0 4px 12px rgba(31, 77, 58, 0.35)",
+              transition: "transform 0.15s ease"
+            }}
+          >
+            <Download size={16} /> Télécharger le Reçu PDF
+          </button>
+
+          <button
+            type="button"
+            onClick={onContinue || onClose}
+            style={{
+              flex: 1,
+              padding: "11px 16px",
+              borderRadius: 12,
+              background: "#FFFFFF",
+              border: "1px solid #CBD5E1",
+              color: "#1E293B",
+              fontWeight: 800,
+              fontSize: 13,
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)"
+            }}
+          >
+            {onContinue ? "Continuer" : "Fermer"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => window.print()}
+            title="Imprimer sur imprimante physique"
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 12,
+              background: "#F1F5F9",
+              border: "1px solid #CBD5E1",
+              color: "#475569",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              flexShrink: 0
+            }}
+          >
+            <Printer size={16} />
+          </button>
+        </div>
       </div>
     </div>
   );

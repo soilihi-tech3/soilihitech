@@ -354,11 +354,177 @@ async function listClientCustomRequests(req, res) {
   }
 }
 
+/**
+ * Admin / Employé - Créer directement une commande / demande sur-mesure
+ */
+async function createAdminCustomRequest(req, res) {
+  try {
+    const boutiqueId = req.boutiqueId;
+    if (!boutiqueId) {
+      return res.status(400).json({ message: "Boutique non spécifiée" });
+    }
+
+    const {
+      nomClient,
+      telephoneClient,
+      emailClient,
+      modeleAppareil,
+      articles,
+      description,
+      photoUrl,
+      photos,
+      statut,
+      fraisLivraison,
+      devisTotal,
+      messageAdmin
+    } = req.body;
+
+    if (!nomClient || !telephoneClient || !modeleAppareil) {
+      return res.status(400).json({
+        message: "Veuillez renseigner le nom du client, le numéro de téléphone et le modèle d'appareil."
+      });
+    }
+
+    const parsedArticles = Array.isArray(articles) && articles.length > 0
+      ? articles.filter(a => a && a.nom && String(a.nom).trim().length > 0)
+      : [{ nom: "Accessoire demandé", quantite: 1, prixUnitaire: 0 }];
+
+    let finalPhotoUrl = null;
+    if (Array.isArray(photos) && photos.length > 0) {
+      const cleanPhotos = photos.filter(p => typeof p === "string" && p.trim().length > 0);
+      finalPhotoUrl = cleanPhotos.length === 1 ? cleanPhotos[0] : JSON.stringify(cleanPhotos);
+    } else if (photoUrl) {
+      finalPhotoUrl = photoUrl;
+    }
+
+    const code = generateRequestCode();
+
+    const request = await CustomOrderRequest.create({
+      code,
+      boutiqueId,
+      clientId: null,
+      nomClient: nomClient.trim(),
+      telephoneClient: telephoneClient.trim(),
+      emailClient: emailClient ? emailClient.trim() : null,
+      modeleAppareil: modeleAppareil.trim(),
+      articles: parsedArticles,
+      description: description ? description.trim() : null,
+      photoUrl: finalPhotoUrl,
+      statut: statut || "en_attente",
+      fraisLivraison: Number(fraisLivraison) || 0,
+      devisTotal: devisTotal !== undefined && devisTotal !== null ? Number(devisTotal) : null,
+      messageAdmin: messageAdmin ? messageAdmin.trim() : null,
+      dateDevis: devisTotal ? new Date() : null
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Demande sur-mesure créée avec succès !",
+      request
+    });
+  } catch (err) {
+    console.error("Erreur createAdminCustomRequest:", err);
+    return res.status(500).json({ message: "Erreur lors de la création de la demande", error: err.message });
+  }
+}
+
+/**
+ * Admin / Employé - Modifier une demande sur-mesure
+ */
+async function updateAdminCustomRequest(req, res) {
+  try {
+    const boutiqueId = req.boutiqueId;
+    const { id } = req.params;
+
+    const request = await CustomOrderRequest.findOne({ where: { id, boutiqueId } });
+    if (!request) {
+      return res.status(404).json({ message: "Demande sur-mesure introuvable." });
+    }
+
+    const {
+      nomClient,
+      telephoneClient,
+      emailClient,
+      modeleAppareil,
+      articles,
+      description,
+      photoUrl,
+      photos,
+      statut,
+      fraisLivraison,
+      devisTotal,
+      totalPropose,
+      messageAdmin
+    } = req.body;
+
+    if (nomClient) request.nomClient = nomClient.trim();
+    if (telephoneClient) request.telephoneClient = telephoneClient.trim();
+    if (emailClient !== undefined) request.emailClient = emailClient ? emailClient.trim() : null;
+    if (modeleAppareil) request.modeleAppareil = modeleAppareil.trim();
+
+    if (Array.isArray(articles)) {
+      request.articles = articles.filter(a => a && a.nom && String(a.nom).trim().length > 0);
+    }
+    if (description !== undefined) request.description = description ? description.trim() : null;
+    if (statut) request.statut = statut;
+    if (fraisLivraison !== undefined) request.fraisLivraison = Number(fraisLivraison) || 0;
+    if (totalPropose !== undefined) request.totalPropose = Number(totalPropose) || 0;
+    if (devisTotal !== undefined) request.devisTotal = devisTotal !== null ? Number(devisTotal) : null;
+    if (messageAdmin !== undefined) request.messageAdmin = messageAdmin ? messageAdmin.trim() : null;
+
+    if (Array.isArray(photos)) {
+      const cleanPhotos = photos.filter(p => typeof p === "string" && p.trim().length > 0);
+      request.photoUrl = cleanPhotos.length === 0 ? null : (cleanPhotos.length === 1 ? cleanPhotos[0] : JSON.stringify(cleanPhotos));
+    } else if (photoUrl !== undefined) {
+      request.photoUrl = photoUrl;
+    }
+
+    await request.save();
+
+    return res.json({
+      success: true,
+      message: "Demande sur-mesure modifiée avec succès !",
+      request
+    });
+  } catch (err) {
+    console.error("Erreur updateAdminCustomRequest:", err);
+    return res.status(500).json({ message: "Erreur lors de la modification de la demande", error: err.message });
+  }
+}
+
+/**
+ * Admin / Employé - Supprimer une demande sur-mesure
+ */
+async function deleteAdminCustomRequest(req, res) {
+  try {
+    const boutiqueId = req.boutiqueId;
+    const { id } = req.params;
+
+    const request = await CustomOrderRequest.findOne({ where: { id, boutiqueId } });
+    if (!request) {
+      return res.status(404).json({ message: "Demande sur-mesure introuvable." });
+    }
+
+    await request.destroy();
+
+    return res.json({
+      success: true,
+      message: "Demande sur-mesure supprimée avec succès !"
+    });
+  } catch (err) {
+    console.error("Erreur deleteAdminCustomRequest:", err);
+    return res.status(500).json({ message: "Erreur lors de la suppression de la demande", error: err.message });
+  }
+}
+
 module.exports = {
   createCustomRequest,
   getCustomRequestByCode,
   respondCustomRequest,
   listAdminCustomRequests,
   quoteCustomRequest,
-  listClientCustomRequests
+  listClientCustomRequests,
+  createAdminCustomRequest,
+  updateAdminCustomRequest,
+  deleteAdminCustomRequest
 };

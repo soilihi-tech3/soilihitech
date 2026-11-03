@@ -5,8 +5,15 @@ import {
   Sparkles, Search, CheckCircle2, AlertCircle 
 } from "lucide-react";
 import api from "../../api";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 export default function AdminTelephones() {
+  const { user } = useAuth();
+  const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const canManage = isAdmin || perms.includes("gerer_telephones") || perms.includes("gerer_categories");
+  const canDelete = isAdmin || perms.includes("gerer_telephones") || perms.includes("supprimer_telephones");
+
   const [brands, setBrands] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -231,25 +238,27 @@ export default function AdminTelephones() {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowAddBrandModal(true)}
-          style={{
-            background: "var(--forest)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 10,
-            padding: "10px 18px",
-            fontSize: 13.5,
-            fontWeight: 800,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            cursor: "pointer",
-            boxShadow: "0 2px 8px rgba(31, 77, 58, 0.25)"
-          }}
-        >
-          <Plus size={16} /> Ajouter une Marque
-        </button>
+        {canManage && (
+          <button
+            onClick={() => setShowAddBrandModal(true)}
+            style={{
+              background: "var(--forest)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 10,
+              padding: "10px 18px",
+              fontSize: 13.5,
+              fontWeight: 800,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(31, 77, 58, 0.25)"
+            }}
+          >
+            <Plus size={16} /> Ajouter une Marque
+          </button>
+        )}
       </div>
 
       {/* STATS & RECHERCHE */}
@@ -408,7 +417,7 @@ export default function AdminTelephones() {
 
                   {/* BOUTONS ACTIONS MARQUE */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }} onClick={(e) => e.stopPropagation()}>
-                    {!isEditing && (
+                    {!isEditing && canManage && (
                       <button
                         type="button"
                         className="bs-icon-btn"
@@ -422,15 +431,17 @@ export default function AdminTelephones() {
                       </button>
                     )}
 
-                    <button
-                      type="button"
-                      className="bs-icon-btn"
-                      title="Supprimer la marque"
-                      style={{ color: "#B4483A" }}
-                      onClick={() => handleDeleteBrand(brand)}
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        className="bs-icon-btn"
+                        title="Supprimer la marque"
+                        style={{ color: "#B4483A" }}
+                        onClick={() => handleDeleteBrand(brand)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -443,16 +454,42 @@ export default function AdminTelephones() {
                         Sous-modèles disponibles pour {brand.nom} :
                       </div>
 
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {/* Bouton preset si la marque est vide */}
-                        {models.length === 0 && (
+                      {canManage && (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {/* Bouton preset si la marque est vide */}
+                          {models.length === 0 && (
+                            <button
+                              type="button"
+                              onClick={() => applyPreset(brand.id, brand.nom)}
+                              style={{
+                                background: "#EFF6FF",
+                                color: "#1D4ED8",
+                                border: "1px solid #BFDBFE",
+                                borderRadius: 8,
+                                padding: "6px 12px",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6
+                              }}
+                            >
+                              <Sparkles size={14} /> Pré-remplir la gamme {brand.nom}
+                            </button>
+                          )}
+
                           <button
                             type="button"
-                            onClick={() => applyPreset(brand.id, brand.nom)}
+                            onClick={() => {
+                              setAddingModelForBrandId(brand.id);
+                              setIsBatchMode(false);
+                              setNewModelNom("");
+                            }}
                             style={{
-                              background: "#EFF6FF",
-                              color: "#1D4ED8",
-                              border: "1px solid #BFDBFE",
+                              background: "var(--forest-light)",
+                              color: "var(--forest-dark)",
+                              border: "1px solid var(--forest)",
                               borderRadius: 8,
                               padding: "6px 12px",
                               fontSize: 12,
@@ -460,58 +497,34 @@ export default function AdminTelephones() {
                               cursor: "pointer",
                               display: "inline-flex",
                               alignItems: "center",
-                              gap: 6
+                              gap: 5
                             }}
                           >
-                            <Sparkles size={14} /> Pré-remplir la gamme {brand.nom}
+                            <Plus size={14} /> + Ajouter un modèle
                           </button>
-                        )}
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAddingModelForBrandId(brand.id);
-                            setIsBatchMode(false);
-                            setNewModelNom("");
-                          }}
-                          style={{
-                            background: "var(--forest-light)",
-                            color: "var(--forest-dark)",
-                            border: "1px solid var(--forest)",
-                            borderRadius: 8,
-                            padding: "6px 12px",
-                            fontSize: 12,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 5
-                          }}
-                        >
-                          <Plus size={14} /> + Ajouter un modèle
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAddingModelForBrandId(brand.id);
-                            setIsBatchMode(true);
-                            setBatchModelsText("");
-                          }}
-                          style={{
-                            background: "var(--paper)",
-                            color: "var(--forest-dark)",
-                            border: "1px solid var(--line)",
-                            borderRadius: 8,
-                            padding: "6px 12px",
-                            fontSize: 12,
-                            fontWeight: 700,
-                            cursor: "pointer"
-                          }}
-                        >
-                          + Ajout en lot (Plusieurs)
-                        </button>
-                      </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAddingModelForBrandId(brand.id);
+                              setIsBatchMode(true);
+                              setBatchModelsText("");
+                            }}
+                            style={{
+                              background: "var(--paper)",
+                              color: "var(--forest-dark)",
+                              border: "1px solid var(--line)",
+                              borderRadius: 8,
+                              padding: "6px 12px",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              cursor: "pointer"
+                            }}
+                          >
+                            + Ajout en lot (Plusieurs)
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* FORMULAIRE EN LIGNE AJOUT MODÈLE */}
@@ -636,25 +649,29 @@ export default function AdminTelephones() {
                             >
                               <span>{model.nomComplet || model.nom}</span>
                               <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                                <button
-                                  type="button"
-                                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--muted)" }}
-                                  title="Renommer"
-                                  onClick={() => {
-                                    setEditingModelId(model.id);
-                                    setEditModelNom(model.nom);
-                                  }}
-                                >
-                                  <Edit2 size={12} />
-                                </button>
-                                <button
-                                  type="button"
-                                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "#B4483A" }}
-                                  title="Supprimer ce modèle"
-                                  onClick={() => handleDeleteModel(model)}
-                                >
-                                  <X size={14} />
-                                </button>
+                                {canManage && (
+                                  <button
+                                    type="button"
+                                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--muted)" }}
+                                    title="Renommer"
+                                    onClick={() => {
+                                      setEditingModelId(model.id);
+                                      setEditModelNom(model.nom);
+                                    }}
+                                  >
+                                    <Edit2 size={12} />
+                                  </button>
+                                )}
+                                {canDelete && (
+                                  <button
+                                    type="button"
+                                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "#B4483A" }}
+                                    title="Supprimer ce modèle"
+                                    onClick={() => handleDeleteModel(model)}
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );

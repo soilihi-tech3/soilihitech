@@ -211,7 +211,7 @@ export default function AdminCategories() {
 
   // Pagination for categories
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(20);
 
   const filteredCategories = categories.filter((c) =>
     !search || c.nom?.toLowerCase().includes(search.toLowerCase())

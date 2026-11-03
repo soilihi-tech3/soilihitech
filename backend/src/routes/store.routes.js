@@ -227,15 +227,34 @@ router.get("/:slug/products", loadBoutique, cacheMiddleware(120), async (req, re
 
     if (req.query.promo === "true") where.prixPromo = { [Op.ne]: null };
 
-    const products = await Product.findAll({
+    const page = req.query.page ? Math.max(1, parseInt(req.query.page) || 1) : null;
+    const limit = req.query.limit ? Math.min(100, Math.max(1, parseInt(req.query.limit) || 20)) : null;
+
+    const findOptions = {
       where,
       include: [
         { model: Category }, 
         { model: Marque, as: "marque", attributes: ["id", "nom", "logoUrl"], required: false },
         { model: Review, as: "avis", where: { statut: "publie" }, required: false }
       ],
-      order: [["createdAt", "DESC"]],
-    });
+      order: [["createdAt", "DESC"]]
+    };
+
+    if (page && limit) {
+      findOptions.limit = limit;
+      findOptions.offset = (page - 1) * limit;
+      const { count, rows } = await Product.findAndCountAll(findOptions);
+      return res.json({
+        items: rows,
+        total: count,
+        page,
+        limit,
+        totalPages: Math.ceil(count / limit),
+        hasMore: (page * limit) < count
+      });
+    }
+
+    const products = await Product.findAll(findOptions);
     res.json(products);
   } catch (err) { next(err); }
 });

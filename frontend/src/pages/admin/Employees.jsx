@@ -1,27 +1,44 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { PlusCircle, Edit, Trash2, Shield, Lock, CheckCircle, Ban, User, AlertCircle, X, ShieldCheck, UserCheck, Key, Settings, Layers, Package, ShoppingCart, Image, Eye, EyeOff, Copy, RefreshCw, Send, CreditCard, History, ShoppingBag } from "lucide-react";
+import { 
+  PlusCircle, Edit, Trash2, Shield, Lock, CheckCircle, Ban, User, AlertCircle, X, 
+  ShieldCheck, UserCheck, Key, Settings, Layers, Package, ShoppingCart, Image, Eye, 
+  EyeOff, Copy, RefreshCw, Send, CreditCard, History, ShoppingBag, ClipboardList, Award, Smartphone, Truck, Scale, MessageCircle
+} from "lucide-react";
 import api from "../../api";
 import TablePagination from "../../components/TablePagination";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 
 const PERMISSIONS_LIST = [
   { key: "voir_dashboard", label: "Tableau de bord Opérationnel", desc: "Aperçu des performances personnelles et activités", icon: Settings },
-  { key: "vente_directe", label: "Caisse & Vente Directe (POS)", desc: "Encaisser les ventes directes au comptoir", icon: CreditCard },
-  { key: "historique_ventes", label: "Historique des Ventes", desc: "Consulter l'historique et les encaissements", icon: History },
+  { key: "vente_directe", label: "Caisse & Vente Directe (POS)", desc: "Encaisser les ventes directes au comptoir et tickets", icon: CreditCard },
+  { key: "historique_ventes", label: "Historique des Ventes", desc: "Consulter l'historique des encaissements et reçus", icon: History },
   { key: "gerer_commandes", label: "Commandes en ligne", desc: "Traitement, affectation et suivi des livraisons", icon: ShoppingCart },
+  { key: "voir_demandes", label: "Consulter Demandes & Devis", desc: "Voir les demandes de devis et commandes sur-mesure", icon: ClipboardList },
+  { key: "gerer_demandes", label: "Chiffrer & Modifier Devis", desc: "Créer, modifier et chiffrer les devis et commandes spéciales", icon: ClipboardList },
+  { key: "supprimer_demandes", label: "Supprimer Demandes & Devis", desc: "Supprimer définitivement des demandes de devis", icon: Trash2 },
   { key: "voir_produits", label: "Consulter le Catalogue Produits", desc: "Voir la liste des articles et stocks disponibles", icon: Package },
-  { key: "ajouter_modifier_produit", label: "Ajouter & Modifier des Produits", desc: "Créer ou éditer les fiches articles et prix", icon: Package },
+  { key: "ajouter_modifier_produit", label: "Ajouter & Modifier des Produits", desc: "Créer ou éditer les fiches articles, prix et variantes", icon: Package },
   { key: "supprimer_produit", label: "Supprimer des Produits", desc: "Supprimer définitivement des articles du catalogue", icon: Trash2 },
+  { key: "voir_marques", label: "Consulter les Marques", desc: "Voir la liste des marques de produits", icon: Award },
+  { key: "gerer_marques", label: "Gérer Marques (Ajout/Modif/Suppr)", desc: "Créer, modifier et supprimer les marques", icon: Award },
+  { key: "voir_telephones", label: "Consulter Modèles Téléphones", desc: "Voir les marques et modèles de téléphones", icon: Smartphone },
+  { key: "gerer_telephones", label: "Gérer Modèles (Ajout/Modif/Suppr)", desc: "Créer, modifier et supprimer les modèles et compatibilités", icon: Smartphone },
+  { key: "gerer_categories", label: "Catégories & Familles", desc: "Organisation des rayons et catégories de produits", icon: Layers },
   { key: "achats_stocks", label: "Achats & Stocks", desc: "Enregistrer des réapprovisionnements et gérer les stocks", icon: ShoppingBag },
-  { key: "gerer_categories", label: "Catégories & Marques", desc: "Création et modification des catégories et marques", icon: Layers },
-  { key: "gerer_banners", label: "Bannières d'accueil & Side Banners", desc: "Gestion des carousels visuels et promotions", icon: Image },
+  { key: "gerer_fournisseurs", label: "Fournisseurs", desc: "Ajouter, modifier ou supprimer des fournisseurs", icon: Truck },
+  { key: "gerer_unites", label: "Unités de vente", desc: "Gérer les unités de vente (pièce, mètre, etc.)", icon: Scale },
+  { key: "gerer_avis", label: "Avis Clients WhatsApp", desc: "Consulter et publier les témoignages clients", icon: MessageCircle },
+  { key: "voir_clients", label: "Consulter les Clients", desc: "Voir la liste des clients et coordonnées", icon: UserCheck },
+  { key: "gerer_banners", label: "Bannières & Promotions", desc: "Gestion des carousels visuels et promotions", icon: Image },
   { key: "gerer_parametres", label: "Paramètres Boutique", desc: "Coordonnées, adresses et réglages généraux", icon: Settings },
 ];
 
 export default function AdminEmployees() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [modalType, setModalType] = useState(null); // 'create' | 'edit' | 'permissions' | 'credentials' | null
   const [selectedUser, setSelectedUser] = useState(null);
   const [createdCredentials, setCreatedCredentials] = useState(null);
@@ -35,12 +52,14 @@ export default function AdminEmployees() {
   const [erreur, setErreur] = useState("");
   const [succes, setSucces] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(20);
 
   function load() { 
+    setLoading(true);
     api.get("/admin/employees")
       .then((res) => setUsers(res.data || []))
-      .catch(() => {}); 
+      .catch(() => {})
+      .finally(() => setLoading(false)); 
   }
   
   useEffect(load, []);
@@ -217,7 +236,9 @@ export default function AdminEmployees() {
             </tr>
           </thead>
           <tbody>
-            {users.length === 0 ? (
+            {loading ? (
+              <SkeletonTableRows rows={5} cols={5} />
+            ) : users.length === 0 ? (
               <tr>
                 <td colSpan={5} style={{ padding: 36, textAlign: "center", color: "var(--muted)", fontSize: 14 }}>
                   Aucun utilisateur enregistré pour le moment.

@@ -7,6 +7,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { processWhatsAppOrder, formatWhatsAppOrderMessage } from "../../utils/whatsappOrder.js";
 
 import { MvolaLogo, WeroLogo, OnlinePaymentBadges, CashLogo } from "../../components/PaymentLogos";
+import ReceiptModal from "../../components/ReceiptModal.jsx";
 
 import { formatPrice as fcfa, getActiveCurrency, getProductPrice } from "../../utils/currency.js";
 
@@ -16,6 +17,7 @@ export default function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
   const isWhatsAppFocus = location.search.includes("whatsapp=true");
+  const [placedOrder, setPlacedOrder] = useState(null);
 
   const [activeCurrency, setActiveCurrencyState] = useState(() => getActiveCurrency());
   useEffect(() => {
@@ -286,7 +288,7 @@ export default function Checkout() {
 
       clearCart();
       showToast("Commande validée avec succès !", "success", "Félicitations");
-      navigate(`/confirmation/${res.data.id}`);
+      setPlacedOrder(res.data);
     } catch (err) {
       const errorMsg = err.response?.data?.message || "Impossible de valider la commande.";
       setErreur(errorMsg);
@@ -294,6 +296,18 @@ export default function Checkout() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (placedOrder) {
+    return (
+      <ReceiptModal
+        order={placedOrder}
+        boutique={boutique}
+        onClose={() => navigate(`/confirmation/${placedOrder.id}`)}
+        onContinue={() => navigate(`/confirmation/${placedOrder.id}`)}
+        autoAnimate={true}
+      />
+    );
   }
 
   if (cart.length === 0) {

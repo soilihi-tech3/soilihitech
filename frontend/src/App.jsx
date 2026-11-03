@@ -164,14 +164,14 @@ export default function App() {
           <Route path="unites" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><UnitesVente /></React.Suspense>} />
           <Route path="marques" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminMarques /></React.Suspense>} />
           <Route path="telephones" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminTelephones /></React.Suspense>} />
-          <Route path="avis" element={<ProtectedRoute roles={["admin", "super_admin"]}><React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminAvisClients /></React.Suspense></ProtectedRoute>} />
+          <Route path="avis" element={<ProtectedRoute roles={["admin", "employe", "super_admin"]}><React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminAvisClients /></React.Suspense></ProtectedRoute>} />
           <Route path="home-banners" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminSettings defaultTab="home_banners" /></React.Suspense>} />
           <Route path="side-banners" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminSettings defaultTab="side_banners" /></React.Suspense>} />
           <Route path="produits" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminProduits /></React.Suspense>} />
           <Route path="categories" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminCategories /></React.Suspense>} />
           <Route path="commandes" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminOrders /></React.Suspense>} />
-          <Route path="demandes" element={<ProtectedRoute roles={["admin", "super_admin"]}><React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><DemandesSpeciales /></React.Suspense></ProtectedRoute>} />
-          <Route path="clients" element={<ProtectedRoute roles={["admin", "super_admin"]}><React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminClients /></React.Suspense></ProtectedRoute>} />
+          <Route path="demandes" element={<ProtectedRoute roles={["admin", "employe", "super_admin"]}><React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><DemandesSpeciales /></React.Suspense></ProtectedRoute>} />
+          <Route path="clients" element={<ProtectedRoute roles={["admin", "employe", "super_admin"]}><React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminClients /></React.Suspense></ProtectedRoute>} />
           <Route path="employes" element={<ProtectedRoute roles={["admin", "super_admin"]}><React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminEmployees /></React.Suspense></ProtectedRoute>} />
           <Route path="utilisateurs" element={<ProtectedRoute roles={["admin", "super_admin"]}><React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminEmployees /></React.Suspense></ProtectedRoute>} />
           <Route path="parametres" element={<React.Suspense fallback={<div className="bs-admin-loading-spinner" />}><AdminSettings defaultTab="general" /></React.Suspense>} />

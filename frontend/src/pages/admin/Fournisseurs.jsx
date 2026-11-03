@@ -3,9 +3,11 @@ import { toast } from "react-hot-toast";
 import { PlusCircle, Edit, Trash2, Building, Phone, Mail, MapPin, X, CheckCircle, AlertCircle, Search } from "lucide-react";
 import api from "../../api";
 import TablePagination from "../../components/TablePagination";
+import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 
 export default function Fournisseurs() {
   const [fournisseurs, setFournisseurs] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [modalType, setModalType] = useState(null); // 'create' | 'edit' | null
   const [selectedFourn, setSelectedFourn] = useState(null);
   const [search, setSearch] = useState("");
@@ -13,12 +15,14 @@ export default function Fournisseurs() {
   const [erreur, setErreur] = useState("");
   const [succes, setSucces] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(20);
 
   function load() {
+    setLoading(true);
     api.get("/admin/fournisseurs")
       .then(res => setFournisseurs(res.data || []))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }
 
   useEffect(load, []);
@@ -127,7 +131,9 @@ export default function Fournisseurs() {
             </tr>
           </thead>
           <tbody>
-            {filteredFournisseurs.length === 0 ? (
+            {loading ? (
+              <SkeletonTableRows rows={5} cols={5} />
+            ) : filteredFournisseurs.length === 0 ? (
               <tr>
                 <td colSpan={5} style={{ padding: 36, textAlign: "center", color: "var(--muted)", fontSize: 14 }}>
                   Aucun fournisseur enregistré.
