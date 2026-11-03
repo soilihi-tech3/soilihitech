@@ -96,6 +96,10 @@ Boutique.hasMany(CustomOrderRequest, { foreignKey: "boutiqueId", as: "customOrde
 CustomOrderRequest.belongsTo(Boutique, { foreignKey: "boutiqueId", as: "boutique" });
 User.hasMany(CustomOrderRequest, { foreignKey: "clientId", as: "customOrders" });
 CustomOrderRequest.belongsTo(User, { foreignKey: "clientId", as: "client" });
+User.hasMany(CustomOrderRequest, { foreignKey: "employeId", as: "demandesAssignees" });
+CustomOrderRequest.belongsTo(User, { foreignKey: "employeId", as: "employeAssigne" });
+User.hasMany(CustomOrderRequest, { foreignKey: "creeParId", as: "demandesCrees" });
+CustomOrderRequest.belongsTo(User, { foreignKey: "creeParId", as: "createur" });
 
 const PhoneBrand = require("./PhoneBrand");
 const PhoneModel = require("./PhoneModel");

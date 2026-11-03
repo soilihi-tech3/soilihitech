@@ -146,7 +146,10 @@ export default function SalesHistory() {
     }
 
     // Employe filter
-    if (filterEmploye !== "tous") {
+    if (!isAdmin) {
+      const isMySale = o.employeAssigneId === user?.id || o.employeAssigne?.id === user?.id;
+      if (!isMySale) return false;
+    } else if (filterEmploye !== "tous") {
       if (filterEmploye === "non_assigne") {
         if (o.employeAssigneId) return false;
       } else if (String(o.employeAssigneId) !== String(filterEmploye)) {
@@ -331,18 +334,38 @@ export default function SalesHistory() {
           </select>
 
           {/* FILTER: EMPLOYÉ */}
-          <select
-            className="bs-select"
-            style={{ flex: 1, minWidth: 160, height: 40 }}
-            value={filterEmploye}
-            onChange={(e) => setFilterEmploye(e.target.value)}
-          >
-            <option value="tous">Tous les employés</option>
-            {employees.map(emp => (
-              <option key={emp.id} value={emp.id}>{emp.nom} ({emp.role === "admin" ? "Admin" : "Employé"})</option>
-            ))}
-            <option value="non_assigne">Admin / Système</option>
-          </select>
+          {isAdmin ? (
+            <select
+              className="bs-select"
+              style={{ flex: 1, minWidth: 160, height: 40 }}
+              value={filterEmploye}
+              onChange={(e) => setFilterEmploye(e.target.value)}
+            >
+              <option value="tous">Tous les employés</option>
+              {employees.map(emp => (
+                <option key={emp.id} value={emp.id}>{emp.nom} ({emp.role === "admin" ? "Admin" : "Employé"})</option>
+              ))}
+              <option value="non_assigne">Admin / Système</option>
+            </select>
+          ) : (
+            <div style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "0 14px",
+              height: 40,
+              background: "#EFF6FF",
+              border: "1px solid #BFDBFE",
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#1D4ED8",
+              whiteSpace: "nowrap"
+            }}>
+              <User size={15} />
+              <span>Mes ventes ({user?.nom || "Employé"})</span>
+            </div>
+          )}
 
           {/* FILTER: ANNÉE */}
           <select

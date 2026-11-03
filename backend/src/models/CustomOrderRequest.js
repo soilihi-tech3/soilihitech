@@ -67,6 +67,14 @@ const CustomOrderRequest = sequelize.define("CustomOrderRequest", {
   orderId: {
     type: DataTypes.INTEGER,
     allowNull: true
+  },
+  employeId: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  creeParId: {
+    type: DataTypes.INTEGER,
+    allowNull: true
   }
 }, {
   tableName: "custom_order_requests",

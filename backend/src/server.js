@@ -365,6 +365,8 @@ async function ensureColumns() {
       "ALTER TABLE orders MODIFY COLUMN mode_livraison VARCHAR(50) DEFAULT 'domicile';",
       "ALTER TABLE orders MODIFY COLUMN client_id INT NULL;",
       "ALTER TABLE custom_order_requests MODIFY COLUMN photo_url LONGTEXT NULL;",
+      "ALTER TABLE custom_order_requests ADD COLUMN employe_id INT NULL;",
+      "ALTER TABLE custom_order_requests ADD COLUMN cree_par_id INT NULL;",
       "ALTER TABLE products ADD COLUMN prix_senegal DECIMAL(10, 2) NULL;",
       "ALTER TABLE products ADD COLUMN prix_promo_senegal DECIMAL(10, 2) NULL;",
       "ALTER TABLE products ADD COLUMN masquer_sur_site TINYINT(1) NOT NULL DEFAULT 0;",

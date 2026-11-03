@@ -58,7 +58,7 @@ export default function AdminLayout() {
     { to: "/admin", label: "Tableau de bord", icon: LayoutDashboard, exact: true, permKey: ["voir_dashboard"] },
     { to: "/admin/vente", label: "Vente Directe (POS)", icon: CreditCard, permKey: ["vente_directe", "gerer_commandes"], moduleKey: "vente" },
     { to: "/admin/ventes-historique", label: "Historique Ventes", icon: History, permKey: ["historique_ventes", "vente_directe", "gerer_commandes"], moduleKey: "ventesHistorique" },
-    { to: "/admin/demandes", label: "Demandes & Devis", icon: ClipboardList, permKey: ["voir_demandes", "gerer_demandes", "supprimer_demandes", "demandes_devis"], moduleKey: "demandes" },
+    { to: "/admin/demandes", label: "Demandes & Devis", icon: ClipboardList, permKey: ["voir_demandes", "creer_demande", "gerer_demandes", "supprimer_demandes", "demandes_devis"], moduleKey: "demandes" },
     { to: "/admin/commandes", label: "Commandes", icon: ShoppingCart, permKey: ["gerer_commandes", "valider_commande", "changer_statut_commande", "assigner_commande"], moduleKey: "commandes" },
     { to: "/admin/produits", label: "Produits", icon: Package, permKey: ["voir_produits", "ajouter_modifier_produit", "supprimer_produit", "gerer_produits"], moduleKey: "produits" },
     { to: "/admin/categories", label: "Catégories", icon: Layers, permKey: ["gerer_categories"], moduleKey: "categories" },

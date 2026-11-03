@@ -220,34 +220,61 @@ async function listAdminCustomRequests(req, res) {
     const boutiqueId = req.boutiqueId || req.user?.boutiqueId || 1;
     const { search = "", statut = "", page = 1, limit = 25 } = req.query;
 
-    const where = { boutiqueId };
+    const andConditions = [{ boutiqueId }];
 
     if (statut && statut !== "all") {
-      where.statut = statut;
+      andConditions.push({ statut });
     }
 
     if (search && search.trim()) {
       const q = `%${search.trim()}%`;
-      where[Op.or] = [
-        { code: { [Op.like]: q } },
-        { nomClient: { [Op.like]: q } },
-        { telephoneClient: { [Op.like]: q } },
-        { modeleAppareil: { [Op.like]: q } }
-      ];
+      andConditions.push({
+        [Op.or]: [
+          { code: { [Op.like]: q } },
+          { nomClient: { [Op.like]: q } },
+          { telephoneClient: { [Op.like]: q } },
+          { modeleAppareil: { [Op.like]: q } }
+        ]
+      });
     }
 
+    // Si c'est un employé, il ne voit QUE les devis qu'il a créés ou qui lui ont été attribués
+    const isEmploye = req.user?.role === "employe";
+    if (isEmploye) {
+      andConditions.push({
+        [Op.or]: [
+          { employeId: req.user.id },
+          { creeParId: req.user.id }
+        ]
+      });
+    }
+
+    const where = { [Op.and]: andConditions };
     const offset = (Number(page) - 1) * Number(limit);
 
     const { count, rows } = await CustomOrderRequest.findAndCountAll({
       where,
+      include: [
+        { model: User, as: "employeAssigne", attributes: ["id", "nom", "email"] },
+        { model: User, as: "createur", attributes: ["id", "nom", "email"] }
+      ],
       order: [["createdAt", "DESC"]],
       limit: Number(limit),
       offset
     });
 
     // Compteur des demandes en attente pour badge
+    const pendingConditions = [{ boutiqueId }, { statut: "en_attente" }];
+    if (isEmploye) {
+      pendingConditions.push({
+        [Op.or]: [
+          { employeId: req.user.id },
+          { creeParId: req.user.id }
+        ]
+      });
+    }
     const pendingCount = await CustomOrderRequest.count({
-      where: { boutiqueId, statut: "en_attente" }
+      where: { [Op.and]: pendingConditions }
     });
 
     return res.json({
@@ -288,6 +315,9 @@ async function quoteCustomRequest(req, res) {
     request.fraisLivraison = Number(fraisLivraison || 0);
     request.messageAdmin = messageAdmin ? messageAdmin.trim() : null;
     request.statut = "propose";
+    if (!request.employeId && req.user) {
+      request.employeId = req.user.id;
+    }
 
     await request.save();
 
@@ -376,7 +406,8 @@ async function createAdminCustomRequest(req, res) {
       statut,
       fraisLivraison,
       devisTotal,
-      messageAdmin
+      messageAdmin,
+      employeId
     } = req.body;
 
     if (!nomClient || !telephoneClient || !modeleAppareil) {
@@ -398,11 +429,15 @@ async function createAdminCustomRequest(req, res) {
     }
 
     const code = generateRequestCode();
+    const targetEmployeId = employeId ? Number(employeId) : (req.user ? req.user.id : null);
+    const creeParId = req.user ? req.user.id : null;
 
     const request = await CustomOrderRequest.create({
       code,
       boutiqueId,
       clientId: null,
+      employeId: targetEmployeId,
+      creeParId: creeParId,
       nomClient: nomClient.trim(),
       telephoneClient: telephoneClient.trim(),
       emailClient: emailClient ? emailClient.trim() : null,
@@ -471,6 +506,9 @@ async function updateAdminCustomRequest(req, res) {
     if (totalPropose !== undefined) request.totalPropose = Number(totalPropose) || 0;
     if (devisTotal !== undefined) request.devisTotal = devisTotal !== null ? Number(devisTotal) : null;
     if (messageAdmin !== undefined) request.messageAdmin = messageAdmin ? messageAdmin.trim() : null;
+    if (req.body.employeId !== undefined) {
+      request.employeId = req.body.employeId ? Number(req.body.employeId) : null;
+    }
 
     if (Array.isArray(photos)) {
       const cleanPhotos = photos.filter(p => typeof p === "string" && p.trim().length > 0);

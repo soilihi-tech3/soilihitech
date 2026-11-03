@@ -3,7 +3,7 @@ import {
   ClipboardList, Search, Clock, CheckCircle2, XCircle, 
   Sparkles, Smartphone, Eye, MessageCircle, Printer, 
   Send, RefreshCw, X, ArrowUpDown, Filter, AlertCircle,
-  Plus, FileText, Trash2, Pencil, Image as ImageIcon, Camera, Upload, Download
+  Plus, FileText, Trash2, Pencil, Image as ImageIcon, Camera, Upload, Download, User
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -17,12 +17,21 @@ export default function DemandesSpeciales() {
   const { user } = useAuth();
   const perms = Array.isArray(user?.permissions) ? user.permissions : [];
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
-  const canCreate = isAdmin || perms.includes("gerer_demandes") || perms.includes("demandes_devis");
+  const canCreate = isAdmin || perms.includes("creer_demande") || perms.includes("gerer_demandes") || perms.includes("demandes_devis");
   const canEdit = isAdmin || perms.includes("gerer_demandes") || perms.includes("demandes_devis");
-  const canDelete = isAdmin || perms.includes("supprimer_demandes") || perms.includes("gerer_demandes");
+  const canDelete = isAdmin || perms.includes("supprimer_demandes");
 
   const [requests, setRequests] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (isAdmin) {
+      api.get("/admin/employees")
+        .then(res => setEmployees(res.data || []))
+        .catch(() => setEmployees([]));
+    }
+  }, [isAdmin]);
   const [search, setSearch] = useState("");
   const [statutFilter, setStatutFilter] = useState("all");
   const [pendingCount, setPendingCount] = useState(0);
@@ -53,7 +62,8 @@ export default function DemandesSpeciales() {
     devisTotal: "",
     statut: "en_attente",
     description: "",
-    messageAdmin: ""
+    messageAdmin: "",
+    employeId: ""
   });
   const [creatingOrder, setCreatingOrder] = useState(false);
 
@@ -69,7 +79,8 @@ export default function DemandesSpeciales() {
     totalPropose: "",
     statut: "en_attente",
     description: "",
-    messageAdmin: ""
+    messageAdmin: "",
+    employeId: ""
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [visibleCount, setVisibleCount] = useState(20);
@@ -329,6 +340,7 @@ export default function DemandesSpeciales() {
         nomClient: createForm.nomClient.trim(),
         telephoneClient: createForm.telephoneClient.trim(),
         modeleAppareil: createForm.modeleAppareil.trim(),
+        employeId: createForm.employeId ? Number(createForm.employeId) : (!isAdmin && user?.id ? user.id : undefined),
         articles: validArticles.map(a => ({
           nom: a.nom.trim(),
           quantite: Number(a.quantite) || 1,
@@ -345,7 +357,7 @@ export default function DemandesSpeciales() {
 
       const res = await api.post("/admin/custom-requests", payload);
       if (res.data && res.data.success) {
-        toast.success("Commande personnalisée enregistrée avec succès !");
+        toast.success("Devis / commande personnalisée enregistré avec succès !");
         setIsCreateModalOpen(false);
         setCreatePhotos([]);
         setCreateForm({
@@ -357,7 +369,8 @@ export default function DemandesSpeciales() {
           devisTotal: "",
           statut: "en_attente",
           description: "",
-          messageAdmin: ""
+          messageAdmin: "",
+          employeId: ""
         });
         await loadRequests();
       }
@@ -397,7 +410,8 @@ export default function DemandesSpeciales() {
       fraisLivraison: Number(req.fraisLivraison || 0),
       totalPropose: req.totalPropose ?? "",
       description: req.description || "",
-      messageAdmin: req.messageAdmin || ""
+      messageAdmin: req.messageAdmin || "",
+      employeId: req.employeId || req.employeAssigne?.id || ""
     });
     setIsEditModalOpen(true);
   }
@@ -460,6 +474,7 @@ export default function DemandesSpeciales() {
         nomClient: editForm.nomClient.trim(),
         telephoneClient: editForm.telephoneClient.trim(),
         modeleAppareil: editForm.modeleAppareil.trim(),
+        employeId: editForm.employeId ? Number(editForm.employeId) : null,
         articles: validArticles.map(a => ({
           nom: a.nom.trim(),
           quantite: Number(a.quantite) || 1,
@@ -958,6 +973,24 @@ export default function DemandesSpeciales() {
               <span style={{ fontSize: 13, color: "var(--muted)" }}>
                 Gérez les commandes d'accessoires personnalisées, chiffrez les devis et imprimez des bordereaux officiels
               </span>
+              {!isAdmin && (
+                <div style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "3px 10px",
+                  background: "#EFF6FF",
+                  border: "1px solid #BFDBFE",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#1D4ED8",
+                  marginTop: 6
+                }}>
+                  <User size={13} />
+                  <span>Mes devis attribués & créés ({user?.nom || "Employé"})</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1036,7 +1069,7 @@ export default function DemandesSpeciales() {
               }}
             >
               <Plus size={18} />
-              <span>+ Nouvelle commande</span>
+              <span>+ Nouveau Devis</span>
             </button>
           )}
         </div>
@@ -1183,6 +1216,16 @@ export default function DemandesSpeciales() {
                         <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>
                           {new Date(req.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                         </div>
+                        {req.employeAssigne && (
+                          <div style={{ fontSize: 11, color: "#1D4ED8", background: "#EFF6FF", border: "1px solid #BFDBFE", padding: "1px 6px", borderRadius: 4, display: "inline-block", marginTop: 4, fontWeight: 700 }}>
+                            Assigné: {req.employeAssigne.nom}
+                          </div>
+                        )}
+                        {!req.employeAssigne && req.createur && (
+                          <div style={{ fontSize: 11, color: "#475569", background: "#F1F5F9", border: "1px solid #CBD5E1", padding: "1px 6px", borderRadius: 4, display: "inline-block", marginTop: 4, fontWeight: 600 }}>
+                            Créé: {req.createur.nom}
+                          </div>
+                        )}
                       </td>
 
                       <td style={{ padding: "14px 16px" }}>
@@ -1414,6 +1457,25 @@ export default function DemandesSpeciales() {
                   </select>
                 </div>
               </div>
+
+              {isAdmin && (
+                <div className="bs-input-group" style={{ marginBottom: 20 }}>
+                  <label style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 6 }}>
+                    Employé assigné / responsable du devis :
+                  </label>
+                  <select
+                    className="bs-select"
+                    value={editForm.employeId}
+                    onChange={(e) => setEditForm({ ...editForm, employeId: e.target.value })}
+                    style={{ width: "100%", height: 42, fontSize: 13 }}
+                  >
+                    <option value="">-- Aucun employé spécifique (Visible par Admin) --</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.nom} ({emp.role === "admin" ? "Admin" : "Employé"})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* LISTE DYNAMIQUE DES ARTICLES */}
               <div style={{ marginBottom: 20 }}>
@@ -1764,6 +1826,25 @@ export default function DemandesSpeciales() {
                   </select>
                 </div>
               </div>
+
+              {isAdmin && (
+                <div className="bs-input-group" style={{ marginBottom: 20 }}>
+                  <label style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 6 }}>
+                    Attribuer à un employé :
+                  </label>
+                  <select
+                    className="bs-select"
+                    value={createForm.employeId}
+                    onChange={(e) => setCreateForm({ ...createForm, employeId: e.target.value })}
+                    style={{ width: "100%", height: 42, fontSize: 13 }}
+                  >
+                    <option value="">-- Attribué à l'administrateur / Tout le monde --</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.nom} ({emp.role === "admin" ? "Admin" : "Employé"})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* LISTE DYNAMIQUE DES ARTICLES */}
               <div style={{ marginBottom: 20 }}>

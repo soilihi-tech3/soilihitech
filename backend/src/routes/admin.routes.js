@@ -604,6 +604,12 @@ router.get("/orders", async (req, res, next) => {
       statut: { [Op.ne]: "en_attente_paiement" }
     };
     if (req.query.statut) where.statut = req.query.statut;
+
+    // Un employé ne doit voir que ses propres ventes
+    if (req.user && req.user.role === "employe") {
+      where.employeAssigneId = req.user.id;
+    }
+
     const orders = await Order.findAll({
       where,
       include: [
