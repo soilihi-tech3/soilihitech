@@ -14,25 +14,36 @@ import { formatPrice, formatPrice as fcfa, getActiveCurrency, setActiveCurrency 
 export default function Dashboard() {
   const { user, boutique, theme } = useAuth();
   const [data, setData] = useState(() => readCache("admin_dashboard") || null);
-  const [activeCurrency, setActiveCurrencyState] = useState(() => getActiveCurrency() || "KMF");
-  const [countryFilter, setCountryFilter] = useState(() => getActiveCurrency() || "KMF");
+  const isEmploye = user?.role === "employe";
+  const assignedCurrency = isEmploye && user?.deviseAutorisee && user.deviseAutorisee !== "TOUTES" 
+    ? user.deviseAutorisee 
+    : null;
+
+  const [activeCurrency, setActiveCurrencyState] = useState(() => assignedCurrency || getActiveCurrency() || "KMF");
+  const [countryFilter, setCountryFilter] = useState(() => assignedCurrency || getActiveCurrency() || "KMF");
   const [prodChartTab, setProdChartTab] = useState("top");
 
   useEffect(() => {
-    const cur = getActiveCurrency() || boutique?.devise || "KMF";
+    const cur = assignedCurrency || getActiveCurrency() || boutique?.devise || "KMF";
     setActiveCurrencyState(cur);
     setCountryFilter(cur);
 
     const handleCurChange = (e) => {
-      const newCur = e.detail || getActiveCurrency() || "KMF";
-      setActiveCurrencyState(newCur);
-      setCountryFilter(newCur);
+      if (assignedCurrency) {
+        setActiveCurrencyState(assignedCurrency);
+        setCountryFilter(assignedCurrency);
+      } else {
+        const newCur = e.detail || getActiveCurrency() || "KMF";
+        setActiveCurrencyState(newCur);
+        setCountryFilter(newCur);
+      }
     };
     window.addEventListener("currency_changed", handleCurChange);
     return () => window.removeEventListener("currency_changed", handleCurChange);
-  }, [boutique?.devise]);
+  }, [boutique?.devise, assignedCurrency]);
 
   const handleFilterCountry = (filter) => {
+    if (assignedCurrency) return; // Verrouillé pour l'employé avec devise assignée
     setCountryFilter(filter);
     if (filter === "KMF" || filter === "FCFA") {
       setActiveCurrency(filter);
@@ -279,48 +290,56 @@ export default function Dashboard() {
 
         {/* SÉLECTEUR DE PAYS DYNAMIQUE */}
         <div className="bs-country-switcher">
-          <button
-            type="button"
-            onClick={() => handleFilterCountry("KMF")}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              background: countryFilter === "KMF" ? "var(--forest)" : "transparent",
-              color: countryFilter === "KMF" ? "#fff" : "var(--muted)",
-              border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-              transition: "all 0.15s ease"
-            }}
-          >
-            <span className="bs-country-label-full">Comores (KMF)</span>
-            <span className="bs-country-label-short">Comores</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleFilterCountry("FCFA")}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              background: countryFilter === "FCFA" ? "var(--forest)" : "transparent",
-              color: countryFilter === "FCFA" ? "#fff" : "var(--muted)",
-              border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-              transition: "all 0.15s ease"
-            }}
-          >
-            <span className="bs-country-label-full">Sénégal (FCFA)</span>
-            <span className="bs-country-label-short">Sénégal</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleFilterCountry("ALL")}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              background: countryFilter === "ALL" ? "var(--forest)" : "transparent",
-              color: countryFilter === "ALL" ? "#fff" : "var(--muted)",
-              border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-              transition: "all 0.15s ease"
-            }}
-          >
-            <span className="bs-country-label-full">Vue Globale (Tous)</span>
-            <span className="bs-country-label-short">Global</span>
-          </button>
+          {(!assignedCurrency || assignedCurrency === "KMF") && (
+            <button
+              type="button"
+              onClick={() => handleFilterCountry("KMF")}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: countryFilter === "KMF" ? "var(--forest)" : "transparent",
+                color: countryFilter === "KMF" ? "#fff" : "var(--muted)",
+                border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: assignedCurrency ? "default" : "pointer",
+                transition: "all 0.15s ease"
+              }}
+            >
+              <span className="bs-country-label-full">Comores (KMF)</span>
+              <span className="bs-country-label-short">Comores</span>
+            </button>
+          )}
+
+          {(!assignedCurrency || assignedCurrency === "FCFA") && (
+            <button
+              type="button"
+              onClick={() => handleFilterCountry("FCFA")}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: countryFilter === "FCFA" ? "var(--forest)" : "transparent",
+                color: countryFilter === "FCFA" ? "#fff" : "var(--muted)",
+                border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: assignedCurrency ? "default" : "pointer",
+                transition: "all 0.15s ease"
+              }}
+            >
+              <span className="bs-country-label-full">Sénégal (FCFA)</span>
+              <span className="bs-country-label-short">Sénégal</span>
+            </button>
+          )}
+
+          {!assignedCurrency && (
+            <button
+              type="button"
+              onClick={() => handleFilterCountry("ALL")}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: countryFilter === "ALL" ? "var(--forest)" : "transparent",
+                color: countryFilter === "ALL" ? "#fff" : "var(--muted)",
+                border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                transition: "all 0.15s ease"
+              }}
+            >
+              <span className="bs-country-label-full">Vue Globale (Tous)</span>
+              <span className="bs-country-label-short">Global</span>
+            </button>
+          )}
         </div>
       </div>
 
