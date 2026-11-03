@@ -544,7 +544,7 @@ export default function ReceiptModal({
                 >
                   {storeName}
                 </span>
-                {sale?.isOffline && (
+                {order?.isOffline && (
                   <span style={{ fontSize: 10, background: "#FEF3C7", color: "#92400E", padding: "2px 7px", borderRadius: 10, fontWeight: 700, marginLeft: 4 }}>
                     Hors-Ligne
                   </span>
