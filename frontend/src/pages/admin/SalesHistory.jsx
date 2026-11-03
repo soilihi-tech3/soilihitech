@@ -143,7 +143,8 @@ export default function SalesHistory() {
   useEffect(() => {
     loadData();
     const unsub = subscribeRealtime((detail) => {
-      if (detail.type === "order_created" || detail.type === "order_updated") {
+      const t = detail?.type || detail;
+      if (t === "order_created" || t === "order_updated" || t === "order_deleted") {
         loadData();
       }
     });

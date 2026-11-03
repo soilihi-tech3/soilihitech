@@ -125,7 +125,8 @@ export default function AdminOrders() {
 
     // 1. Realtime SSE push listener
     const unsubscribe = subscribeRealtime((detail) => {
-      if (detail.type === "order_updated" || detail.type === "order_created") {
+      const t = detail?.type || detail;
+      if (t === "order_updated" || t === "order_created" || t === "order_deleted") {
         load();
       }
     });

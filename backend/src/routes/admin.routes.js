@@ -530,6 +530,7 @@ router.post("/products", async (req, res, next) => {
 
     purgeCache();
     broadcast("product_updated", { productId: product.id, boutiqueId: req.boutiqueId });
+    broadcast("product_created", { productId: product.id, boutiqueId: req.boutiqueId });
     res.status(201).json(fullProduct);
   } catch (err) { next(err); }
 });
@@ -586,6 +587,7 @@ router.delete("/products/:id", async (req, res, next) => {
     await product.destroy();
     purgeCache();
     broadcast("product_updated", { productId: req.params.id, boutiqueId: req.boutiqueId });
+    broadcast("product_deleted", { productId: req.params.id, boutiqueId: req.boutiqueId });
     res.json({ message: "Produit supprimé." });
   } catch (err) { 
     if (err.name === 'SequelizeForeignKeyConstraintError') {
@@ -1985,6 +1987,7 @@ router.post("/expenses", async (req, res, next) => {
       include: [{ model: User, as: "creePar", attributes: ["id", "nom", "email", "role"] }]
     });
 
+    broadcast("expense_updated", { action: "create", expenseId: expense.id, boutiqueId: req.boutiqueId });
     res.status(201).json(fullExpense);
   } catch (err) {
     next(err);
@@ -2028,6 +2031,7 @@ router.put("/expenses/:id", async (req, res, next) => {
       include: [{ model: User, as: "creePar", attributes: ["id", "nom", "email", "role"] }]
     });
 
+    broadcast("expense_updated", { action: "update", expenseId: expense.id, boutiqueId: req.boutiqueId });
     res.json(fullExpense);
   } catch (err) {
     next(err);
@@ -2049,6 +2053,7 @@ router.delete("/expenses/:id", async (req, res, next) => {
     }
 
     await expense.destroy();
+    broadcast("expense_updated", { action: "delete", expenseId: req.params.id, boutiqueId: req.boutiqueId });
     res.json({ success: true, message: "Dépense supprimée avec succès." });
   } catch (err) {
     next(err);
@@ -2168,6 +2173,7 @@ router.post("/savings", async (req, res, next) => {
       include: [{ model: User, as: "creePar", attributes: ["id", "nom", "email"] }]
     });
 
+    broadcast("saving_updated", { action: "create", savingId: saving.id, boutiqueId: req.boutiqueId });
     res.status(201).json(fullSaving);
   } catch (err) {
     next(err);
@@ -2203,6 +2209,7 @@ router.put("/savings/:id", async (req, res, next) => {
       include: [{ model: User, as: "creePar", attributes: ["id", "nom", "email"] }]
     });
 
+    broadcast("saving_updated", { action: "update", savingId: saving.id, boutiqueId: req.boutiqueId });
     res.json(fullSaving);
   } catch (err) {
     next(err);
@@ -2224,6 +2231,7 @@ router.delete("/savings/:id", async (req, res, next) => {
     }
 
     await saving.destroy();
+    broadcast("saving_updated", { action: "delete", savingId: req.params.id, boutiqueId: req.boutiqueId });
     res.json({ success: true, message: "Opération d'épargne supprimée avec succès." });
   } catch (err) {
     next(err);

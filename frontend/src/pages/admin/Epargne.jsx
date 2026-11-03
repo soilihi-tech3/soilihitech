@@ -10,6 +10,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import TablePagination from "../../components/TablePagination";
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 import { formatPrice as fcfa } from "../../utils/currency.js";
+import { subscribeRealtime } from "../../utils/realtime.js";
 
 const COMPTES_SUGGESTIONS = [
   "Compte Épargne Banque (BDC)",
@@ -106,6 +107,17 @@ export default function Epargne() {
     }, 350);
     return () => clearTimeout(handler);
   }, [search]);
+
+  // Synchronisation en temps réel sans actualisation
+  useEffect(() => {
+    const unsub = subscribeRealtime((detail) => {
+      const t = detail?.type || detail;
+      if (t === "saving_updated") {
+        loadSavings();
+      }
+    });
+    return () => unsub();
+  }, [filterType, filterCurrency, dateDebut, dateFin, search]);
 
   if (!isAdmin) {
     return (

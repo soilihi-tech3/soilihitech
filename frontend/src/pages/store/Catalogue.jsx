@@ -145,8 +145,9 @@ export default function Catalogue() {
 
   // Real-time synchronization
   useEffect(() => {
-    const unsub = subscribeRealtime((event, data) => {
-      if (["product_created", "product_updated", "product_deleted", "stock_updated", "boutique_updated"].includes(event)) {
+    const unsub = subscribeRealtime((event) => {
+      const type = typeof event === "string" ? event : (event?.type || "");
+      if (["product_created", "product_updated", "product_deleted", "stock_updated", "boutique_updated", "category_updated"].includes(type)) {
         invalidate(`products:${SLUG}`);
         invalidate(`categories:${SLUG}`);
         loadProducts(true);

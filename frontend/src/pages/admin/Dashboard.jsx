@@ -75,12 +75,18 @@ export default function Dashboard() {
   useEffect(() => { 
     loadDashboard();
     const unsub = subscribeRealtime((detail) => {
+      const t = detail?.type || detail;
       if (
-        detail.type === "order_created" ||
-        detail.type === "order_updated" ||
-        detail.type === "product_updated" ||
-        detail.type === "category_updated" ||
-        detail.type === "user_registered"
+        t === "order_created" ||
+        t === "order_updated" ||
+        t === "order_deleted" ||
+        t === "product_updated" ||
+        t === "product_created" ||
+        t === "product_deleted" ||
+        t === "category_updated" ||
+        t === "expense_updated" ||
+        t === "saving_updated" ||
+        t === "user_registered"
       ) {
         loadDashboard();
       }

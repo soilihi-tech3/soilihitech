@@ -10,6 +10,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import TablePagination from "../../components/TablePagination";
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 import { formatPrice as fcfa, getActiveCurrency } from "../../utils/currency.js";
+import { subscribeRealtime } from "../../utils/realtime.js";
 
 export default function Depenses() {
   const { user } = useAuth();
@@ -91,6 +92,17 @@ export default function Depenses() {
     }, 350);
     return () => clearTimeout(handler);
   }, [search]);
+
+  // Synchronisation en temps réel sans actualisation
+  useEffect(() => {
+    const unsub = subscribeRealtime((detail) => {
+      const t = detail?.type || detail;
+      if (t === "expense_updated") {
+        loadExpenses();
+      }
+    });
+    return () => unsub();
+  }, [filterEmployee, filterCurrency, dateDebut, dateFin, search]);
 
   function openCreateModal() {
     setForm({

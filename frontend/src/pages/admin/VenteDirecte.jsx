@@ -244,7 +244,14 @@ export default function VenteDirecte() {
     load();
 
     const unsub = subscribeRealtime((detail) => {
-      if (detail.type === "product_updated" || detail.type === "order_created") {
+      const t = detail?.type || detail;
+      if (
+        t === "product_updated" ||
+        t === "product_created" ||
+        t === "product_deleted" ||
+        t === "stock_updated" ||
+        t === "order_created"
+      ) {
         load();
       }
     });

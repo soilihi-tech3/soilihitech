@@ -10,10 +10,13 @@ function removeClient(res) {
 }
 
 function broadcast(event, data = {}) {
-  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const namedPayload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const defaultPayload = `event: message\ndata: ${JSON.stringify({ type: event, data })}\n\n`;
+  const fullPayload = namedPayload + defaultPayload;
+
   for (const client of clients) {
     try {
-      client.write(payload);
+      client.write(fullPayload);
     } catch (err) {
       clients.delete(client);
     }

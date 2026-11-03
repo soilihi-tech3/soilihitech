@@ -24,32 +24,69 @@ const getBaseUrl = () => {
 let eventSource = null;
 let reconnectTimer = null;
 
-export function initRealtimeSync() {
-  if (typeof window === "undefined" || eventSource) return;
+const SUPPORTED_EVENTS = [
+  "order_updated",
+  "order_created",
+  "order_deleted",
+  "product_updated",
+  "product_created",
+  "product_deleted",
+  "stock_updated",
+  "boutique_updated",
+  "category_updated",
+  "expense_updated",
+  "saving_updated",
+  "custom_order_updated",
+  "achat_updated"
+];
 
-  const streamUrl = `${getBaseUrl()}/store/${SLUG}/realtime/events`;
+let lastDispatchedKey = "";
+let lastDispatchedTime = 0;
+
+function dispatchRealtimeEvent(type, data = {}) {
+  const now = Date.now();
+  const key = `${type}_${JSON.stringify(data)}`;
+  if (key === lastDispatchedKey && now - lastDispatchedTime < 250) {
+    return;
+  }
+  lastDispatchedKey = key;
+  lastDispatchedTime = now;
+
+  window.dispatchEvent(
+    new CustomEvent("app_realtime_event", {
+      detail: { type, data, timestamp: now }
+    })
+  );
+}
+
+export function initRealtimeSync() {
+  if (typeof window === "undefined") return;
+  if (eventSource && eventSource.readyState !== EventSource.CLOSED) return;
+
+  const streamUrl = `${getBaseUrl()}/store/${SLUG}/realtime/events?_t=${Date.now()}`;
 
   try {
     eventSource = new EventSource(streamUrl);
 
-    const handleEvent = (type) => (e) => {
-      let data = {};
+    SUPPORTED_EVENTS.forEach((type) => {
+      eventSource.addEventListener(type, (e) => {
+        let data = {};
+        try {
+          data = JSON.parse(e.data || "{}");
+        } catch (err) {}
+        dispatchRealtimeEvent(type, data);
+      });
+    });
+
+    eventSource.onmessage = (e) => {
+      let parsed = {};
       try {
-        data = JSON.parse(e.data || "{}");
+        parsed = JSON.parse(e.data || "{}");
       } catch (err) {}
-
-      window.dispatchEvent(
-        new CustomEvent("app_realtime_event", {
-          detail: { type, data, timestamp: Date.now() }
-        })
-      );
+      const type = parsed.type || "message";
+      const data = parsed.data || parsed;
+      dispatchRealtimeEvent(type, data);
     };
-
-    eventSource.addEventListener("order_updated", handleEvent("order_updated"));
-    eventSource.addEventListener("order_created", handleEvent("order_created"));
-    eventSource.addEventListener("product_updated", handleEvent("product_updated"));
-    eventSource.addEventListener("boutique_updated", handleEvent("boutique_updated"));
-    eventSource.addEventListener("category_updated", handleEvent("category_updated"));
 
     eventSource.onerror = () => {
       if (eventSource) {
@@ -57,17 +94,34 @@ export function initRealtimeSync() {
         eventSource = null;
       }
       clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(initRealtimeSync, 5000);
+      reconnectTimer = setTimeout(initRealtimeSync, 3000);
     };
   } catch (err) {
     console.warn("Realtime sync warning:", err);
   }
 }
 
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      if (!eventSource || eventSource.readyState === EventSource.CLOSED) {
+        initRealtimeSync();
+      }
+    }
+  });
+}
+
 export function subscribeRealtime(callback) {
   const handler = (e) => {
-    if (callback && e.detail) {
-      callback(e.detail);
+    if (!callback || !e.detail) return;
+    const detail = e.detail;
+    const type = detail.type || "";
+    const data = detail.data || {};
+
+    if (callback.length >= 2) {
+      callback(type, data, detail);
+    } else {
+      callback(detail);
     }
   };
   window.addEventListener("app_realtime_event", handler);

@@ -6,6 +6,7 @@ import TablePagination from "../../components/TablePagination";
 import { formatPrice } from "../../utils/currency.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
+import { subscribeRealtime } from "../../utils/realtime.js";
 
 export default function Achats() {
   const { user } = useAuth();
@@ -66,6 +67,14 @@ export default function Achats() {
     api.get("/admin/fournisseurs")
       .then(res => setFournisseurs(res.data || []))
       .catch(() => setFournisseurs([]));
+
+    const unsub = subscribeRealtime((detail) => {
+      const t = detail?.type || detail;
+      if (t === "achat_updated" || t === "product_updated" || t === "product_created") {
+        load();
+      }
+    });
+    return () => unsub();
   }, []);
 
   async function handleDeleteAchat() {

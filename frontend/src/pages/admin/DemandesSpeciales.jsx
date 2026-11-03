@@ -14,6 +14,7 @@ import { toast } from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { saveCache, getCache, enqueueAction, saveOfflineQuote, getOfflineQuotes } from "../../utils/offlineStorage.js";
 import { useOffline } from "../../context/OfflineContext.jsx";
+import { subscribeRealtime } from "../../utils/realtime.js";
 
 export default function DemandesSpeciales() {
   const { user } = useAuth();
@@ -97,7 +98,18 @@ export default function DemandesSpeciales() {
       loadRequests();
     };
     window.addEventListener("offline_synced", handleSynced);
-    return () => window.removeEventListener("offline_synced", handleSynced);
+
+    const unsub = subscribeRealtime((detail) => {
+      const t = detail?.type || detail;
+      if (t === "custom_order_updated" || t === "order_created" || t === "order_updated") {
+        loadRequests();
+      }
+    });
+
+    return () => {
+      window.removeEventListener("offline_synced", handleSynced);
+      unsub();
+    };
   }, [statutFilter]);
 
   async function loadRequests() {

@@ -156,7 +156,7 @@ export default function AdminProduits() {
   }
 
   function silentSyncProducts() {
-    api.get("/admin/products").then((res) => {
+    api.get(`/admin/products?_t=${Date.now()}`).then((res) => {
       const list = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       setProducts(list);
     }).catch(() => {});
@@ -170,7 +170,7 @@ export default function AdminProduits() {
 
   function load() {
     setLoading(true);
-    api.get("/admin/products").then((res) => {
+    api.get(`/admin/products?_t=${Date.now()}`).then((res) => {
       const list = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       setProducts(list);
     }).finally(() => setLoading(false));
@@ -185,7 +185,14 @@ export default function AdminProduits() {
   useEffect(() => {
     load();
     const unsub = subscribeRealtime((detail) => {
-      if (detail.type === "product_updated" || detail.type === "category_updated") {
+      const t = detail?.type || detail;
+      if (
+        t === "product_updated" ||
+        t === "product_created" ||
+        t === "product_deleted" ||
+        t === "category_updated" ||
+        t === "achat_updated"
+      ) {
         silentSyncProducts();
       }
     });

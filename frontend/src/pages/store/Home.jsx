@@ -261,6 +261,8 @@ export default function Home() {
     const unsub = subscribeRealtime((detail) => {
       if (
         detail.type === "product_updated" ||
+        detail.type === "product_created" ||
+        detail.type === "product_deleted" ||
         detail.type === "category_updated" ||
         detail.type === "boutique_updated"
       ) {

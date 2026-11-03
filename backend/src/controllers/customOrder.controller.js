@@ -1,6 +1,7 @@
 const { CustomOrderRequest, Boutique, Order, User } = require("../models");
 const { Op } = require("sequelize");
 const { getCache, setCache } = require("../config/cache");
+const { broadcast } = require("../utils/broadcaster");
 
 function generateRequestCode() {
   const rand = Math.floor(1000 + Math.random() * 9000);
@@ -63,6 +64,8 @@ async function createCustomRequest(req, res) {
       photoUrl: finalPhotoUrl,
       statut: "en_attente"
     });
+
+    broadcast("custom_order_updated", { requestId: request.id, boutiqueId: boutique.id, action: "create" });
 
     return res.status(201).json({
       success: true,
@@ -187,6 +190,9 @@ async function respondCustomRequest(req, res) {
       request.orderId = order.id;
       await request.save();
 
+      broadcast("custom_order_updated", { requestId: request.id, boutiqueId: request.boutiqueId, action: "update" });
+      broadcast("order_created", { orderId: order.id, boutiqueId: request.boutiqueId });
+
       return res.json({
         success: true,
         message: "Commande confirmée et transmise à l'équipe avec succès !",
@@ -197,6 +203,8 @@ async function respondCustomRequest(req, res) {
       request.statut = "refuse";
       request.motifRefus = motifRefus ? motifRefus.trim() : "Refusé par le client";
       await request.save();
+
+      broadcast("custom_order_updated", { requestId: request.id, boutiqueId: request.boutiqueId, action: "update" });
 
       return res.json({
         success: true,
@@ -321,6 +329,8 @@ async function quoteCustomRequest(req, res) {
     }
 
     await request.save();
+
+    broadcast("custom_order_updated", { requestId: request.id, boutiqueId: request.boutiqueId, action: "update" });
 
     return res.json({
       success: true,
@@ -469,6 +479,8 @@ async function createAdminCustomRequest(req, res) {
       await setCache(`idempotency:${idempotencyKey}`, request, 86400).catch(() => {});
     }
 
+    broadcast("custom_order_updated", { requestId: request.id, boutiqueId, action: "create" });
+
     return res.status(201).json({
       success: true,
       message: "Demande sur-mesure créée avec succès !",
@@ -536,6 +548,8 @@ async function updateAdminCustomRequest(req, res) {
 
     await request.save();
 
+    broadcast("custom_order_updated", { requestId: request.id, boutiqueId, action: "update" });
+
     return res.json({
       success: true,
       message: "Demande sur-mesure modifiée avec succès !",
@@ -561,6 +575,8 @@ async function deleteAdminCustomRequest(req, res) {
     }
 
     await request.destroy();
+
+    broadcast("custom_order_updated", { requestId: id, boutiqueId, action: "delete" });
 
     return res.json({
       success: true,
