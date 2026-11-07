@@ -94,6 +94,8 @@ export default function VenteDirecte() {
   const { isOnline, pendingCount } = useOffline();
   const storeName = boutique?.nom || "Marché Vert";
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState("");
   const [productsLoading, setProductsLoading] = useState(true);
   const [visibleLimit, setVisibleLimit] = useState(20);
   const [search, setSearch] = useState("");
@@ -112,8 +114,9 @@ export default function VenteDirecte() {
   // Modal sélection d'une variante spécifique
   const [selectedProductForVariants, setSelectedProductForVariants] = useState(null);
 
-  // Encaissement & Rendu monnaie
+  // Encaissement & Rendu monnaie & Dette
   const [montantRecu, setMontantRecu] = useState("");
+  const [dateEcheance, setDateEcheance] = useState("");
 
   useEffect(() => {
     let orderToEdit = location.state?.editOrder;
@@ -139,6 +142,12 @@ export default function VenteDirecte() {
       }
       if (orderToEdit.devise) {
         setActiveCurrency(orderToEdit.devise);
+      }
+      if (orderToEdit.dateEcheance) {
+        setDateEcheance(orderToEdit.dateEcheance.substring(0, 10));
+      }
+      if (orderToEdit.montantPaye !== undefined && orderToEdit.montantPaye !== null) {
+        setMontantRecu(String(orderToEdit.montantPaye));
       }
 
       const items = orderToEdit.items || [];
@@ -176,6 +185,7 @@ export default function VenteDirecte() {
     setClientNom("");
     setClientTelephone("");
     setMontantRecu("");
+    setDateEcheance("");
     toast.success("Mode modification annulé.");
   }
 
@@ -219,6 +229,14 @@ export default function VenteDirecte() {
     } else {
       setProductsLoading(true);
     }
+
+    // Charger les catégories de la boutique
+    api.get("/admin/categories")
+      .then(res => {
+        const catList = Array.isArray(res.data) ? res.data : [];
+        setCategories(catList);
+      })
+      .catch(() => {});
 
     // 2. Si le reseau est disponible, rafraichir depuis le serveur
     if (navigator.onLine) {
@@ -267,9 +285,38 @@ export default function VenteDirecte() {
     };
   }, []);
 
+  // Extraction dynamique et décompte par catégorie
+  const categoriesList = React.useMemo(() => {
+    const map = new Map();
+    (categories || []).forEach(c => {
+      if (c.nom) {
+        map.set(c.nom.toLowerCase(), { id: c.id, nom: c.nom, count: 0 });
+      }
+    });
+
+    products.forEach(p => {
+      const catNom = p.category?.nom || p.Category?.nom || p.famille || "";
+      if (catNom) {
+        const key = catNom.toLowerCase();
+        if (map.has(key)) {
+          map.get(key).count += 1;
+        } else {
+          map.set(key, { id: p.categoryId || catNom, nom: catNom, count: 1 });
+        }
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.count - a.count || a.nom.localeCompare(b.nom));
+  }, [categories, products]);
+
   const filteredProducts = products.filter(p => {
     const q = search.trim().toLowerCase();
-    return !q || p.nom.toLowerCase().includes(q) || (p.famille && p.famille.toLowerCase().includes(q));
+    const prodCat = (p.category?.nom || p.Category?.nom || p.famille || "").toLowerCase();
+
+    const matchSearch = !q || p.nom.toLowerCase().includes(q) || prodCat.includes(q);
+    const matchCategory = !selectedCategory || prodCat === selectedCategory.toLowerCase() || String(p.categoryId) === String(selectedCategory);
+
+    return matchSearch && matchCategory;
   });
 
   const displayedProducts = filteredProducts.slice(0, visibleLimit);
@@ -382,11 +429,28 @@ export default function VenteDirecte() {
   }, 0);
 
   const numMontantRecu = Number(montantRecu) || 0;
-  const monnaieARendre = numMontantRecu >= sousTotal ? numMontantRecu - sousTotal : 0;
-  const resteAPayer = (numMontantRecu > 0 && numMontantRecu < sousTotal) ? sousTotal - numMontantRecu : 0;
+  const isDette = (montantRecu !== "" && numMontantRecu < sousTotal) || moyenPaiement === "credit";
+  const monnaieARendre = (!isDette && numMontantRecu >= sousTotal) ? numMontantRecu - sousTotal : 0;
+  const resteAPayer = isDette ? Math.max(0, sousTotal - numMontantRecu) : 0;
 
   async function handleValiderVente() {
     if (cart.length === 0) return;
+
+    if (isDette) {
+      if (!clientNom.trim() || clientNom.trim().toLowerCase() === "client comptoir") {
+        toast.error("Veuillez renseigner le nom du client pour une vente avec reste à payer ou à crédit.");
+        return;
+      }
+      if (!clientTelephone.trim()) {
+        toast.error("Veuillez saisir le téléphone du client pour pouvoir le relancer pour son paiement.");
+        return;
+      }
+      if (!dateEcheance) {
+        toast.error("Veuillez choisir la date d'échéance promise pour enregistrer la dette.");
+        return;
+      }
+    }
+
     setLoading(true);
 
     const itemsPayload = cart.map(item => {
@@ -405,12 +469,21 @@ export default function VenteDirecte() {
     });
 
     const idempotencyKey = `sale_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+    const finalStatutPaiement = isDette ? (numMontantRecu > 0 ? "partiel" : "non_paye") : "paye";
+    const finalMontantPaye = isDette ? numMontantRecu : sousTotal;
+    const finalMontantRestant = isDette ? resteAPayer : 0;
+    const finalDateEcheance = isDette && dateEcheance ? dateEcheance : null;
+
     const saleData = {
       items: itemsPayload,
       clientNom: clientNom.trim() || "Client comptoir",
       clientTelephone: clientTelephone.trim() || "",
       moyenPaiement,
       devise: activeCurrency,
+      statutPaiement: finalStatutPaiement,
+      montantPaye: finalMontantPaye,
+      montantRestant: finalMontantRestant,
+      dateEcheance: finalDateEcheance,
       idempotencyKey
     };
 
@@ -425,6 +498,10 @@ export default function VenteDirecte() {
         typeVente: "vente_directe",
         devise: activeCurrency,
         moyenPaiement,
+        statutPaiement: finalStatutPaiement,
+        montantPaye: finalMontantPaye,
+        montantRestant: finalMontantRestant,
+        dateEcheance: finalDateEcheance,
         sousTotal,
         total: sousTotal,
         fraisLivraison: 0,
@@ -481,6 +558,7 @@ export default function VenteDirecte() {
       setClientNom("");
       setClientTelephone("");
       setMontantRecu("");
+      setDateEcheance("");
       toast.success("Vente enregistree hors-ligne. Le ticket PDF est pret et sera synchronise des le retour du reseau.");
     };
 
@@ -511,6 +589,7 @@ export default function VenteDirecte() {
       setClientNom("");
       setClientTelephone("");
       setMontantRecu("");
+      setDateEcheance("");
       load(); // Recharge le catalogue et les stocks
     } catch (err) {
       if (!editingOrder && (!err.response || err.code === "ERR_NETWORK" || err.message?.includes("Network Error"))) {
@@ -632,20 +711,100 @@ export default function VenteDirecte() {
       <div className="bs-pos-grid">
         {/* LEFT COLUMN: PRODUCT SELECTION & SEARCH */}
         <div className={`bs-pos-products-col ${mobileTab === "produits" ? "mobile-active" : "mobile-hidden"}`}>
-          {/* SEARCH BAR */}
+          {/* SEARCH BAR & FILTRES CATÉGORIES (DÉROULANT + DÉFILANT) */}
           <div className="bs-panel" style={{ padding: 14, marginBottom: 16 }}>
-            <div style={{ position: "relative", width: "100%" }}>
-              <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
-              <input
-                className="bs-input"
-                placeholder="Rechercher un produit à ajouter au panier..."
-                value={search}
+            {/* LIGNE 1 : RECHERCHE + SÉLECTEUR DÉROULANT */}
+            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+              <div style={{ position: "relative", flex: "1 1 240px" }}>
+                <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
+                <input
+                  className="bs-input"
+                  placeholder="Rechercher un produit à ajouter au panier..."
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setVisibleLimit(20);
+                  }}
+                  style={{ paddingLeft: 38, borderRadius: 10, fontSize: 13.5, height: 40 }}
+                />
+              </div>
+
+              {/* FILTRE DÉROULANT CATÉGORIES */}
+              <select
+                className="bs-select"
+                value={selectedCategory}
                 onChange={(e) => {
-                  setSearch(e.target.value);
+                  setSelectedCategory(e.target.value);
                   setVisibleLimit(20);
                 }}
-                style={{ paddingLeft: 38, borderRadius: 10, fontSize: 13.5, height: 40 }}
-              />
+                style={{ flex: "0 0 200px", height: 40, borderRadius: 10, fontWeight: 700, fontSize: 13 }}
+              >
+                <option value="">Toutes les catégories ({products.length})</option>
+                {categoriesList.map(cat => (
+                  <option key={cat.id} value={cat.nom}>
+                    {cat.nom} ({cat.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* LIGNE 2 : FILTRE DÉFILANT HORIZONTAL (PILLS / BADGES DÉFILANTS) */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              overflowX: "auto",
+              paddingBottom: 2,
+              WebkitOverflowScrolling: "touch",
+              scrollbarWidth: "none"
+            }}>
+              <button
+                type="button"
+                onClick={() => { setSelectedCategory(""); setVisibleLimit(20); }}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 20,
+                  fontSize: 12,
+                  fontWeight: !selectedCategory ? 800 : 600,
+                  background: !selectedCategory ? "var(--forest-dark, #064E3B)" : "#F1F5F9",
+                  color: !selectedCategory ? "#FFFFFF" : "var(--ink, #1E293B)",
+                  border: !selectedCategory ? "none" : "1px solid #E2E8F0",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  transition: "all 0.15s ease",
+                  flexShrink: 0
+                }}
+              >
+                Toutes ({products.length})
+              </button>
+              {categoriesList.map(cat => {
+                const isActive = selectedCategory.toLowerCase() === cat.nom.toLowerCase();
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory(isActive ? "" : cat.nom);
+                      setVisibleLimit(20);
+                    }}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 20,
+                      fontSize: 12,
+                      fontWeight: isActive ? 800 : 600,
+                      background: isActive ? "var(--forest-dark, #064E3B)" : "#F1F5F9",
+                      color: isActive ? "#FFFFFF" : "var(--ink, #1E293B)",
+                      border: isActive ? "none" : "1px solid #E2E8F0",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      transition: "all 0.15s ease",
+                      flexShrink: 0
+                    }}
+                  >
+                    {cat.nom} ({cat.count})
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -696,10 +855,7 @@ export default function VenteDirecte() {
                       </div>
 
                       <div>
-                        <div style={{ fontSize: 11, color: "var(--forest)", fontWeight: 700, textTransform: "uppercase" }}>
-                          {p.famille || "Produit"}
-                        </div>
-                        <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)", height: 36, overflow: "hidden" }} title={p.nom}>
+                        <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)", minHeight: 38, maxHeight: 42, overflow: "hidden", lineHeight: 1.35 }} title={p.nom}>
                           {p.nom}
                         </div>
                         
@@ -908,10 +1064,11 @@ export default function VenteDirecte() {
               )}
             </div>
 
-            {/* CUSTOMER INFO (OPTIONAL) */}
+            {/* CUSTOMER INFO */}
             <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14, marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", marginBottom: 8 }}>
-                Informations Vente & Client (Optionnel)
+              <div style={{ fontSize: 12, fontWeight: 700, color: isDette ? "#DC2626" : "var(--muted)", textTransform: "uppercase", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Informations Vente & Client {isDette ? "(Obligatoire pour dette)" : "(Optionnel)"}</span>
+                {isDette && <span style={{ color: "#DC2626", fontWeight: 800, fontSize: 11 }}>* Requis pour relance</span>}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
                 <input
@@ -919,14 +1076,21 @@ export default function VenteDirecte() {
                   placeholder="Nom du client"
                   value={clientNom}
                   onChange={(e) => setClientNom(e.target.value)}
-                  style={{ fontSize: 12.5, height: 36 }}
+                  style={{ fontSize: 12.5, height: 36, borderColor: isDette && !clientNom.trim() ? "#F87171" : undefined }}
                 />
                 <input
+                  type="tel"
+                  inputMode="tel"
                   className="bs-input"
                   placeholder="Téléphone client"
                   value={clientTelephone}
-                  onChange={(e) => setClientTelephone(e.target.value)}
-                  style={{ fontSize: 12.5, height: 36 }}
+                  onChange={(e) => setClientTelephone(e.target.value.replace(/[^0-9+ ]/g, ""))}
+                  onKeyDown={(e) => {
+                    if (!/[0-9+ ]/.test(e.key) && !["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Enter"].includes(e.key) && !e.ctrlKey && !e.metaKey) {
+                      e.preventDefault();
+                    }
+                  }}
+                  style={{ fontSize: 12.5, height: 36, borderColor: isDette && !clientTelephone.trim() ? "#F87171" : undefined }}
                 />
               </div>
 
@@ -962,17 +1126,33 @@ export default function VenteDirecte() {
               padding: 14,
               marginBottom: 16
             }}>
-              <label style={{
-                display: "block",
-                fontSize: 12,
-                fontWeight: 700,
-                color: "#475569",
-                marginBottom: 6,
-                textTransform: "uppercase",
-                letterSpacing: "0.5px"
-              }}>
-                Montant reçu du client
-              </label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <label style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#475569",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px"
+                }}>
+                  Montant reçu du client
+                </label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => { setMontantRecu(String(sousTotal)); setDateEcheance(""); }}
+                    style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, border: "1px solid #CBD5E1", background: "#FFF", cursor: "pointer", fontWeight: 700, color: "#166534" }}
+                  >
+                    Complet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMontantRecu("0")}
+                    style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, border: "1px solid #FECACA", background: "#FEF2F2", cursor: "pointer", fontWeight: 700, color: "#991B1B" }}
+                  >
+                    À crédit (0)
+                  </button>
+                </div>
+              </div>
 
               <div style={{
                 position: "relative",
@@ -984,7 +1164,7 @@ export default function VenteDirecte() {
                   type="number"
                   min="0"
                   step="50"
-                  placeholder="0"
+                  placeholder="0 (laisser vide si payé complet)"
                   value={montantRecu}
                   onChange={(e) => setMontantRecu(e.target.value)}
                   style={{
@@ -1052,45 +1232,69 @@ export default function VenteDirecte() {
               </div>
 
               {/* Résultat Monnaie ou Reste à payer */}
-              {numMontantRecu > 0 && (
-                <div style={{ marginTop: 10 }}>
-                  {numMontantRecu >= sousTotal ? (
-                    <div style={{
-                      background: "#DCFCE7",
-                      border: "1.5px solid #86EFAC",
-                      borderRadius: 10,
-                      padding: "8px 12px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center"
-                    }}>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: "#166534" }}>
-                        Monnaie à rendre :
-                      </span>
-                      <span style={{ fontSize: 16, fontWeight: 900, color: "#15803D" }}>
-                        {fcfa(monnaieARendre, activeCurrency)}
-                      </span>
-                    </div>
-                  ) : (
-                    <div style={{
-                      background: "#FEF2F2",
-                      border: "1.5px solid #FECACA",
-                      borderRadius: 10,
-                      padding: "8px 12px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center"
-                    }}>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: "#991B1B" }}>
-                        Reste à payer :
-                      </span>
-                      <span style={{ fontSize: 16, fontWeight: 900, color: "#DC2626" }}>
-                        {fcfa(resteAPayer, activeCurrency)}
-                      </span>
-                    </div>
-                  )}
+              {isDette && resteAPayer > 0 ? (
+                <div style={{
+                  marginTop: 10,
+                  background: "#FEF2F2",
+                  border: "1.5px solid #FECACA",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#991B1B" }}>
+                      Reste à payer (Dette client) :
+                    </span>
+                    <span style={{ fontSize: 16, fontWeight: 900, color: "#DC2626" }}>
+                      {fcfa(resteAPayer, activeCurrency)}
+                    </span>
+                  </div>
+                  <div style={{ borderTop: "1px dashed #FCA5A5", paddingTop: 8 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#991B1B", marginBottom: 5 }}>
+                      📅 Date d'échéance promise * :
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={dateEcheance}
+                      onChange={(e) => setDateEcheance(e.target.value)}
+                      min={new Date().toISOString().split("T")[0]}
+                      style={{
+                        width: "100%",
+                        height: 38,
+                        padding: "0 10px",
+                        borderRadius: 8,
+                        border: "1.5px solid #F87171",
+                        background: "#FFF",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "#991B1B",
+                        boxSizing: "border-box"
+                      }}
+                    />
+                  </div>
                 </div>
-              )}
+              ) : numMontantRecu >= sousTotal && montantRecu !== "" ? (
+                <div style={{
+                  marginTop: 10,
+                  background: "#DCFCE7",
+                  border: "1.5px solid #86EFAC",
+                  borderRadius: 10,
+                  padding: "8px 12px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center"
+                }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#166534" }}>
+                    Monnaie à rendre :
+                  </span>
+                  <span style={{ fontSize: 16, fontWeight: 900, color: "#15803D" }}>
+                    {fcfa(monnaieARendre, activeCurrency)}
+                  </span>
+                </div>
+              ) : null}
             </div>
 
             <button

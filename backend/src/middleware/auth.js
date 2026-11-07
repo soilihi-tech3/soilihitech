@@ -86,20 +86,50 @@ async function loadBoutique(req, res, next) {
   }
 }
 
-/** Pour les routes admin : s'assure que l'admin/employé agit uniquement sur SA boutique */
+/** Helper : retourne la liste des IDs de boutiques qu'un utilisateur est autorisé à gérer */
+function getAuthorizedBoutiqueIds(user) {
+  const ids = new Set();
+  if (user.boutiqueId) ids.add(Number(user.boutiqueId));
+  if (user.role === "admin" && user.peutGererPlusieursBoutiques) {
+    let list = user.boutiquesGerees;
+    if (typeof list === "string") {
+      try { list = JSON.parse(list); } catch (e) { list = []; }
+    }
+    if (Array.isArray(list)) {
+      list.forEach(id => {
+        const n = Number(id);
+        if (!isNaN(n) && n > 0) ids.add(n);
+      });
+    }
+  }
+  return Array.from(ids);
+}
+
+/** Pour les routes admin : s'assure que l'admin/employé agit uniquement sur SA boutique (ou l'une de ses boutiques autorisées par le Super Admin) */
 function requireOwnBoutique(req, res, next) {
+  const requestedId = Number(req.headers["x-boutique-id"] || req.query.boutiqueId || 0);
+
   if (req.user.role === "super_admin") {
-    req.boutiqueId = req.boutique?.id || req.user.boutiqueId || 1;
+    req.boutiqueId = requestedId || req.boutique?.id || req.user.boutiqueId || 1;
+    req.managedBoutiqueIds = [req.boutiqueId];
     return next();
   }
 
-  if (!req.user.boutiqueId) {
+  const allowedIds = getAuthorizedBoutiqueIds(req.user);
+  if (allowedIds.length === 0) {
     return res.status(403).json({ message: "Ce compte n'est rattaché à aucune boutique." });
   }
 
-  // L'administrateur ou l'employé agit sur la boutique qui lui a été attribuée dans son compte
-  req.boutiqueId = req.user.boutiqueId;
+  req.managedBoutiqueIds = allowedIds;
+
+  // Si l'admin a l'accès multi-boutiques accordé par le Super Admin et cible une boutique autorisée
+  if (req.user.role === "admin" && requestedId && allowedIds.includes(requestedId)) {
+    req.boutiqueId = requestedId;
+  } else {
+    req.boutiqueId = req.user.boutiqueId || allowedIds[0];
+  }
+
   next();
 }
 
-module.exports = { authenticate, optionalAuthenticate, requireRole, loadBoutique, requireOwnBoutique };
+module.exports = { authenticate, optionalAuthenticate, requireRole, loadBoutique, requireOwnBoutique, getAuthorizedBoutiqueIds };

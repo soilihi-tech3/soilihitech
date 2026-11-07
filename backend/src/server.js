@@ -64,7 +64,7 @@ app.use((req, res, next) => {
   );
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With, x-boutique-slug, x-slug, x-boutique-domain, Cache-Control, Pragma"
+    "Content-Type, Authorization, X-Requested-With, x-boutique-slug, x-slug, x-boutique-domain, x-boutique-id, Cache-Control, Pragma"
   );
 
   if (req.method === "OPTIONS") {
@@ -128,10 +128,19 @@ app.get("/api/boutique/current", (req, res) => {
     return res.status(404).json({ message: "Boutique introuvable pour ce sous-domaine." });
   }
   const b = req.boutique.toJSON ? req.boutique.toJSON() : req.boutique;
+  let devisesDisponibles = b.devisesDisponibles;
+  if (typeof devisesDisponibles === "string") {
+    try { devisesDisponibles = JSON.parse(devisesDisponibles); } catch (e) { devisesDisponibles = null; }
+  }
+  if (!Array.isArray(devisesDisponibles) || devisesDisponibles.length === 0) {
+    devisesDisponibles = [b.devise || "KMF", "FCFA"];
+  }
   return res.json({
     id: b.id,
     nom: b.nom,
     slug: b.slug,
+    devise: b.devise || devisesDisponibles[0] || "KMF",
+    devisesDisponibles,
     logoUrl: b.logoUrl,
     couleurPrincipale: b.couleurPrincipale,
     formuleAbonnement: b.formuleAbonnement,
@@ -381,6 +390,20 @@ async function ensureColumns() {
       "ALTER TABLE orders ADD COLUMN devise VARCHAR(10) DEFAULT 'KMF';",
       "ALTER TABLE orders ADD COLUMN capture_url LONGTEXT NULL;",
       "ALTER TABLE users ADD COLUMN devise_autorisee VARCHAR(20) DEFAULT 'TOUTES';",
+      "ALTER TABLE users ADD COLUMN peut_gerer_plusieurs_boutiques TINYINT(1) DEFAULT 0;",
+      "ALTER TABLE users ADD COLUMN boutiques_gerees JSON NULL;",
+      "ALTER TABLE users ADD COLUMN failed_login_attempts INT DEFAULT 0;",
+      "ALTER TABLE users ADD COLUMN locked_at DATETIME NULL;",
+      "ALTER TABLE users ADD COLUMN lock_reason VARCHAR(255) NULL;",
+      "ALTER TABLE boutiques ADD COLUMN devises_disponibles JSON NULL;",
+      "ALTER TABLE boutiques ADD COLUMN proprietaire_id INT NULL;",
+      "ALTER TABLE products ADD COLUMN prix_par_devise JSON NULL;",
+      "ALTER TABLE products ADD COLUMN prix_promo_par_devise JSON NULL;",
+      "ALTER TABLE products ADD COLUMN cree_par_id INT NULL;",
+      "ALTER TABLE orders ADD COLUMN montant_paye DECIMAL(10, 2) DEFAULT 0;",
+      "ALTER TABLE orders ADD COLUMN montant_restant DECIMAL(10, 2) DEFAULT 0;",
+      "ALTER TABLE orders ADD COLUMN date_echeance DATE NULL;",
+      "ALTER TABLE custom_order_requests ADD COLUMN statut_achat VARCHAR(50) DEFAULT 'non_achete';",
       "CREATE TABLE IF NOT EXISTS expenses (id INT AUTO_INCREMENT PRIMARY KEY, boutiqueId INT NOT NULL, creeParId INT NULL, titre VARCHAR(255) NOT NULL, montant DECIMAL(12, 2) NOT NULL DEFAULT 0, devise VARCHAR(10) DEFAULT 'KMF', categorie VARCHAR(50) DEFAULT 'autre', dateDepense DATETIME DEFAULT CURRENT_TIMESTAMP, beneficiaire VARCHAR(255) NULL, moyenPaiement VARCHAR(50) DEFAULT 'especes', notes TEXT NULL, justificatifUrl TEXT NULL, createdAt DATETIME DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP);",
       "CREATE TABLE IF NOT EXISTS savings (id INT AUTO_INCREMENT PRIMARY KEY, boutiqueId INT NOT NULL, creeParId INT NULL, type VARCHAR(20) DEFAULT 'depot', montant DECIMAL(12, 2) NOT NULL DEFAULT 0, devise VARCHAR(10) DEFAULT 'KMF', dateOperation DATETIME DEFAULT CURRENT_TIMESTAMP, compte VARCHAR(100) NULL, reference VARCHAR(100) NULL, notes TEXT NULL, createdAt DATETIME DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP);"
     ];

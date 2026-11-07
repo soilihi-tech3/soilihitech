@@ -173,7 +173,8 @@ export default function DemandeSurMesure() {
       .map((a, i) => `${i + 1}. ${a.nom} (Quantité: ${a.quantite})`)
       .join("\n");
 
-    const message = `Bonjour Soilihitech,\n\nJe viens de créer une demande de commande sur-mesure sur le site.\n\n*Réf Dossier :* ${code}\n*Client :* ${nomClient} (${telephoneClient})\n*Appareil :* ${reqModele}\n\n*Articles demandés :*\n${articlesText}\n\n${description ? `*Détails :* ${description}\n` : ""}\nMerci de me communiquer votre chiffrage et disponibilité.`;
+    const storeName = boutique?.nom || "la boutique";
+    const message = `Bonjour ${storeName},\n\nJe viens de créer une demande de commande sur-mesure sur le site.\n\n*Réf Dossier :* ${code}\n*Client :* ${nomClient} (${telephoneClient})\n*Appareil :* ${reqModele}\n\n*Articles demandés :*\n${articlesText}\n\n${description ? `*Détails :* ${description}\n` : ""}\nMerci de me communiquer votre chiffrage et disponibilité.`;
 
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(url, "_blank");
@@ -321,11 +322,17 @@ export default function DemandeSurMesure() {
                 </label>
                 <input
                   type="tel"
+                  inputMode="tel"
                   className="bs-input"
                   required
                   placeholder="Ex: 342 08 08 ou +269 ..."
                   value={telephoneClient}
-                  onChange={(e) => setTelephoneClient(e.target.value)}
+                  onChange={(e) => setTelephoneClient(e.target.value.replace(/[^0-9+ ]/g, ""))}
+                  onKeyDown={(e) => {
+                    if (!/[0-9+ ]/.test(e.key) && !["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Enter"].includes(e.key) && !e.ctrlKey && !e.metaKey) {
+                      e.preventDefault();
+                    }
+                  }}
                 />
               </div>
             </div>

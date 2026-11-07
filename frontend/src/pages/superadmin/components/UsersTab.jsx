@@ -1,43 +1,59 @@
 import React, { useState } from "react";
-import { Search, ShieldCheck, UserCheck, Users, PauseCircle, PlayCircle, Pencil, Trash2, Filter, Store, Phone, Mail } from "lucide-react";
+import { Search, ShieldCheck, UserCheck, PauseCircle, PlayCircle, Pencil, Trash2, Store, Phone, Mail, Lock, Globe } from "lucide-react";
 
 export default function UsersTab({
   users = [], boutiques = [], onEditUser, onToggleUserStatus, onDeleteUser
 }) {
-  const [roleFilter, setRoleFilter] = useState("all"); // "all" | "admin_staff" | "client" | "super_admin"
+  const [roleFilter, setRoleFilter] = useState("all"); // "all" | "admin_staff" | "client" | "super_admin" | "locked"
   const [boutiqueFilter, setBoutiqueFilter] = useState("all"); // "all" | "none" | boutiqueId
   const [search, setSearch] = useState("");
 
   const safeUsers = (Array.isArray(users) ? users : []).filter(Boolean);
   const safeBoutiques = (Array.isArray(boutiques) ? boutiques : []).filter(Boolean);
+  const boutiqueById = new Map(safeBoutiques.map((b) => [Number(b.id), b]));
 
   // KPIs calculation
   const totalUsers = safeUsers.length;
   const totalAdminsStaff = safeUsers.filter(u => u.role === "admin" || u.role === "employe" || u.role === "super_admin").length;
   const totalClients = safeUsers.filter(u => u.role === "client").length;
   const totalSuspendus = safeUsers.filter(u => u.statut === "suspendu").length;
+  const totalBloquesMdp = safeUsers.filter(u => u.statut === "suspendu" && (u.lockReason === "5_tentatives_mdp" || Number(u.failedLoginAttempts) >= 5)).length;
 
   // Filtered users list
   const filteredUsers = safeUsers.filter(u => {
-    // Search
     const matchSearch = 
       (u.nom || "")?.toLowerCase().includes(search.toLowerCase()) ||
       (u.email || "")?.toLowerCase().includes(search.toLowerCase()) ||
       (u.telephone || "")?.toLowerCase().includes(search.toLowerCase());
 
-    // Role filter
     let matchRole = true;
     if (roleFilter === "admin_staff") matchRole = u.role === "admin" || u.role === "employe";
     else if (roleFilter === "client") matchRole = u.role === "client";
     else if (roleFilter === "super_admin") matchRole = u.role === "super_admin";
+    else if (roleFilter === "locked") matchRole = u.statut === "suspendu";
 
-    // Boutique filter
     let matchBoutique = true;
     if (boutiqueFilter === "none") matchBoutique = !u.boutiqueId;
     else if (boutiqueFilter !== "all") matchBoutique = String(u.boutiqueId) === String(boutiqueFilter);
 
     return matchSearch && matchRole && matchBoutique;
   });
+
+  function getManagedBoutiquesList(u) {
+    let ids = [];
+    if (Array.isArray(u.boutiquesGerees)) {
+      ids = u.boutiquesGerees.map(Number).filter(Boolean);
+    } else if (typeof u.boutiquesGerees === "string") {
+      try {
+        const parsed = JSON.parse(u.boutiquesGerees);
+        if (Array.isArray(parsed)) ids = parsed.map(Number).filter(Boolean);
+      } catch (_) {}
+    }
+    if (u.boutiqueId && !ids.includes(Number(u.boutiqueId))) {
+      ids.unshift(Number(u.boutiqueId));
+    }
+    return ids.map((id) => boutiqueById.get(id)).filter(Boolean);
+  }
 
   return (
     <div>
@@ -62,9 +78,11 @@ export default function UsersTab({
         </div>
 
         <div style={{ background: "#fff", padding: "16px 20px", borderRadius: 14, border: "1px solid var(--border)" }}>
-          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>Comptes Suspendus</div>
+          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>Comptes Suspendus / Bloqués</div>
           <div style={{ fontSize: 24, fontWeight: 800, color: "#B4483A", marginTop: 4 }}>{totalSuspendus}</div>
-          <div style={{ fontSize: 11, color: "#B4483A", marginTop: 2 }}>Accès restreint par l'admin</div>
+          <div style={{ fontSize: 11, color: "#B4483A", marginTop: 2 }}>
+            {totalBloquesMdp > 0 ? `dont ${totalBloquesMdp} bloqué(s) (5 tentatives MDP)` : "Accès restreint"}
+          </div>
         </div>
       </div>
 
@@ -78,7 +96,7 @@ export default function UsersTab({
               Admins & Utilisateurs ({filteredUsers.length})
             </h2>
             <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 0 0" }}>
-              Gérez les rôles, modifiez les profils, suspendez ou supprimez des comptes
+              Gérez les rôles, attribuez l'accès Multi-Boutiques aux Admins et réactivez les comptes bloqués (5 tentatives MDP)
             </p>
           </div>
 
@@ -109,6 +127,7 @@ export default function UsersTab({
             >
               <option value="all">Tous les rôles</option>
               <option value="admin_staff">Admins & Employés</option>
+              <option value="locked">🔒 Comptes Bloqués / Suspendus</option>
               <option value="client">Clients</option>
               <option value="super_admin">Super Admins</option>
             </select>
@@ -139,7 +158,7 @@ export default function UsersTab({
                 <th style={{ padding: "8px 16px" }}>UTILISATEUR</th>
                 <th style={{ padding: "8px 16px" }}>CONTACT</th>
                 <th style={{ padding: "8px 16px" }}>RÔLE</th>
-                <th style={{ padding: "8px 16px" }}>BOUTIQUE RATTACHÉE</th>
+                <th style={{ padding: "8px 16px" }}>BOUTIQUE(S) RATTACHÉE(S)</th>
                 <th style={{ padding: "8px 16px" }}>STATUT</th>
                 <th style={{ padding: "8px 16px", textAlign: "right" }}>ACTIONS</th>
               </tr>
@@ -154,6 +173,8 @@ export default function UsersTab({
               ) : (
                 filteredUsers.map((u) => {
                   const isSuspended = u.statut === "suspendu";
+                  const isLockedMdp = isSuspended && (u.lockReason === "5_tentatives_mdp" || Number(u.failedLoginAttempts) >= 5);
+                  const managedList = getManagedBoutiquesList(u);
                   return (
                     <tr key={u.id} style={{ background: isSuspended ? "#FFF5F5" : "#FAFCFA", borderRadius: 12 }}>
                       {/* USER INFO */}
@@ -192,52 +213,97 @@ export default function UsersTab({
 
                       {/* ROLE */}
                       <td style={{ padding: "14px 16px" }}>
-                        <span style={{
-                          display: "inline-flex", alignItems: "center", gap: 5,
-                          padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-                          background: u.role === "super_admin" ? "#FFF4EB" : u.role === "admin" ? "#EBF7F0" : "#F1F5F9",
-                          color: u.role === "super_admin" ? "var(--accent)" : u.role === "admin" ? "var(--forest-dark)" : "#475569",
-                          border: `1px solid ${u.role === "super_admin" ? "#FFD8BF" : u.role === "admin" ? "#C4E5D3" : "#CBD5E1"}`
-                        }}>
-                          {u.role === "super_admin" && <ShieldCheck size={13} />}
-                          {u.role === "admin" && <UserCheck size={13} />}
-                          <span style={{ textTransform: "capitalize" }}>
-                            {u.role === "admin" ? "Admin Boutique" : u.role === "employe" ? "Employé" : u.role === "super_admin" ? "Super Admin" : "Client"}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                          <span style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                            background: u.role === "super_admin" ? "#FFF4EB" : u.role === "admin" ? "#EBF7F0" : "#F1F5F9",
+                            color: u.role === "super_admin" ? "var(--accent)" : u.role === "admin" ? "var(--forest-dark)" : "#475569",
+                            border: `1px solid ${u.role === "super_admin" ? "#FFD8BF" : u.role === "admin" ? "#C4E5D3" : "#CBD5E1"}`
+                          }}>
+                            {u.role === "super_admin" && <ShieldCheck size={13} />}
+                            {u.role === "admin" && <UserCheck size={13} />}
+                            <span style={{ textTransform: "capitalize" }}>
+                              {u.role === "admin" ? "Admin Boutique" : u.role === "employe" ? "Employé" : u.role === "super_admin" ? "Super Admin" : "Client"}
+                            </span>
                           </span>
-                        </span>
+                          {u.role === "admin" && (u.peutGererPlusieursBoutiques || managedList.length > 1) && (
+                            <span style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              padding: "2px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 800,
+                              background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE"
+                            }}>
+                              <Globe size={11} /> Multi-Boutiques ({managedList.length})
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* BOUTIQUE */}
                       <td style={{ padding: "14px 16px", fontSize: 13 }}>
-                        {u.boutique ? (
+                        {managedList.length > 1 ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {managedList.map((b) => (
+                              <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, color: "var(--ink)", fontSize: 12 }}>
+                                <Store size={13} color="var(--forest)" />
+                                <span>{b.nom}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : u.boutique ? (
                           <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, color: "var(--ink)" }}>
                             <Store size={14} color="var(--forest)" />
                             <span>{u.boutique.nom}</span>
                           </div>
                         ) : (
-                          <span style={{ fontSize: 12, color: "var(--muted)", italic: true }}>Plateforme Globale</span>
+                          <span style={{ fontSize: 12, color: "var(--muted)" }}>Plateforme Globale</span>
                         )}
                       </td>
 
                       {/* STATUT */}
                       <td style={{ padding: "14px 16px" }}>
-                        <span style={{
-                          padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-                          background: !isSuspended ? "#EBF7F0" : "#FDF2F0",
-                          color: !isSuspended ? "#1F4D3A" : "#B4483A",
-                          border: `1px solid ${!isSuspended ? "#C4E5D3" : "#F8D7D2"}`
-                        }}>
-                          {!isSuspended ? "Actif" : "Suspendu"}
-                        </span>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                          <span style={{
+                            padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                            background: !isSuspended ? "#EBF7F0" : "#FDF2F0",
+                            color: !isSuspended ? "#1F4D3A" : "#B4483A",
+                            border: `1px solid ${!isSuspended ? "#C4E5D3" : "#F8D7D2"}`
+                          }}>
+                            {!isSuspended ? "Actif" : "Suspendu"}
+                          </span>
+                          {isLockedMdp && (
+                            <span style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 800,
+                              background: "#FEE2E2", color: "#991B1B", border: "1px solid #FCA5A5"
+                            }}>
+                              <Lock size={11} /> Bloqué (5 essais MDP)
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* ACTIONS */}
                       <td style={{ padding: "14px 16px", textAlign: "right", borderTopRightRadius: 12, borderBottomRightRadius: 12 }}>
-                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+                          {isSuspended && (
+                            <button
+                              onClick={() => onToggleUserStatus(u)}
+                              title="Réactiver / Débloquer ce compte"
+                              style={{
+                                background: "#16A34A", color: "#fff", border: "none",
+                                borderRadius: 8, padding: "6px 10px", fontSize: 11.5, fontWeight: 800,
+                                cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4
+                              }}
+                            >
+                              <PlayCircle size={14} /> Réactiver
+                            </button>
+                          )}
+
                           {/* Modifier */}
                           <button
                             onClick={() => onEditUser(u)}
-                            title="Modifier l'utilisateur"
+                            title="Modifier l'utilisateur et ses boutiques"
                             style={{
                               background: "#fff", border: "1px solid var(--border)", borderRadius: 8,
                               padding: 6, color: "var(--ink)", cursor: "pointer", display: "flex"
@@ -246,20 +312,22 @@ export default function UsersTab({
                             <Pencil size={15} />
                           </button>
 
-                          {/* Suspendre / Réactiver */}
-                          <button
-                            onClick={() => onToggleUserStatus(u)}
-                            title={isSuspended ? "Réactiver le compte" : "Suspendre le compte"}
-                            style={{
-                              background: !isSuspended ? "#FDF2F0" : "#EBF7F0",
-                              border: `1px solid ${!isSuspended ? "#F8D7D2" : "#C4E5D3"}`,
-                              borderRadius: 8, padding: 6,
-                              color: !isSuspended ? "#B4483A" : "#1F4D3A",
-                              cursor: "pointer", display: "flex"
-                            }}
-                          >
-                            {isSuspended ? <PlayCircle size={15} /> : <PauseCircle size={15} />}
-                          </button>
+                          {/* Suspendre */}
+                          {!isSuspended && (
+                            <button
+                              onClick={() => onToggleUserStatus(u)}
+                              title="Suspendre le compte"
+                              style={{
+                                background: "#FDF2F0",
+                                border: "1px solid #F8D7D2",
+                                borderRadius: 8, padding: 6,
+                                color: "#B4483A",
+                                cursor: "pointer", display: "flex"
+                              }}
+                            >
+                              <PauseCircle size={15} />
+                            </button>
+                          )}
 
                           {/* Supprimer */}
                           <button

@@ -42,7 +42,10 @@ Boutique.hasMany(Category, { foreignKey: "boutiqueId" });
 Category.belongsTo(Boutique, { foreignKey: "boutiqueId" });
 
 Boutique.hasMany(Product, { foreignKey: "boutiqueId" });
-Product.belongsTo(Boutique, { foreignKey: "boutiqueId" });
+Product.belongsTo(Boutique, { foreignKey: "boutiqueId", as: "boutique" });
+
+User.hasMany(Product, { foreignKey: "creeParId", as: "produitsCrees" });
+Product.belongsTo(User, { foreignKey: "creeParId", as: "creePar" });
 
 Category.hasMany(Product, { foreignKey: "categoryId" });
 Product.belongsTo(Category, { foreignKey: "categoryId" });

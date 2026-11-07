@@ -20,6 +20,32 @@ const User = sequelize.define("User", {
   isEmailVerified: { type: DataTypes.BOOLEAN, defaultValue: false },
   mustChangePassword: { type: DataTypes.BOOLEAN, defaultValue: false },
   deviseAutorisee: { type: DataTypes.STRING(20), allowNull: true, defaultValue: "TOUTES" },
+  peutGererPlusieursBoutiques: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    field: "peut_gerer_plusieurs_boutiques"
+  },
+  boutiquesGerees: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: [],
+    field: "boutiques_gerees"
+  },
+  failedLoginAttempts: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    field: "failed_login_attempts"
+  },
+  lockedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: "locked_at"
+  },
+  lockReason: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    field: "lock_reason"
+  }
 }, { tableName: "users" });
 
 module.exports = User;

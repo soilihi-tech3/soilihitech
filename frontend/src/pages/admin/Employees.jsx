@@ -3,12 +3,13 @@ import { toast } from "react-hot-toast";
 import { 
   PlusCircle, Edit, Trash2, Shield, Lock, CheckCircle, Ban, User, AlertCircle, X, 
   ShieldCheck, UserCheck, Key, Settings, Layers, Package, ShoppingCart, Image, Eye, 
-  EyeOff, Copy, RefreshCw, Send, CreditCard, History, ShoppingBag, ClipboardList, Award, Smartphone, Truck, Scale, MessageCircle, FileText
+  EyeOff, Copy, RefreshCw, Send, CreditCard, History, ShoppingBag, ClipboardList, Award, Smartphone, Truck, Scale, MessageCircle, FileText, Store
 } from "lucide-react";
 import api from "../../api";
 import TablePagination from "../../components/TablePagination";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
+import { getBoutiqueCurrencies } from "../../utils/currency.js";
 
 const PERMISSIONS_LIST = [
   { key: "voir_dashboard", label: "Tableau de bord Opérationnel", desc: "Aperçu des performances personnelles et activités", icon: Settings },
@@ -41,15 +42,16 @@ const PERMISSIONS_LIST = [
 ];
 
 export default function AdminEmployees() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, boutique, myBoutiques = [], activeBoutiqueId } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalType, setModalType] = useState(null); // 'create' | 'edit' | 'permissions' | 'credentials' | null
   const [selectedUser, setSelectedUser] = useState(null);
   const [createdCredentials, setCreatedCredentials] = useState(null);
+  const [showAllBoutiques, setShowAllBoutiques] = useState(true);
 
   const [form, setForm] = useState({ 
-    nom: "", email: "", telephone: "", motDePasse: "", role: "employe", permissions: ["voir_dashboard", "vente_directe", "historique_ventes", "voir_produits"] 
+    nom: "", email: "", telephone: "", motDePasse: "", role: "employe", boutiqueId: "", permissions: ["voir_dashboard", "vente_directe", "historique_ventes", "voir_produits"] 
   });
   const [showPassword, setShowPassword] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -59,15 +61,27 @@ export default function AdminEmployees() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
+  const targetBoutiqueObj = myBoutiques.find(b => Number(b.id) === Number(form.boutiqueId)) || boutique;
+  const boutiqueCurrencies = getBoutiqueCurrencies(targetBoutiqueObj);
+
   function load() { 
     setLoading(true);
-    api.get("/admin/employees")
+    const query = (myBoutiques.length > 1 && showAllBoutiques) ? "?allMyBoutiques=true" : "";
+    api.get(`/admin/employees${query}`)
       .then((res) => setUsers(res.data || []))
       .catch(() => {})
       .finally(() => setLoading(false)); 
   }
   
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, [activeBoutiqueId, showAllBoutiques, myBoutiques.length]);
+
+  useEffect(() => {
+    const onSwitched = () => load();
+    window.addEventListener("boutique_switched", onSwitched);
+    return () => window.removeEventListener("boutique_switched", onSwitched);
+  }, [showAllBoutiques, myBoutiques.length]);
 
   function generateRandomPassword() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$";
@@ -87,6 +101,7 @@ export default function AdminEmployees() {
       telephone: "", 
       motDePasse: randomPwd, 
       role: "employe", 
+      boutiqueId: activeBoutiqueId || boutique?.id || "",
       permissions: ["voir_dashboard", "vente_directe", "historique_ventes", "voir_produits", "creer_demande"],
       deviseAutorisee: "TOUTES"
     });
@@ -104,6 +119,7 @@ export default function AdminEmployees() {
       telephone: u.telephone || "",
       motDePasse: "",
       role: u.role || "employe",
+      boutiqueId: u.boutiqueId || activeBoutiqueId || boutique?.id || "",
       permissions: Array.isArray(u.permissions) ? u.permissions : [],
       deviseAutorisee: u.deviseAutorisee || "TOUTES"
     });
@@ -214,20 +230,38 @@ export default function AdminEmployees() {
   return (
     <>
       {/* ── HEADER TOOLBAR ── */}
-      <div className="bs-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+      <div className="bs-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 14 }}>
         <div>
           <h1 style={{ fontSize: 26, margin: 0, color: "var(--forest-dark)" }}>Gestion des Utilisateurs & Droits d'Accès</h1>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 14 }}>
-            Gérez votre équipe, attribuez le rôle (Admin ou Employé) et configurez les droits d'accès granulaires.
+            Gérez votre équipe, attribuez le rôle (Admin ou Employé), réactivez les employés bloqués (5 essais MDP) et configurez les droits d'accès.
           </p>
         </div>
-        <button 
-          className="bs-btn-primary" 
-          style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 12 }} 
-          onClick={openCreateModal}
-        >
-          <PlusCircle size={18} /> Ajouter un utilisateur
-        </button>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {myBoutiques.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setShowAllBoutiques(prev => !prev)}
+              style={{
+                padding: "9px 14px", borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                border: showAllBoutiques ? "1.5px solid #2563EB" : "1px solid var(--line)",
+                background: showAllBoutiques ? "#EFF6FF" : "#fff",
+                color: showAllBoutiques ? "#1D4ED8" : "var(--ink)",
+                display: "flex", alignItems: "center", gap: 6
+              }}
+            >
+              <Store size={15} />
+              {showAllBoutiques ? `Toutes mes boutiques (${myBoutiques.length})` : `Boutique active (${boutique?.nom})`}
+            </button>
+          )}
+          <button 
+            className="bs-btn-primary" 
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 12 }} 
+            onClick={openCreateModal}
+          >
+            <PlusCircle size={18} /> Ajouter un utilisateur
+          </button>
+        </div>
       </div>
 
       {/* ── TABLE UTILISATEURS ── */}
@@ -238,7 +272,7 @@ export default function AdminEmployees() {
             <tr style={{ background: "var(--paper)", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
               <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Utilisateur</th>
               <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Contact</th>
-              <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Rôle & Accès</th>
+              <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Rôle, Boutique & Accès</th>
               <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Statut</th>
               <th style={{ padding: "14px 18px", fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", textAlign: "right" }}>Actions</th>
             </tr>
@@ -256,10 +290,12 @@ export default function AdminEmployees() {
               users.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((u) => {
                 const isActif = u.statut === "actif";
                 const isAdmin = u.role === "admin";
+                const isLockedMdp = !isActif && (u.lockReason === "5_tentatives_mdp" || Number(u.failedLoginAttempts) >= 5);
                 const perms = Array.isArray(u.permissions) ? u.permissions : [];
+                const uBoutiqueNom = u.Boutique?.nom || myBoutiques.find(b => Number(b.id) === Number(u.boutiqueId))?.nom || boutique?.nom;
 
                 return (
-                  <tr key={u.id} style={{ borderBottom: "1px solid var(--line)" }}>
+                  <tr key={u.id} style={{ borderBottom: "1px solid var(--line)", background: !isActif ? "#FFF9F9" : "transparent" }}>
                     <td style={{ padding: "14px 18px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <div style={{
@@ -284,57 +320,101 @@ export default function AdminEmployees() {
                     </td>
 
                     <td style={{ padding: "14px 18px" }}>
-                      {isAdmin ? (
-                        <span style={{
-                          display: "inline-flex", alignItems: "center", gap: 6,
-                          background: "var(--forest-light)", border: "1px solid var(--forest-light)",
-                          borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 800, color: "var(--forest-dark)"
-                        }}>
-                          <ShieldCheck size={14} color="var(--forest)" /> Admin (Accès Total)
-                        </span>
-                      ) : (
-                        <div>
-                          <button
-                            onClick={() => openPermissionsModal(u)}
-                            style={{
-                              background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 20,
-                              padding: "5px 12px", fontSize: 12, fontWeight: 700, color: "var(--forest-dark)",
-                              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6
-                            }}
-                          >
-                            <Shield size={14} color="var(--forest)" />
-                            {perms.length} accès attribué{perms.length > 1 ? "s" : ""}
-                          </button>
-                          <div style={{ marginTop: 5 }}>
-                            <span style={{
-                              fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 6,
-                              background: u.deviseAutorisee === "KMF" ? "#DCFCE7" : u.deviseAutorisee === "FCFA" ? "#FEF3C7" : "#EFF6FF",
-                              color: u.deviseAutorisee === "KMF" ? "#15803D" : u.deviseAutorisee === "FCFA" ? "#B45309" : "#1D4ED8",
-                              border: `1px solid ${u.deviseAutorisee === "KMF" ? "#86EFAC" : u.deviseAutorisee === "FCFA" ? "#FDE68A" : "#BFDBFE"}`
-                            }}>
-                              {u.deviseAutorisee === "KMF" ? "Devise : KMF (Comores)" : u.deviseAutorisee === "FCFA" ? "Devise : FCFA (Sénégal)" : "Devises : KMF & FCFA"}
-                            </span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5, alignItems: "flex-start" }}>
+                        {uBoutiqueNom && (
+                          <span style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            background: "#F1F5F9", color: "#334155", border: "1px solid #CBD5E1",
+                            padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700
+                          }}>
+                            <Store size={12} color="var(--forest)" /> {uBoutiqueNom}
+                          </span>
+                        )}
+                        {isAdmin ? (
+                          <span style={{
+                            display: "inline-flex", alignItems: "center", gap: 6,
+                            background: "var(--forest-light)", border: "1px solid var(--forest-light)",
+                            borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 800, color: "var(--forest-dark)"
+                          }}>
+                            <ShieldCheck size={14} color="var(--forest)" /> Admin (Accès Total)
+                          </span>
+                        ) : (
+                          <div>
+                            <button
+                              onClick={() => openPermissionsModal(u)}
+                              style={{
+                                background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 20,
+                                padding: "5px 12px", fontSize: 12, fontWeight: 700, color: "var(--forest-dark)",
+                                cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6
+                              }}
+                            >
+                              <Shield size={14} color="var(--forest)" />
+                              {perms.length} accès attribué{perms.length > 1 ? "s" : ""}
+                            </button>
+                            <div style={{ marginTop: 5 }}>
+                              <span style={{
+                                fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 6,
+                                background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE"
+                              }}>
+                                {(!u.deviseAutorisee || u.deviseAutorisee === "TOUTES") ? "Devises : Toutes autorisées" : `Devise : ${u.deviseAutorisee}`}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </td>
 
                     <td style={{ padding: "14px 18px" }}>
-                      <span
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 5,
-                          padding: "4px 10px", borderRadius: 12, fontSize: 11.5, fontWeight: 700,
-                          background: isActif ? "#EBF7F0" : "#FDF2F0",
-                          color: isActif ? "#1F4D3A" : "#B4483A"
-                        }}
-                      >
-                        {isActif ? <CheckCircle size={13} /> : <Ban size={13} />}
-                        {isActif ? "Actif" : "Suspendu"}
-                      </span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                        <span
+                          style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            padding: "4px 10px", borderRadius: 12, fontSize: 11.5, fontWeight: 700,
+                            background: isActif ? "#EBF7F0" : "#FDF2F0",
+                            color: isActif ? "#1F4D3A" : "#B4483A"
+                          }}
+                        >
+                          {isActif ? <CheckCircle size={13} /> : <Ban size={13} />}
+                          {isActif ? "Actif" : "Suspendu"}
+                        </span>
+                        {isLockedMdp && (
+                          <span style={{
+                            display: "inline-flex", alignItems: "center", gap: 4,
+                            padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 800,
+                            background: "#FEE2E2", color: "#991B1B", border: "1px solid #FCA5A5"
+                          }}>
+                            <Lock size={11} /> Bloqué (5 essais MDP)
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     <td style={{ padding: "14px 18px", textAlign: "right" }}>
-                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
+                        {!isActif && !isAdmin && (
+                          <button
+                            onClick={() => toggleStatus(u)}
+                            style={{
+                              background: "#16A34A", color: "#fff", border: "none",
+                              borderRadius: 8, padding: "5px 10px", fontSize: 11.5, fontWeight: 800,
+                              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4
+                            }}
+                            title="Réactiver le compte de cet employé"
+                          >
+                            <CheckCircle size={13} /> Réactiver
+                          </button>
+                        )}
+                        {!isActif && isAdmin && (
+                          <span
+                            title="Seul le Super Administrateur peut réactiver un compte Administrateur désactivé"
+                            style={{
+                              fontSize: 10.5, fontWeight: 800, padding: "4px 8px", borderRadius: 8,
+                              background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A"
+                            }}
+                          >
+                            🔒 Réactivation par Super Admin
+                          </span>
+                        )}
                         {!isAdmin && (
                           <button
                             onClick={() => openPermissionsModal(u)}
@@ -352,14 +432,16 @@ export default function AdminEmployees() {
                         >
                           <Edit size={16} />
                         </button>
-                        <button
-                          onClick={() => toggleStatus(u)}
-                          className="bs-icon-btn"
-                          title={isActif ? "Suspendre l'accès" : "Activer l'accès"}
-                          style={{ color: isActif ? "#D97706" : "#1F4D3A" }}
-                        >
-                          {isActif ? <Ban size={16} /> : <CheckCircle size={16} />}
-                        </button>
+                        {isActif && (
+                          <button
+                            onClick={() => toggleStatus(u)}
+                            className="bs-icon-btn"
+                            title="Suspendre l'accès"
+                            style={{ color: "#D97706" }}
+                          >
+                            <Ban size={16} />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDelete(u.id)}
                           className="bs-icon-btn"
@@ -447,7 +529,19 @@ export default function AdminEmployees() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <div className="bs-field">
                   <label style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 4 }}>Téléphone</label>
-                  <input className="bs-input" value={form.telephone} onChange={(e) => setForm({ ...form, telephone: e.target.value })} placeholder="ex: +221 77 123 45 67" />
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    className="bs-input"
+                    value={form.telephone}
+                    onChange={(e) => setForm({ ...form, telephone: e.target.value.replace(/[^0-9+ ]/g, "") })}
+                    onKeyDown={(e) => {
+                      if (!/[0-9+ ]/.test(e.key) && !["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Enter"].includes(e.key) && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                      }
+                    }}
+                    placeholder="ex: +221 77 123 45 67"
+                  />
                 </div>
 
                 <div className="bs-field" style={{ position: "relative" }}>
@@ -488,6 +582,27 @@ export default function AdminEmployees() {
                   </div>
                 </div>
               </div>
+
+              {/* BOUTIQUE D'AFFECTATION (SI L'ADMIN GÈRE PLUSIEURS BOUTIQUES) */}
+              {myBoutiques.length > 1 && (
+                <div style={{ background: "#EFF6FF", padding: 14, borderRadius: 12, border: "1.5px solid #BFDBFE" }}>
+                  <label style={{ fontSize: 12.5, fontWeight: 800, color: "#1E40AF", display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                    <Store size={15} /> Boutique d'affectation de cet utilisateur *
+                  </label>
+                  <select
+                    className="bs-input"
+                    value={form.boutiqueId || activeBoutiqueId || boutique?.id || ""}
+                    onChange={(e) => setForm({ ...form, boutiqueId: Number(e.target.value) })}
+                    style={{ background: "#fff", fontWeight: 700 }}
+                  >
+                    {myBoutiques.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.nom} ({(b.devisesDisponibles || [b.devise || "KMF"]).join(" / ")})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* RÔLE SELECTION CARDS */}
               <div style={{ marginTop: 6 }}>
@@ -534,18 +649,17 @@ export default function AdminEmployees() {
                 </div>
               </div>
 
-              {/* DEVISE ATTRIBUÉE (PAYS / CAISSE) POUR EMPLOYÉ */}
-              {form.role === "employe" && (
+              {/* DEVISE ATTRIBUÉE (PAYS / CAISSE) POUR EMPLOYÉ (UNIQUEMENT SI LA BOUTIQUE A PLUS D'UNE DEVISE) */}
+              {form.role === "employe" && boutiqueCurrencies.length > 1 && (
                 <div style={{ marginTop: 8, background: "#F8FAFC", padding: 14, borderRadius: 14, border: "1.5px solid #E2E8F0" }}>
                   <label style={{ fontSize: 13, fontWeight: 800, color: "#1E293B", display: "block", marginBottom: 4 }}>
                     Devise & Caisse autorisées à cet employé :
                   </label>
                   <p style={{ margin: "0 0 10px 0", fontSize: 11.5, color: "#64748B" }}>
-                    Choisissez si cet employé est assigné à une caisse locale ou aux deux devises.
+                    Choisissez si cet employé est assigné à une devise spécifique ou à toutes les devises de la boutique.
                   </p>
                   
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-                    {/* Option Toutes */}
+                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${boutiqueCurrencies.length + 1}, 1fr)`, gap: 10 }}>
                     <div
                       type="button"
                       onClick={() => setForm({ ...form, deviseAutorisee: "TOUTES" })}
@@ -556,48 +670,32 @@ export default function AdminEmployees() {
                       }}
                     >
                       <div style={{ fontWeight: 800, fontSize: 12.5, color: (!form.deviseAutorisee || form.deviseAutorisee === "TOUTES") ? "#1D4ED8" : "#334155" }}>
-                        KMF & FCFA
+                        {boutiqueCurrencies.map(c => c.code).join(" & ")}
                       </div>
                       <div style={{ fontSize: 10.5, color: "#64748B", marginTop: 2 }}>
-                        Les 2 pays
+                        Toutes les devises
                       </div>
                     </div>
 
-                    {/* Option KMF */}
-                    <div
-                      type="button"
-                      onClick={() => setForm({ ...form, deviseAutorisee: "KMF" })}
-                      style={{
-                        border: form.deviseAutorisee === "KMF" ? "2px solid #16A34A" : "1px solid #CBD5E1",
-                        background: form.deviseAutorisee === "KMF" ? "#DCFCE7" : "#FFFFFF",
-                        borderRadius: 10, padding: 10, cursor: "pointer", textAlign: "center", transition: "all 0.15s"
-                      }}
-                    >
-                      <div style={{ fontWeight: 800, fontSize: 12.5, color: form.deviseAutorisee === "KMF" ? "#15803D" : "#334155" }}>
-                        KMF seul
+                    {boutiqueCurrencies.map((c) => (
+                      <div
+                        key={c.code}
+                        type="button"
+                        onClick={() => setForm({ ...form, deviseAutorisee: c.code })}
+                        style={{
+                          border: form.deviseAutorisee === c.code ? "2px solid #16A34A" : "1px solid #CBD5E1",
+                          background: form.deviseAutorisee === c.code ? "#DCFCE7" : "#FFFFFF",
+                          borderRadius: 10, padding: 10, cursor: "pointer", textAlign: "center", transition: "all 0.15s"
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, fontSize: 12.5, color: form.deviseAutorisee === c.code ? "#15803D" : "#334155" }}>
+                          {c.flag} {c.code} seul
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "#64748B", marginTop: 2 }}>
+                          {c.country}
+                        </div>
                       </div>
-                      <div style={{ fontSize: 10.5, color: "#64748B", marginTop: 2 }}>
-                        Comores
-                      </div>
-                    </div>
-
-                    {/* Option FCFA */}
-                    <div
-                      type="button"
-                      onClick={() => setForm({ ...form, deviseAutorisee: "FCFA" })}
-                      style={{
-                        border: form.deviseAutorisee === "FCFA" ? "2px solid #D97706" : "1px solid #CBD5E1",
-                        background: form.deviseAutorisee === "FCFA" ? "#FEF3C7" : "#FFFFFF",
-                        borderRadius: 10, padding: 10, cursor: "pointer", textAlign: "center", transition: "all 0.15s"
-                      }}
-                    >
-                      <div style={{ fontWeight: 800, fontSize: 12.5, color: form.deviseAutorisee === "FCFA" ? "#B45309" : "#334155" }}>
-                        FCFA seul
-                      </div>
-                      <div style={{ fontSize: 10.5, color: "#64748B", marginTop: 2 }}>
-                        Sénégal
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
               )}

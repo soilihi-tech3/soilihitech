@@ -17,7 +17,7 @@ function purgeCache() {
   clearCachePattern("cache:b").catch(() => {});
 }
 
-router.use(authenticate, requireRole("admin", "employe"), requireOwnBoutique);
+router.use(authenticate, requireRole("admin", "employe", "super_admin"), requireOwnBoutique);
 
 async function checkExpirationNotification(product, boutiqueId) {
   // Désactivé car les accessoires électriques et matériel n'expirent pas
@@ -74,6 +74,304 @@ router.post("/cleanup", async (req, res, next) => {
   }
 });
 
+function getLocalDateKey(d) {
+  const dt = new Date(d || Date.now());
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const day = String(dt.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function normalizeBoutiqueCurrencies(boutique) {
+  const slug = String(boutique?.slug || "").trim().toLowerCase();
+  let list = boutique?.devisesDisponibles;
+  if (typeof list === "string") {
+    try { list = JSON.parse(list); } catch (e) { list = null; }
+  }
+  if (slug === "soilihitech") {
+    if (Array.isArray(list) && list.length >= 2) {
+      return Array.from(new Set(list.map(c => {
+        const s = String(c || "").trim().toUpperCase();
+        return s === "XOF" ? "FCFA" : s;
+      }).filter(Boolean)));
+    }
+    return ["KMF", "FCFA"];
+  }
+  if (!Array.isArray(list) || list.length === 0) {
+    // Par défaut pour les boutiques existantes (ex: Soilihitech Comores + Sénégal) : conserver les 2 devises KMF et FCFA
+    const primary = boutique?.devise ? String(boutique.devise).trim().toUpperCase() : "KMF";
+    list = (primary === "KMF" || primary === "FCFA" || primary === "XOF") ? ["KMF", "FCFA"] : [primary];
+  }
+  return Array.from(new Set(list.map(c => {
+    const s = String(c || "").trim().toUpperCase();
+    return s === "XOF" ? "FCFA" : s;
+  }).filter(Boolean)));
+}
+
+function getProductUnitPriceForCurrency(p, code, primaryDevise = "KMF") {
+  if (!p) return 0;
+  const cleanCode = String(code || primaryDevise).trim().toUpperCase();
+  let map = p.prixParDevise;
+  if (typeof map === "string") {
+    try { map = JSON.parse(map); } catch (e) { map = null; }
+  }
+  let promoMap = p.prixPromoParDevise;
+  if (typeof promoMap === "string") {
+    try { promoMap = JSON.parse(promoMap); } catch (e) { promoMap = null; }
+  }
+
+  if (cleanCode === "FCFA" || cleanCode === "XOF") {
+    if (p.enPromo && Number(p.prixPromoSenegal) > 0) return Number(p.prixPromoSenegal);
+    if (p.enPromo && promoMap && Number(promoMap.FCFA) > 0) return Number(promoMap.FCFA);
+    if (Number(p.prixSenegal) > 0) return Number(p.prixSenegal);
+    if (map && Number(map.FCFA) > 0) return Number(map.FCFA);
+    if (primaryDevise === "FCFA") {
+      return (p.enPromo && Number(p.prixPromo) > 0) ? Number(p.prixPromo) : Number(p.prix || 0);
+    }
+    return 0;
+  }
+
+  if (cleanCode === "KMF") {
+    if (p.enPromo && Number(p.prixPromo) > 0) return Number(p.prixPromo);
+    if (p.enPromo && promoMap && Number(promoMap.KMF) > 0) return Number(promoMap.KMF);
+    if (Number(p.prix) > 0) return Number(p.prix);
+    if (map && Number(map.KMF) > 0) return Number(map.KMF);
+    return 0;
+  }
+
+  if (p.enPromo && promoMap && Number(promoMap[cleanCode]) > 0) {
+    return Number(promoMap[cleanCode]);
+  }
+  if (map && Number(map[cleanCode]) > 0) {
+    return Number(map[cleanCode]);
+  }
+
+  if (cleanCode === primaryDevise) {
+    return (p.enPromo && Number(p.prixPromo) > 0) ? Number(p.prixPromo) : Number(p.prix || 0);
+  }
+  return 0;
+}
+
+async function computeBoutiqueFinancials(boutiqueId, { excludeSavingId = null, excludeExpenseId = null } = {}) {
+  const boutiqueObj = await Boutique.findByPk(boutiqueId);
+  const devisesDisponibles = normalizeBoutiqueCurrencies(boutiqueObj);
+  const primaryDevise = boutiqueObj?.devise ? String(boutiqueObj.devise).trim().toUpperCase() : (devisesDisponibles[0] || "KMF");
+
+  // Toutes les commandes non annulées et non en attente de paiement
+  const allOrders = await Order.findAll({
+    where: {
+      boutiqueId,
+      statut: { [Op.notIn]: ["annulee", "en_attente_paiement"] }
+    },
+    include: [{ model: OrderItem, as: "items", include: [{ model: Product, as: "product" }] }],
+    order: [["createdAt", "ASC"]]
+  });
+
+  const normalizeOrderCurrency = (dev) => {
+    const d = String(dev || primaryDevise).trim().toUpperCase();
+    if (d === "XOF") return "FCFA";
+    if (d === "€") return "EUR";
+    if (d === "$") return "USD";
+    return d;
+  };
+
+  // Seules les commandes confirmées (statut !== "en_attente") comptent dans le Chiffre d'Affaires et le Bénéfice
+  const confirmedOrders = allOrders.filter(o => o.statut !== "en_attente");
+  const pendingOrders = allOrders.filter(o => o.statut === "en_attente");
+
+  const ordersComores = confirmedOrders.filter(o => normalizeOrderCurrency(o.devise) === "KMF");
+  const ordersSenegal = confirmedOrders.filter(o => normalizeOrderCurrency(o.devise) === "FCFA");
+
+  const pendingComores = pendingOrders.filter(o => normalizeOrderCurrency(o.devise) === "KMF");
+  const pendingSenegal = pendingOrders.filter(o => normalizeOrderCurrency(o.devise) === "FCFA");
+
+  // Achats de marchandises (toujours en FCFA)
+  const totalAchatsRows = await Achat.findAll({
+    where: { boutiqueId },
+    order: [["createdAt", "ASC"]]
+  });
+  const totalDepensesAchats = totalAchatsRows.reduce((sum, a) => sum + Number(a.totalAchat || 0), 0);
+
+  const now = new Date();
+  const todayKey = getLocalDateKey(now);
+  const yesterdayDate = new Date(now);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayKey = getLocalDateKey(yesterdayDate);
+  const currentMonthPrefix = todayKey.slice(0, 7);
+
+  let achatsAujourdhuiFCFA = 0;
+  let nbAchatsAujourdhui = 0;
+  let achatsHierFCFA = 0;
+  let nbAchatsHier = 0;
+  let achatsMoisFCFA = 0;
+  let nbAchatsMois = 0;
+
+  totalAchatsRows.forEach(a => {
+    const k = getLocalDateKey(a.createdAt || a.dateAchat);
+    const montant = Number(a.totalAchat || 0);
+    if (k === todayKey) {
+      achatsAujourdhuiFCFA += montant;
+      nbAchatsAujourdhui += 1;
+    }
+    if (k === yesterdayKey) {
+      achatsHierFCFA += montant;
+      nbAchatsHier += 1;
+    }
+    if (k.startsWith(currentMonthPrefix)) {
+      achatsMoisFCFA += montant;
+      nbAchatsMois += 1;
+    }
+  });
+
+  // Dépenses courantes (Expense) par devise
+  const expenseWhere = { boutiqueId };
+  if (excludeExpenseId) {
+    expenseWhere.id = { [Op.ne]: excludeExpenseId };
+  }
+  const allExpenses = await Expense.findAll({ where: expenseWhere });
+  const depensesParDevise = {};
+  devisesDisponibles.forEach(d => { depensesParDevise[d] = 0; });
+
+  let depensesKMF = 0;
+  let depensesFCFA = 0;
+  allExpenses.forEach(e => {
+    const m = Number(e.montant || 0);
+    const c = normalizeOrderCurrency(e.devise);
+    depensesParDevise[c] = (depensesParDevise[c] || 0) + m;
+    if (c === "FCFA") depensesFCFA += m;
+    else if (c === "KMF") depensesKMF += m;
+  });
+
+  // Épargne (Saving) par devise
+  const savingWhere = { boutiqueId };
+  if (excludeSavingId) {
+    savingWhere.id = { [Op.ne]: excludeSavingId };
+  }
+  const allSavings = await Saving.findAll({ where: savingWhere });
+  const depotsParDevise = {};
+  const retraitsParDevise = {};
+  devisesDisponibles.forEach(d => {
+    depotsParDevise[d] = 0;
+    retraitsParDevise[d] = 0;
+  });
+
+  let totalDepotsKMF = 0;
+  let totalRetraitsKMF = 0;
+  let totalDepotsFCFA = 0;
+  let totalRetraitsFCFA = 0;
+
+  allSavings.forEach(s => {
+    const m = Number(s.montant || 0);
+    const isDepot = s.type === "depot";
+    const c = normalizeOrderCurrency(s.devise);
+    if (isDepot) depotsParDevise[c] = (depotsParDevise[c] || 0) + m;
+    else retraitsParDevise[c] = (retraitsParDevise[c] || 0) + m;
+
+    if (c === "FCFA") {
+      if (isDepot) totalDepotsFCFA += m;
+      else totalRetraitsFCFA += m;
+    } else if (c === "KMF") {
+      if (isDepot) totalDepotsKMF += m;
+      else totalRetraitsKMF += m;
+    }
+  });
+
+  const totalEpargneKMF = totalDepotsKMF - totalRetraitsKMF;
+  const totalEpargneFCFA = totalDepotsFCFA - totalRetraitsFCFA;
+
+  // Calcul générique par devise pour toutes les devises de la boutique (KMF, FCFA, EUR, USD, etc.)
+  const allCurrencyKeys = Array.from(new Set([...devisesDisponibles, "KMF", "FCFA"]));
+  const statsByCurrency = {};
+
+  allCurrencyKeys.forEach(code => {
+    const curOrders = confirmedOrders.filter(o => normalizeOrderCurrency(o.devise) === code);
+    const curPending = pendingOrders.filter(o => normalizeOrderCurrency(o.devise) === code);
+    const ca = curOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+    const coutAchats = curOrders.reduce((s, o) => {
+      return s + (o.items || []).reduce((ss, it) => ss + (Number(it.product?.coutAchat || 0) * Number(it.quantite || 0)), 0);
+    }, 0);
+    const beneficeVentes = curOrders.reduce((s, o) => {
+      return s + (o.items || []).reduce((ss, it) => {
+        const cout = it.product ? Number(it.product.coutAchat || 0) : 0;
+        const fallbackPrice = getProductUnitPriceForCurrency(it.product, code, primaryDevise);
+        const prix = Number(it.prixUnitaire || fallbackPrice || 0);
+        return ss + ((prix - cout) * Number(it.quantite || 0));
+      }, 0);
+    }, 0);
+
+    const dep = depensesParDevise[code] || 0;
+    const depEpargne = depotsParDevise[code] || 0;
+    const retEpargne = retraitsParDevise[code] || 0;
+    const epargneNette = depEpargne - retEpargne;
+    const beneficeApresDepenses = beneficeVentes - dep;
+    const beneficeNet = beneficeApresDepenses - epargneNette;
+    const nbCmd = curOrders.length;
+    const totalVentesCount = curOrders.reduce((s, o) => s + (o.items || []).reduce((ss, it) => ss + Number(it.quantite || 0), 0), 0);
+
+    statsByCurrency[code] = {
+      devise: code,
+      orders: curOrders,
+      pendingOrders: curPending,
+      chiffreAffaires: ca,
+      coutAchats,
+      beneficeVentes,
+      beneficeApresDepenses,
+      beneficeNet,
+      depenses: dep,
+      epargne: epargneNette,
+      totalDepotsEpargne: depEpargne,
+      totalRetraitsEpargne: retEpargne,
+      nbCommandes: nbCmd,
+      nbCommandesEnAttente: curPending.length,
+      montantEnAttente: curPending.reduce((s, o) => s + Number(o.total || 0), 0),
+      totalVentesCount,
+      panierMoyen: nbCmd > 0 ? Math.round(ca / nbCmd) : 0
+    };
+  });
+
+  const kmfStats = statsByCurrency["KMF"];
+  const fcfaStats = statsByCurrency["FCFA"];
+
+  return {
+    boutiqueObj,
+    primaryDevise,
+    devisesDisponibles,
+    statsByCurrency,
+    allOrders,
+    confirmedOrders,
+    pendingOrders,
+    ordersComores,
+    ordersSenegal,
+    pendingComores,
+    pendingSenegal,
+    caComores: kmfStats.chiffreAffaires,
+    coutAchatsComores: kmfStats.coutAchats,
+    beneficeVentesComores: kmfStats.beneficeVentes,
+    beneficeApresDepensesComores: kmfStats.beneficeApresDepenses,
+    beneficeComores: kmfStats.beneficeNet,
+    caSenegal: fcfaStats.chiffreAffaires,
+    coutAchatsSenegal: fcfaStats.coutAchats,
+    beneficeVentesSenegal: fcfaStats.beneficeVentes,
+    beneficeApresDepensesSenegal: fcfaStats.beneficeApresDepenses,
+    beneficeSenegal: fcfaStats.beneficeNet,
+    depensesKMF: kmfStats.depenses,
+    depensesFCFA: fcfaStats.depenses,
+    totalDepotsKMF: kmfStats.totalDepotsEpargne,
+    totalRetraitsKMF: kmfStats.totalRetraitsEpargne,
+    totalEpargneKMF: kmfStats.epargne,
+    totalDepotsFCFA: fcfaStats.totalDepotsEpargne,
+    totalRetraitsFCFA: fcfaStats.totalRetraitsEpargne,
+    totalEpargneFCFA: fcfaStats.epargne,
+    totalDepensesAchats,
+    achatsAujourdhuiFCFA,
+    nbAchatsAujourdhui,
+    achatsHierFCFA,
+    nbAchatsHier,
+    achatsMoisFCFA,
+    nbAchatsMois
+  };
+}
+
 router.get("/dashboard", async (req, res, next) => {
   try {
     const boutiqueId = req.boutiqueId;
@@ -81,7 +379,7 @@ router.get("/dashboard", async (req, res, next) => {
 
     // Mes commandes assignées à cet employé / utilisateur
     const mesCommandes = await Order.findAll({
-      where: { boutiqueId, employeAssigneId: req.user.id },
+      where: { boutiqueId, employeAssigneId: req.user.id, statut: { [Op.ne]: "en_attente_paiement" } },
       include: [
         { model: OrderItem, as: "items", include: [{ model: Product, as: "product" }] },
         { model: User, as: "client", attributes: ["nom", "telephone"] }
@@ -89,9 +387,9 @@ router.get("/dashboard", async (req, res, next) => {
       order: [["createdAt", "DESC"]]
     });
 
-    const mesCommandesLivrees = mesCommandes.filter(c => c.statut === "livree");
-    const monChiffreAffaires = mesCommandes.filter(c => c.statut !== "annulee").reduce((sum, c) => sum + Number(c.total), 0);
-    const mesCommandesEnCours = mesCommandes.filter(c => ["en_attente", "validee", "en_preparation", "en_livraison"].includes(c.statut));
+    const mesCommandesLivrees = mesCommandes.filter(c => c.statut === "livree" || c.statut === "recuperee");
+    const monChiffreAffaires = mesCommandes.filter(c => !["annulee", "en_attente", "en_attente_paiement"].includes(c.statut)).reduce((sum, c) => sum + Number(c.total), 0);
+    const mesCommandesEnCours = mesCommandes.filter(c => ["en_attente", "validee", "en_preparation", "pret_retrait", "en_livraison"].includes(c.statut));
 
     // Si c'est un employé, on lui retourne son tableau de bord d'activités personnel uniquement !
     if (isEmploye) {
@@ -106,55 +404,51 @@ router.get("/dashboard", async (req, res, next) => {
     }
 
     // Pour les Administrateurs : vue d'ensemble globale de la boutique
-    const orders = await Order.findAll({
-      where: { boutiqueId, statut: { [Op.ne]: "annulee" } },
-      include: [{ model: OrderItem, as: "items", include: [{ model: Product, as: "product" }] }],
-      order: [["createdAt", "ASC"]]
-    });
+    const fin = await computeBoutiqueFinancials(boutiqueId);
+    const {
+      confirmedOrders: orders,
+      ordersComores,
+      ordersSenegal,
+      pendingComores,
+      pendingSenegal,
+      caComores,
+      coutAchatsComores,
+      beneficeVentesComores,
+      beneficeApresDepensesComores,
+      beneficeComores,
+      caSenegal,
+      coutAchatsSenegal,
+      beneficeVentesSenegal,
+      beneficeApresDepensesSenegal,
+      beneficeSenegal,
+      depensesKMF,
+      depensesFCFA,
+      totalDepotsKMF,
+      totalRetraitsKMF,
+      totalEpargneKMF,
+      totalDepotsFCFA,
+      totalRetraitsFCFA,
+      totalEpargneFCFA,
+      totalDepensesAchats,
+      achatsAujourdhuiFCFA,
+      nbAchatsAujourdhui,
+      achatsHierFCFA,
+      nbAchatsHier,
+      achatsMoisFCFA,
+      nbAchatsMois
+    } = fin;
 
-    // Séparation des commandes par pays/devise
-    const ordersComores = orders.filter((o) => !o.devise || o.devise === "KMF");
-    const ordersSenegal = orders.filter((o) => o.devise === "FCFA" || o.devise === "XOF");
-
-    // Calcul des dépenses totales d'achats enregistrées
-    const totalAchatsRows = await Achat.findAll({ where: { boutiqueId } });
-    const totalDepensesAchats = totalAchatsRows.reduce((sum, a) => sum + Number(a.totalAchat || 0), 0);
-
-    // Statistiques Comores
-    const caComores = ordersComores.reduce((s, o) => s + Number(o.total || 0), 0);
-    const coutAchatsComores = ordersComores.reduce((s, o) => {
-      return s + o.items.reduce((ss, it) => ss + (Number(it.product?.coutAchat || 0) * it.quantite), 0);
-    }, 0);
-    const beneficeComores = ordersComores.reduce((s, o) => {
-      return s + o.items.reduce((ss, it) => {
-        const cout = it.product ? Number(it.product.coutAchat || 0) : 0;
-        const prix = Number(it.prixUnitaire || it.product?.prix || 0);
-        return ss + ((prix - cout) * it.quantite);
-      }, 0);
-    }, 0);
     const nbCommandesComores = ordersComores.length;
-    const totalVentesCountComores = ordersComores.reduce((s, o) => s + o.items.reduce((ss, it) => ss + it.quantite, 0), 0);
+    const totalVentesCountComores = ordersComores.reduce((s, o) => s + (o.items || []).reduce((ss, it) => ss + Number(it.quantite || 0), 0), 0);
     const panierMoyenComores = nbCommandesComores > 0 ? Math.round(caComores / nbCommandesComores) : 0;
 
-    // Statistiques Sénégal
-    const caSenegal = ordersSenegal.reduce((s, o) => s + Number(o.total || 0), 0);
-    const coutAchatsSenegal = ordersSenegal.reduce((s, o) => {
-      return s + o.items.reduce((ss, it) => ss + (Number(it.product?.coutAchat || 0) * it.quantite), 0);
-    }, 0);
-    const beneficeSenegal = ordersSenegal.reduce((s, o) => {
-      return s + o.items.reduce((ss, it) => {
-        const cout = it.product ? Number(it.product.coutAchat || 0) : 0;
-        const prix = Number(it.prixUnitaire || it.product?.prixPromoSenegal || it.product?.prixSenegal || 0);
-        return ss + ((prix - cout) * it.quantite);
-      }, 0);
-    }, 0);
     const nbCommandesSenegal = ordersSenegal.length;
-    const totalVentesCountSenegal = ordersSenegal.reduce((s, o) => s + o.items.reduce((ss, it) => ss + it.quantite, 0), 0);
+    const totalVentesCountSenegal = ordersSenegal.reduce((s, o) => s + (o.items || []).reduce((ss, it) => ss + Number(it.quantite || 0), 0), 0);
     const panierMoyenSenegal = nbCommandesSenegal > 0 ? Math.round(caSenegal / nbCommandesSenegal) : 0;
 
-    // Totaux généraux
+    // Totaux généraux (commandes confirmées)
     const nbCommandes = orders.length;
-    const totalVentesCount = orders.reduce((s, o) => s + o.items.reduce((ss, it) => ss + it.quantite, 0), 0);
+    const totalVentesCount = orders.reduce((s, o) => s + (o.items || []).reduce((ss, it) => ss + Number(it.quantite || 0), 0), 0);
     const totalClients = await User.count({ 
       where: { 
         role: "client",
@@ -176,8 +470,19 @@ router.get("/dashboard", async (req, res, next) => {
     const categories = await Category.findAll({ where: { boutiqueId } });
     const stockFaible = produits.filter((p) => p.stock <= p.seuilAlerte);
 
-    const valeurStockComores = produits.reduce((sum, p) => sum + (Number(p.stock || 0) * Number(p.prixPromo || p.prix || 0)), 0);
-    const valeurStockSenegal = produits.reduce((sum, p) => sum + (Number(p.stock || 0) * Number(p.prixPromoSenegal || p.prixSenegal || p.prix || 0)), 0);
+    // Calcul exact et cohérent de la valeur du stock pour chaque devise (KMF, FCFA, EUR, USD, etc.)
+    const valeurStockParDevise = {};
+    Object.keys(fin.statsByCurrency).forEach(code => {
+      const valStock = produits.reduce((sum, p) => {
+        const pu = getProductUnitPriceForCurrency(p, code, fin.primaryDevise);
+        return sum + (Number(p.stock || 0) * pu);
+      }, 0);
+      valeurStockParDevise[code] = valStock;
+      fin.statsByCurrency[code].valeurStockVente = valStock;
+    });
+
+    const valeurStockComores = valeurStockParDevise["KMF"] || 0;
+    const valeurStockSenegal = valeurStockParDevise["FCFA"] || 0;
     const valeurStockAchat = produits.reduce((sum, p) => sum + (Number(p.stock || 0) * Number(p.coutAchat || 0)), 0);
 
     // Total avis & Note moyenne
@@ -282,14 +587,47 @@ router.get("/dashboard", async (req, res, next) => {
       { name: "Carte", value: ordersSenegal.filter(o => o.moyenPaiement === "carte").length }
     ].filter(m => m.value > 0);
 
+    // Enrichir chaque devise de statsByCurrency avec son chartData et ses modesPaiement
+    Object.keys(fin.statsByCurrency).forEach(code => {
+      const cOrders = fin.statsByCurrency[code].orders || [];
+      fin.statsByCurrency[code].chartData = last7Days.map(({ dateStr, dayName }) => {
+        const dayOrders = cOrders.filter(o => o.createdAt && new Date(o.createdAt).toISOString().slice(0, 10) === dateStr);
+        const ca = dayOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+        return { jour: dayName, date: dateStr, ca };
+      });
+      const mp = [
+        { name: "Espèces (Cash)", value: cOrders.filter(o => o.moyenPaiement === "cash" || o.moyenPaiement === "especes").length },
+        { name: "MVola", value: cOrders.filter(o => o.moyenPaiement === "mvola").length },
+        { name: "Wave / OM", value: cOrders.filter(o => o.moyenPaiement === "wave" || o.moyenPaiement === "om" || o.moyenPaiement === "orange_money").length },
+        { name: "Wero / Holam", value: cOrders.filter(o => o.moyenPaiement === "wero" || o.moyenPaiement === "holam").length },
+        { name: "Carte", value: cOrders.filter(o => o.moyenPaiement === "carte").length }
+      ].filter(m => m.value > 0);
+      fin.statsByCurrency[code].modesPaiement = mp.length ? mp : [{ name: "Espèces", value: 1 }];
+      delete fin.statsByCurrency[code].orders;
+      delete fin.statsByCurrency[code].pendingOrders;
+    });
+
     res.json({
       isEmploye: false,
+      boutiqueId,
+      primaryDevise: fin.primaryDevise,
+      devisesDisponibles: fin.devisesDisponibles,
+      statsByCurrency: fin.statsByCurrency,
+      valeurStockParDevise,
       // Comores
       comores: {
         chiffreAffaires: caComores,
         coutAchats: coutAchatsComores,
+        beneficeVentes: beneficeVentesComores,
+        beneficeApresDepenses: beneficeApresDepensesComores,
         beneficeNet: beneficeComores,
+        depenses: depensesKMF,
+        epargne: totalEpargneKMF,
+        totalDepotsEpargne: totalDepotsKMF,
+        totalRetraitsEpargne: totalRetraitsKMF,
         nbCommandes: nbCommandesComores,
+        nbCommandesEnAttente: pendingComores.length,
+        montantEnAttente: pendingComores.reduce((s, o) => s + Number(o.total || 0), 0),
         totalVentesCount: totalVentesCountComores,
         panierMoyen: panierMoyenComores,
         valeurStockVente: valeurStockComores,
@@ -300,8 +638,16 @@ router.get("/dashboard", async (req, res, next) => {
       senegal: {
         chiffreAffaires: caSenegal,
         coutAchats: coutAchatsSenegal,
+        beneficeVentes: beneficeVentesSenegal,
+        beneficeApresDepenses: beneficeApresDepensesSenegal,
         beneficeNet: beneficeSenegal,
+        depenses: depensesFCFA,
+        epargne: totalEpargneFCFA,
+        totalDepotsEpargne: totalDepotsFCFA,
+        totalRetraitsEpargne: totalRetraitsFCFA,
         nbCommandes: nbCommandesSenegal,
+        nbCommandesEnAttente: pendingSenegal.length,
+        montantEnAttente: pendingSenegal.reduce((s, o) => s + Number(o.total || 0), 0),
         totalVentesCount: totalVentesCountSenegal,
         panierMoyen: panierMoyenSenegal,
         valeurStockVente: valeurStockSenegal,
@@ -313,11 +659,26 @@ router.get("/dashboard", async (req, res, next) => {
       beneficeNet: beneficeComores + beneficeSenegal,
       beneficeComores,
       beneficeSenegal,
+      beneficeVentesComores,
+      beneficeVentesSenegal,
+      depensesKMF,
+      depensesFCFA,
+      totalEpargneKMF,
+      totalEpargneFCFA,
       totalDepensesAchats,
+      achatsAujourdhuiFCFA,
+      nbAchatsAujourdhui,
+      achatsHierFCFA,
+      nbAchatsHier,
+      achatsMoisFCFA,
+      nbAchatsMois,
+      valeurStockComores,
+      valeurStockSenegal,
       valeurStockVente: valeurStockComores + valeurStockSenegal,
       valeurStockAchat,
       totalVentesCount,
       nbCommandes,
+      nbCommandesEnAttente: pendingComores.length + pendingSenegal.length,
       panierMoyen: nbCommandes > 0 ? Math.round((caComores + caSenegal) / nbCommandes) : 0,
       chartData: chartDataGlobal,
       totalClients,
@@ -336,6 +697,136 @@ router.get("/dashboard", async (req, res, next) => {
       totalProduits: produits.length,
       totalCategories: categories.length,
       mesCommandes
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/admin/my-boutiques -> Retourne la liste des boutiques autorisées pour cet Admin (accès accordé par le Super Admin)
+router.get("/my-boutiques", async (req, res, next) => {
+  try {
+    const allowedIds = req.managedBoutiqueIds || (req.boutiqueId ? [req.boutiqueId] : []);
+    const boutiques = await Boutique.findAll({
+      where: { id: { [Op.in]: allowedIds } },
+      order: [["id", "ASC"]]
+    });
+    const formatted = boutiques.map(b => {
+      const json = b.toJSON();
+      json.devisesDisponibles = normalizeBoutiqueCurrencies(b);
+      return json;
+    });
+    res.json({
+      peutGererPlusieursBoutiques: Boolean(req.user.peutGererPlusieursBoutiques && formatted.length > 1),
+      activeBoutiqueId: req.boutiqueId,
+      boutiques: formatted
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/admin/multi-boutiques-overview -> Vue Globale consolidée de toutes les boutiques d'un Admin multi-boutiques
+router.get("/multi-boutiques-overview", requireRole("admin"), async (req, res, next) => {
+  try {
+    const allowedIds = req.managedBoutiqueIds || (req.boutiqueId ? [req.boutiqueId] : []);
+    const boutiques = await Boutique.findAll({
+      where: { id: { [Op.in]: allowedIds } },
+      order: [["id", "ASC"]]
+    });
+
+    const totauxParDevise = {};
+    let totalProduitsGlobal = 0;
+    let totalUnitsEnStockGlobal = 0;
+    let totalStockFaibleGlobal = 0;
+    let totalCommandesGlobal = 0;
+    let totalVentesArticlesGlobal = 0;
+    let totalDepensesAchatsGlobalFCFA = 0;
+    let totalValeurStockAchatGlobalFCFA = 0;
+
+    const detailsBoutiques = await Promise.all(boutiques.map(async (b) => {
+      const fin = await computeBoutiqueFinancials(b.id);
+      const prods = await Product.findAll({ where: { boutiqueId: b.id } });
+      const admins = await User.findAll({
+        where: { boutiqueId: b.id, role: { [Op.in]: ["admin", "employe"] } },
+        attributes: ["id", "nom", "email", "telephone", "role", "statut"]
+      });
+
+      const totalStockUnits = prods.reduce((s, p) => s + Number(p.stock || 0), 0);
+      const stockFaibleCount = prods.filter(p => Number(p.stock || 0) <= Number(p.seuilAlerte || 5)).length;
+      const valeurStockAchatFCFA = prods.reduce((s, p) => s + (Number(p.stock || 0) * Number(p.coutAchat || 0)), 0);
+
+      totalProduitsGlobal += prods.length;
+      totalUnitsEnStockGlobal += totalStockUnits;
+      totalStockFaibleGlobal += stockFaibleCount;
+      totalCommandesGlobal += fin.confirmedOrders.length;
+      totalDepensesAchatsGlobalFCFA += fin.totalDepensesAchats;
+      totalValeurStockAchatGlobalFCFA += valeurStockAchatFCFA;
+
+      const resumeDevises = {};
+      fin.devisesDisponibles.forEach(code => {
+        const st = fin.statsByCurrency[code] || {};
+        const valStockVente = prods.reduce((s, p) => s + (Number(p.stock || 0) * getProductUnitPriceForCurrency(p, code, fin.primaryDevise)), 0);
+        resumeDevises[code] = {
+          devise: code,
+          chiffreAffaires: st.chiffreAffaires || 0,
+          beneficeNet: st.beneficeNet || 0,
+          beneficeVentes: st.beneficeVentes || 0,
+          depenses: st.depenses || 0,
+          epargne: st.epargne || 0,
+          nbCommandes: st.nbCommandes || 0,
+          nbCommandesEnAttente: st.nbCommandesEnAttente || 0,
+          totalVentesCount: st.totalVentesCount || 0,
+          valeurStockVente: valStockVente
+        };
+
+        totalVentesArticlesGlobal += (st.totalVentesCount || 0);
+
+        if (!totauxParDevise[code]) {
+          totauxParDevise[code] = {
+            devise: code,
+            chiffreAffaires: 0,
+            beneficeNet: 0,
+            depenses: 0,
+            epargne: 0,
+            nbCommandes: 0,
+            valeurStockVente: 0
+          };
+        }
+        totauxParDevise[code].chiffreAffaires += (st.chiffreAffaires || 0);
+        totauxParDevise[code].beneficeNet += (st.beneficeNet || 0);
+        totauxParDevise[code].depenses += (st.depenses || 0);
+        totauxParDevise[code].epargne += (st.epargne || 0);
+        totauxParDevise[code].nbCommandes += (st.nbCommandes || 0);
+        totauxParDevise[code].valeurStockVente += valStockVente;
+      });
+
+      return {
+        id: b.id,
+        nom: b.nom,
+        slug: b.slug,
+        statut: b.statut,
+        devise: fin.primaryDevise,
+        devisesDisponibles: fin.devisesDisponibles,
+        totalProduits: prods.length,
+        totalStockUnits,
+        stockFaibleCount,
+        valeurStockAchatFCFA,
+        totalDepensesAchatsFCFA: fin.totalDepensesAchats,
+        nbCommandesConfirmees: fin.confirmedOrders.length,
+        nbCommandesEnAttente: fin.pendingOrders.length,
+        resumeDevises,
+        admins
+      };
+    }));
+
+    res.json({
+      nbBoutiques: detailsBoutiques.length,
+      totauxParDevise,
+      totalProduitsGlobal,
+      totalUnitsEnStockGlobal,
+      totalStockFaibleGlobal,
+      totalCommandesGlobal,
+      totalVentesArticlesGlobal,
+      totalDepensesAchatsGlobalFCFA,
+      totalValeurStockAchatGlobalFCFA,
+      boutiques: detailsBoutiques
     });
   } catch (err) { next(err); }
 });
@@ -446,10 +937,115 @@ router.delete("/categories/:id", async (req, res, next) => {
 
 /* ---------------------- PRODUITS (catalogue) ---------------------- */
 
+const PRODUCT_INCLUDES = [
+  Category,
+  { model: Fournisseur, as: "fournisseur" },
+  { model: Marque, as: "marque" },
+  { model: User, as: "creePar", attributes: ["id", "nom", "role", "email"] },
+  { model: Boutique, as: "boutique", attributes: ["id", "nom", "slug", "devise", "devisesDisponibles"] }
+];
+
+function syncProductPricesPayload(body, boutique, existingProduct = null) {
+  const payload = { ...body };
+  const hasPriceFieldsInBody =
+    body.prix !== undefined ||
+    body.prixSenegal !== undefined ||
+    body.prixPromo !== undefined ||
+    body.prixPromoSenegal !== undefined ||
+    body.prixParDevise !== undefined ||
+    body.prixPromoParDevise !== undefined;
+
+  if (!hasPriceFieldsInBody && existingProduct) {
+    return payload;
+  }
+
+  const currencies = normalizeBoutiqueCurrencies(boutique);
+  const primaryDevise = currencies[0] || "KMF";
+
+  let existingMap = existingProduct?.prixParDevise;
+  if (typeof existingMap === "string") {
+    try { existingMap = JSON.parse(existingMap); } catch (_) { existingMap = {}; }
+  }
+  let prixParDevise = payload.prixParDevise;
+  if (typeof prixParDevise === "string") {
+    try { prixParDevise = JSON.parse(prixParDevise); } catch (_) { prixParDevise = {}; }
+  }
+  if (!prixParDevise || typeof prixParDevise !== "object") {
+    prixParDevise = (existingMap && typeof existingMap === "object") ? { ...existingMap } : {};
+  } else {
+    prixParDevise = { ...(existingMap && typeof existingMap === "object" ? existingMap : {}), ...prixParDevise };
+  }
+
+  let existingPromoMap = existingProduct?.prixPromoParDevise;
+  if (typeof existingPromoMap === "string") {
+    try { existingPromoMap = JSON.parse(existingPromoMap); } catch (_) { existingPromoMap = {}; }
+  }
+  let prixPromoParDevise = payload.prixPromoParDevise;
+  if (typeof prixPromoParDevise === "string") {
+    try { prixPromoParDevise = JSON.parse(prixPromoParDevise); } catch (_) { prixPromoParDevise = {}; }
+  }
+  if (!prixPromoParDevise || typeof prixPromoParDevise !== "object") {
+    prixPromoParDevise = (existingPromoMap && typeof existingPromoMap === "object") ? { ...existingPromoMap } : {};
+  } else {
+    prixPromoParDevise = { ...(existingPromoMap && typeof existingPromoMap === "object" ? existingPromoMap : {}), ...prixPromoParDevise };
+  }
+
+  // Synchronisation bidirectionnelle avec les champs prix (KMF / devise principale) et prixSenegal (FCFA)
+  const mainKey = currencies.includes("KMF") ? "KMF" : primaryDevise;
+  if (payload.prix !== undefined && payload.prix !== "" && prixParDevise[mainKey] === undefined) {
+    prixParDevise[mainKey] = Number(payload.prix) || 0;
+  }
+  if (payload.prixSenegal !== undefined && payload.prixSenegal !== "" && prixParDevise["FCFA"] === undefined) {
+    prixParDevise["FCFA"] = Number(payload.prixSenegal) || 0;
+  }
+
+  if (prixParDevise[mainKey] !== undefined && Number(prixParDevise[mainKey]) > 0) {
+    payload.prix = Number(prixParDevise[mainKey]);
+  } else if (payload.prix !== undefined && payload.prix !== "") {
+    payload.prix = Number(payload.prix) || 0;
+    prixParDevise[mainKey] = payload.prix;
+  }
+
+  if (prixParDevise["FCFA"] !== undefined && prixParDevise["FCFA"] !== null && prixParDevise["FCFA"] !== "") {
+    payload.prixSenegal = Number(prixParDevise["FCFA"]);
+  } else if (payload.prixSenegal !== undefined && payload.prixSenegal !== "" && payload.prixSenegal !== null) {
+    payload.prixSenegal = Number(payload.prixSenegal);
+    prixParDevise["FCFA"] = payload.prixSenegal;
+  }
+
+  if (payload.prixPromo !== undefined && payload.prixPromo !== "" && prixPromoParDevise[mainKey] === undefined) {
+    prixPromoParDevise[mainKey] = Number(payload.prixPromo) || 0;
+  }
+  if (payload.prixPromoSenegal !== undefined && payload.prixPromoSenegal !== "" && prixPromoParDevise["FCFA"] === undefined) {
+    prixPromoParDevise["FCFA"] = Number(payload.prixPromoSenegal) || 0;
+  }
+  if (prixPromoParDevise[mainKey] !== undefined) {
+    payload.prixPromo = Number(prixPromoParDevise[mainKey]) || null;
+  }
+  if (prixPromoParDevise["FCFA"] !== undefined) {
+    payload.prixPromoSenegal = Number(prixPromoParDevise["FCFA"]) || null;
+  }
+
+  payload.prixParDevise = prixParDevise;
+  payload.prixPromoParDevise = prixPromoParDevise;
+  return payload;
+}
+
 router.get("/products", async (req, res, next) => {
   try {
-    const { page, limit, paginated, search, categorieId } = req.query;
-    const cacheKey = `admin:products:${req.boutiqueId}:${req.originalUrl || req.url}`;
+    const { page, limit, paginated, search, categorieId, allMyBoutiques, filterBoutiqueId } = req.query;
+    const allowedIds = req.managedBoutiqueIds || [req.boutiqueId];
+
+    let boutiqueFilter = req.boutiqueId;
+    if (req.user.role === "admin" && allowedIds.length > 1) {
+      if (allMyBoutiques === "true") {
+        boutiqueFilter = { [Op.in]: allowedIds };
+      } else if (filterBoutiqueId && allowedIds.includes(Number(filterBoutiqueId))) {
+        boutiqueFilter = Number(filterBoutiqueId);
+      }
+    }
+
+    const cacheKey = `admin:products:${req.boutiqueId}:${req.user.id}:${req.originalUrl || req.url}`;
     const cached = await getCache(cacheKey);
     if (cached) {
       res.setHeader("X-Cache", "HIT");
@@ -461,7 +1057,7 @@ router.get("/products", async (req, res, next) => {
       const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
       const offset = (pageNum - 1) * limitNum;
 
-      const where = { boutiqueId: req.boutiqueId };
+      const where = { boutiqueId: boutiqueFilter };
       if (search && search.trim()) {
         const q = `%${search.trim()}%`;
         where[Op.or] = [
@@ -473,7 +1069,7 @@ router.get("/products", async (req, res, next) => {
 
       const { count, rows } = await Product.findAndCountAll({ 
         where, 
-        include: [Category, { model: Fournisseur, as: "fournisseur" }, { model: Marque, as: "marque" }], 
+        include: PRODUCT_INCLUDES, 
         order: [["createdAt", "DESC"]],
         limit: limitNum,
         offset
@@ -494,8 +1090,8 @@ router.get("/products", async (req, res, next) => {
     }
 
     const items = await Product.findAll({ 
-      where: { boutiqueId: req.boutiqueId }, 
-      include: [Category, { model: Fournisseur, as: "fournisseur" }, { model: Marque, as: "marque" }], 
+      where: { boutiqueId: boutiqueFilter }, 
+      include: PRODUCT_INCLUDES, 
       order: [["createdAt", "DESC"]] 
     });
 
@@ -507,87 +1103,152 @@ router.get("/products", async (req, res, next) => {
 
 router.post("/products", async (req, res, next) => {
   try {
-    const product = await Product.create({ ...req.body, boutiqueId: req.boutiqueId });
+    const allowedIds = req.managedBoutiqueIds || [req.boutiqueId];
+    let targetBoutiqueId = req.boutiqueId;
+    if (req.user.role === "admin" && req.body.boutiqueId && allowedIds.includes(Number(req.body.boutiqueId))) {
+      targetBoutiqueId = Number(req.body.boutiqueId);
+    }
 
-    // Auto-enregistrement dans la table des Achats / Approvisionnements
+    const targetBoutique = await Boutique.findByPk(targetBoutiqueId);
+    const syncedBody = syncProductPricesPayload(req.body, targetBoutique);
+
+    const product = await Product.create({
+      ...syncedBody,
+      boutiqueId: targetBoutiqueId,
+      creeParId: req.user.id
+    });
+
+    // Auto-enregistrement dans la table des Achats / Approvisionnements (Achat Initial)
     if (product.stock > 0 || Number(product.coutAchat) > 0 || product.fournisseurId) {
       const qty = product.stock || 1;
       const unitPrice = Number(product.coutAchat) || 0;
       await Achat.create({
-        boutiqueId: req.boutiqueId,
+        boutiqueId: targetBoutiqueId,
         productId: product.id,
         fournisseurId: product.fournisseurId || null,
         quantite: qty,
         prixAchatUnitaire: unitPrice,
         totalAchat: qty * unitPrice,
-        notes: "Création initiale de la fiche produit"
+        notes: `Achat initial - ${product.nom}`
       }).catch(() => {});
     }
 
     const fullProduct = await Product.findByPk(product.id, {
-      include: [Category, { model: Fournisseur, as: "fournisseur" }, { model: Marque, as: "marque" }]
+      include: PRODUCT_INCLUDES
     });
 
     purgeCache();
-    broadcast("product_updated", { productId: product.id, boutiqueId: req.boutiqueId });
-    broadcast("product_created", { productId: product.id, boutiqueId: req.boutiqueId });
+    broadcast("product_updated", { productId: product.id, boutiqueId: targetBoutiqueId });
+    broadcast("product_created", { productId: product.id, boutiqueId: targetBoutiqueId });
+    broadcast("achat_updated", { productId: product.id, boutiqueId: targetBoutiqueId });
     res.status(201).json(fullProduct);
   } catch (err) { next(err); }
 });
 
 router.put("/products/:id", async (req, res, next) => {
   try {
-    const product = await Product.findOne({ where: { id: req.params.id, boutiqueId: req.boutiqueId } });
+    const allowedIds = req.managedBoutiqueIds || [req.boutiqueId];
+    const whereClause = (req.user.role === "admin" && allowedIds.length > 1)
+      ? { id: req.params.id, boutiqueId: { [Op.in]: allowedIds } }
+      : { id: req.params.id, boutiqueId: req.boutiqueId };
+
+    const product = await Product.findOne({ where: whereClause });
     if (!product) return res.status(404).json({ message: "Produit introuvable." });
 
-    await product.update(req.body);
+    const oldStock = Number(product.stock || 0);
+    const oldCoutAchat = Number(product.coutAchat || 0);
 
-    // Synchronisation automatique de la ligne d'Achat associée
-    const existingAchat = await Achat.findOne({
-      where: { productId: product.id, boutiqueId: req.boutiqueId },
+    let targetBoutiqueId = product.boutiqueId;
+    if (req.user.role === "admin" && req.body.boutiqueId && allowedIds.includes(Number(req.body.boutiqueId))) {
+      targetBoutiqueId = Number(req.body.boutiqueId);
+    }
+
+    const targetBoutique = await Boutique.findByPk(targetBoutiqueId);
+    const syncedBody = syncProductPricesPayload(req.body, targetBoutique);
+    syncedBody.boutiqueId = targetBoutiqueId;
+    if (!product.creeParId) {
+      syncedBody.creeParId = req.user.id;
+    }
+
+    await product.update(syncedBody);
+
+    const newStock = Number(product.stock || 0);
+    const unitCost = Number(product.coutAchat) || 0;
+
+    // Recherche du premier achat (Achat Initial) de ce produit
+    const firstAchat = await Achat.findOne({
+      where: { productId: product.id, boutiqueId: targetBoutiqueId },
       order: [["createdAt", "ASC"]]
     });
 
-    const qty = product.stock > 0 ? product.stock : 1;
-    const unitCost = Number(product.coutAchat) || 0;
-
-    if (existingAchat) {
-      await existingAchat.update({
-        fournisseurId: product.fournisseurId || existingAchat.fournisseurId,
-        quantite: qty,
-        prixAchatUnitaire: unitCost,
-        totalAchat: qty * unitCost
-      }).catch(() => {});
-    } else if (qty > 0 || unitCost > 0) {
+    if (!firstAchat) {
+      if (newStock > 0 || unitCost > 0) {
+        const qty = newStock > 0 ? newStock : 1;
+        await Achat.create({
+          boutiqueId: targetBoutiqueId,
+          productId: product.id,
+          fournisseurId: product.fournisseurId || null,
+          quantite: qty,
+          prixAchatUnitaire: unitCost,
+          totalAchat: qty * unitCost,
+          notes: `Achat initial - ${product.nom}`
+        }).catch(() => {});
+      }
+    } else if (newStock > oldStock) {
+      // C'est un réapprovisionnement : on crée une NOUVELLE ligne d'achat datée d'aujourd'hui sans écraser l'achat initial !
+      const addedQty = newStock - oldStock;
+      const refInitial = `#ACH-${String(firstAchat.id).padStart(3, "0")}`;
+      const dateInitStr = new Date(firstAchat.createdAt || firstAchat.dateAchat).toLocaleDateString("fr-FR");
       await Achat.create({
-        boutiqueId: req.boutiqueId,
+        boutiqueId: targetBoutiqueId,
         productId: product.id,
-        fournisseurId: product.fournisseurId || null,
-        quantite: qty,
+        fournisseurId: product.fournisseurId || firstAchat.fournisseurId || null,
+        quantite: addedQty,
         prixAchatUnitaire: unitCost,
-        totalAchat: qty * unitCost,
-        notes: "Mise à jour fiche produit"
+        totalAchat: addedQty * unitCost,
+        notes: `Approvisionnement (+${addedQty}) de l'achat ${refInitial} du ${dateInitStr}`
       }).catch(() => {});
+    } else if (unitCost !== oldCoutAchat) {
+      // Si seul le coût d'achat unitaire a été corrigé sans ajout de stock, on met à jour le dernier achat
+      const latestAchat = await Achat.findOne({
+        where: { productId: product.id, boutiqueId: targetBoutiqueId },
+        order: [["createdAt", "DESC"]]
+      });
+      if (latestAchat) {
+        const q = Number(latestAchat.quantite || 1);
+        await latestAchat.update({
+          fournisseurId: product.fournisseurId || latestAchat.fournisseurId,
+          prixAchatUnitaire: unitCost,
+          totalAchat: q * unitCost
+        }).catch(() => {});
+      }
     }
 
     const fullProduct = await Product.findByPk(product.id, {
-      include: [Category, { model: Fournisseur, as: "fournisseur" }, { model: Marque, as: "marque" }]
+      include: PRODUCT_INCLUDES
     });
 
     purgeCache();
-    broadcast("product_updated", { productId: product.id, boutiqueId: req.boutiqueId });
+    broadcast("product_updated", { productId: product.id, boutiqueId: targetBoutiqueId });
+    broadcast("achat_updated", { productId: product.id, boutiqueId: targetBoutiqueId });
     res.json(fullProduct);
   } catch (err) { next(err); }
 });
 
 router.delete("/products/:id", async (req, res, next) => {
   try {
-    const product = await Product.findOne({ where: { id: req.params.id, boutiqueId: req.boutiqueId } });
+    const allowedIds = req.managedBoutiqueIds || [req.boutiqueId];
+    const whereClause = (req.user.role === "admin" && allowedIds.length > 1)
+      ? { id: req.params.id, boutiqueId: { [Op.in]: allowedIds } }
+      : { id: req.params.id, boutiqueId: req.boutiqueId };
+
+    const product = await Product.findOne({ where: whereClause });
     if (!product) return res.status(404).json({ message: "Produit introuvable." });
+    const targetBoutiqueId = product.boutiqueId;
     await product.destroy();
     purgeCache();
-    broadcast("product_updated", { productId: req.params.id, boutiqueId: req.boutiqueId });
-    broadcast("product_deleted", { productId: req.params.id, boutiqueId: req.boutiqueId });
+    broadcast("product_updated", { productId: req.params.id, boutiqueId: targetBoutiqueId });
+    broadcast("product_deleted", { productId: req.params.id, boutiqueId: targetBoutiqueId });
     res.json({ message: "Produit supprimé." });
   } catch (err) { 
     if (err.name === 'SequelizeForeignKeyConstraintError') {
@@ -740,7 +1401,7 @@ router.put("/orders/:id", requireRole("admin", "employe"), async (req, res, next
       return res.status(404).json({ message: "Vente / commande introuvable." });
     }
 
-    const { moyenPaiement, statut, notes, clientNom, clientTelephone, adresseLivraison, items, devise } = req.body;
+    const { moyenPaiement, statut, notes, clientNom, clientTelephone, adresseLivraison, items, devise, statutPaiement, montantPaye, montantRestant, dateEcheance } = req.body;
 
     const updates = {};
     if (moyenPaiement !== undefined) updates.moyenPaiement = moyenPaiement;
@@ -750,6 +1411,10 @@ router.put("/orders/:id", requireRole("admin", "employe"), async (req, res, next
     if (adresseLivraison !== undefined) updates.adresseLivraison = adresseLivraison;
     if (statut !== undefined) updates.statut = statut;
     if (devise !== undefined) updates.devise = devise;
+    if (statutPaiement !== undefined) updates.statutPaiement = statutPaiement;
+    if (montantPaye !== undefined) updates.montantPaye = Number(montantPaye) || 0;
+    if (montantRestant !== undefined) updates.montantRestant = Number(montantRestant) || 0;
+    if (dateEcheance !== undefined) updates.dateEcheance = dateEcheance || null;
 
     // Si des items de panier sont fournis pour modification
     if (Array.isArray(items) && items.length > 0) {
@@ -886,9 +1551,18 @@ router.delete("/orders/:id", requireRole("admin", "employe"), async (req, res, n
 
 router.get("/employees", requireRole("admin"), async (req, res, next) => {
   try {
+    const allowedIds = req.managedBoutiqueIds || [req.boutiqueId];
+    let boutiqueFilter = req.boutiqueId;
+    if (allowedIds.length > 1 && req.query.allMyBoutiques === "true") {
+      boutiqueFilter = { [Op.in]: allowedIds };
+    } else if (req.query.filterBoutiqueId && allowedIds.includes(Number(req.query.filterBoutiqueId))) {
+      boutiqueFilter = Number(req.query.filterBoutiqueId);
+    }
+
     const users = await User.findAll({ 
-      where: { boutiqueId: req.boutiqueId, role: { [Op.in]: ["admin", "employe"] } }, 
+      where: { boutiqueId: boutiqueFilter, role: { [Op.in]: ["admin", "employe"] } }, 
       attributes: { exclude: ["motDePasseHash"] },
+      include: [{ model: Boutique, attributes: ["id", "nom", "slug", "devise", "devisesDisponibles"] }],
       order: [["createdAt", "DESC"]]
     });
     res.json(users);
@@ -897,7 +1571,7 @@ router.get("/employees", requireRole("admin"), async (req, res, next) => {
 
 router.post("/employees", requireRole("admin"), async (req, res, next) => {
   try {
-    const { nom, email, telephone, motDePasse, role, permissions, deviseAutorisee } = req.body;
+    const { nom, email, telephone, motDePasse, role, permissions, deviseAutorisee, boutiqueId } = req.body;
     const cleanEmail = email ? String(email).trim().toLowerCase() : null;
     const cleanPhone = telephone ? String(telephone).trim() : null;
 
@@ -905,7 +1579,12 @@ router.post("/employees", requireRole("admin"), async (req, res, next) => {
       return res.status(400).json({ message: "Le nom et au moins un email ou téléphone sont requis." });
     }
 
-    const { Op } = require("sequelize");
+    const allowedIds = req.managedBoutiqueIds || [req.boutiqueId];
+    let targetBoutiqueId = req.boutiqueId;
+    if (boutiqueId && allowedIds.includes(Number(boutiqueId))) {
+      targetBoutiqueId = Number(boutiqueId);
+    }
+
     const whereCond = [];
     if (cleanEmail) whereCond.push({ email: cleanEmail });
     if (cleanPhone) whereCond.push({ telephone: cleanPhone });
@@ -929,22 +1608,29 @@ router.post("/employees", requireRole("admin"), async (req, res, next) => {
       permissions: userPermissions,
       deviseAutorisee: deviseAutorisee || "TOUTES",
       role: userRole,
-      boutiqueId: req.boutiqueId,
+      boutiqueId: targetBoutiqueId,
+      peutGererPlusieursBoutiques: false,
+      boutiquesGerees: [targetBoutiqueId],
       statut: "actif",
       mustChangePassword: true,
-      isEmailVerified: true
+      isEmailVerified: true,
+      failedLoginAttempts: 0,
+      lockedAt: null,
+      lockReason: null
     });
+
+    const targetBoutique = await Boutique.findByPk(targetBoutiqueId);
 
     if (cleanEmail) {
       const { envoyerEmailCreationCompte } = require("../services/emailService");
-      Boutique.findByPk(req.boutiqueId).then(b => {
-        envoyerEmailCreationCompte(cleanEmail, user.nom, cleanEmail || cleanPhone, cleanPhone, rawPassword, userRole, b?.nom || "Marché Vert").catch(() => {});
-      }).catch(() => {});
+      envoyerEmailCreationCompte(cleanEmail, user.nom, cleanEmail || cleanPhone, cleanPhone, rawPassword, userRole, targetBoutique?.nom || "Marché Vert").catch(() => {});
     }
 
     res.status(201).json({ 
       id: user.id, nom: user.nom, email: user.email, telephone: user.telephone, 
       role: user.role, permissions: user.permissions, deviseAutorisee: user.deviseAutorisee, statut: user.statut,
+      boutiqueId: user.boutiqueId,
+      Boutique: targetBoutique ? { id: targetBoutique.id, nom: targetBoutique.nom, slug: targetBoutique.slug } : null,
       generatedPassword: rawPassword,
       mustChangePassword: true
     });
@@ -953,21 +1639,39 @@ router.post("/employees", requireRole("admin"), async (req, res, next) => {
 
 router.put("/employees/:id", requireRole("admin"), async (req, res, next) => {
   try {
+    const allowedIds = req.managedBoutiqueIds || [req.boutiqueId];
     const targetUser = await User.findOne({ 
-      where: { id: req.params.id, boutiqueId: req.boutiqueId, role: { [Op.in]: ["admin", "employe"] } } 
+      where: { id: req.params.id, boutiqueId: { [Op.in]: allowedIds }, role: { [Op.in]: ["admin", "employe"] } } 
     });
     if (!targetUser) return res.status(404).json({ message: "Utilisateur introuvable." });
 
-    const { nom, email, telephone, motDePasse, role, permissions, deviseAutorisee, statut } = req.body;
+    const { nom, email, telephone, motDePasse, role, permissions, deviseAutorisee, statut, boutiqueId } = req.body;
     if (targetUser.id === req.user.id && statut === "suspendu") {
       return res.status(400).json({ message: "Vous ne pouvez pas suspendre votre propre compte administrateur." });
+    }
+
+    // Règle hiérarchique stricte : un Admin de boutique NE PEUT PAS réactiver un compte Admin désactivé (seul le Super Admin le peut)
+    if (targetUser.role === "admin" && targetUser.statut === "suspendu" && statut === "actif") {
+      return res.status(403).json({
+        message: "Seul le Super Administrateur peut réactiver un compte Administrateur désactivé."
+      });
     }
 
     if (nom) targetUser.nom = nom;
     if (email) targetUser.email = email;
     if (telephone !== undefined) targetUser.telephone = telephone;
-    if (statut) targetUser.statut = statut;
+    if (statut) {
+      targetUser.statut = statut;
+      if (statut === "actif") {
+        targetUser.failedLoginAttempts = 0;
+        targetUser.lockedAt = null;
+        targetUser.lockReason = null;
+      }
+    }
     if (deviseAutorisee !== undefined) targetUser.deviseAutorisee = deviseAutorisee;
+    if (boutiqueId && allowedIds.includes(Number(boutiqueId))) {
+      targetUser.boutiqueId = Number(boutiqueId);
+    }
     
     if (role) {
       targetUser.role = role === "admin" ? "admin" : "employe";
@@ -981,20 +1685,28 @@ router.put("/employees/:id", requireRole("admin"), async (req, res, next) => {
 
     if (motDePasse && motDePasse.trim()) {
       targetUser.motDePasseHash = await bcrypt.hash(motDePasse.trim(), 10);
+      if (targetUser.role === "employe") {
+        targetUser.failedLoginAttempts = 0;
+        targetUser.lockedAt = null;
+        targetUser.lockReason = null;
+      }
     }
 
     await targetUser.save();
     res.json({ 
       id: targetUser.id, nom: targetUser.nom, email: targetUser.email, telephone: targetUser.telephone, 
-      role: targetUser.role, permissions: targetUser.permissions, deviseAutorisee: targetUser.deviseAutorisee, statut: targetUser.statut 
+      role: targetUser.role, permissions: targetUser.permissions, deviseAutorisee: targetUser.deviseAutorisee,
+      statut: targetUser.statut, boutiqueId: targetUser.boutiqueId,
+      failedLoginAttempts: targetUser.failedLoginAttempts, lockReason: targetUser.lockReason
     });
   } catch (err) { next(err); }
 });
 
 router.patch("/employees/:id/status", requireRole("admin"), async (req, res, next) => {
   try {
+    const allowedIds = req.managedBoutiqueIds || [req.boutiqueId];
     const targetUser = await User.findOne({ 
-      where: { id: req.params.id, boutiqueId: req.boutiqueId, role: { [Op.in]: ["admin", "employe"] } } 
+      where: { id: req.params.id, boutiqueId: { [Op.in]: allowedIds }, role: { [Op.in]: ["admin", "employe"] } } 
     });
     if (!targetUser) return res.status(404).json({ message: "Utilisateur introuvable." });
     
@@ -1003,15 +1715,31 @@ router.patch("/employees/:id/status", requireRole("admin"), async (req, res, nex
     }
 
     const nouveauStatut = targetUser.statut === "actif" ? "suspendu" : "actif";
-    await targetUser.update({ statut: nouveauStatut });
+
+    // Règle hiérarchique stricte : un Admin de boutique NE PEUT PAS réactiver un compte Admin désactivé (seul le Super Admin le peut)
+    if (targetUser.role === "admin" && nouveauStatut === "actif") {
+      return res.status(403).json({
+        message: "Seul le Super Administrateur peut réactiver un compte Administrateur désactivé."
+      });
+    }
+
+    const updates = { statut: nouveauStatut };
+    if (nouveauStatut === "actif") {
+      updates.failedLoginAttempts = 0;
+      updates.lockedAt = null;
+      updates.lockReason = null;
+    }
+
+    await targetUser.update(updates);
     res.json(targetUser);
   } catch (err) { next(err); }
 });
 
 router.delete("/employees/:id", requireRole("admin"), async (req, res, next) => {
   try {
+    const allowedIds = req.managedBoutiqueIds || [req.boutiqueId];
     const targetUser = await User.findOne({ 
-      where: { id: req.params.id, boutiqueId: req.boutiqueId, role: { [Op.in]: ["admin", "employe"] } } 
+      where: { id: req.params.id, boutiqueId: { [Op.in]: allowedIds }, role: { [Op.in]: ["admin", "employe"] } } 
     });
     if (!targetUser) return res.status(404).json({ message: "Utilisateur introuvable." });
 
@@ -1090,16 +1818,27 @@ router.put("/clients/:id", requireRole("admin", "employe"), async (req, res, nex
     if (nom) client.nom = nom.trim();
     if (email !== undefined) client.email = email ? String(email).trim().toLowerCase() : null;
     if (telephone !== undefined) client.telephone = telephone ? String(telephone).trim() : null;
-    if (statut) client.statut = statut;
+    if (statut) {
+      client.statut = statut;
+      if (statut === "actif") {
+        client.failedLoginAttempts = 0;
+        client.lockedAt = null;
+        client.lockReason = null;
+      }
+    }
 
     if (motDePasse && motDePasse.trim()) {
       client.motDePasseHash = await bcrypt.hash(motDePasse.trim(), 10);
+      client.failedLoginAttempts = 0;
+      client.lockedAt = null;
+      client.lockReason = null;
     }
 
     await client.save();
     res.json({
       id: client.id, nom: client.nom, email: client.email, telephone: client.telephone,
-      role: client.role, statut: client.statut, isEmailVerified: client.isEmailVerified
+      role: client.role, statut: client.statut, isEmailVerified: client.isEmailVerified,
+      failedLoginAttempts: client.failedLoginAttempts, lockReason: client.lockReason
     });
   } catch (err) { next(err); }
 });
@@ -1110,8 +1849,17 @@ router.patch("/clients/:id/status", requireRole("admin", "employe"), async (req,
     if (!client) return res.status(404).json({ message: "Client introuvable." });
 
     const nouveauStatut = client.statut === "actif" ? "suspendu" : "actif";
-    await client.update({ statut: nouveauStatut });
-    res.json({ id: client.id, nom: client.nom, statut: client.statut });
+    const updates = { statut: nouveauStatut };
+    if (nouveauStatut === "actif") {
+      updates.failedLoginAttempts = 0;
+      updates.lockedAt = null;
+      updates.lockReason = null;
+    }
+    await client.update(updates);
+    res.json({
+      id: client.id, nom: client.nom, statut: client.statut,
+      failedLoginAttempts: client.failedLoginAttempts, lockReason: client.lockReason
+    });
   } catch (err) { next(err); }
 });
 
@@ -1139,7 +1887,11 @@ router.delete("/clients/:id", requireRole("admin", "employe"), async (req, res, 
 
 router.get("/boutique", async (req, res, next) => {
   try {
-    res.json(await Boutique.findByPk(req.boutiqueId));
+    let boutique = await Boutique.findByPk(req.boutiqueId);
+    if (!boutique) {
+      boutique = await Boutique.findOne({ order: [["id", "ASC"]] });
+    }
+    res.json(boutique);
   } catch (err) { next(err); }
 });
 
@@ -1219,7 +1971,7 @@ router.put("/boutique", requireRole("admin"), async (req, res, next) => {
 
 router.post("/ventes/directe", async (req, res, next) => {
   try {
-    const { items, clientNom, clientTelephone, moyenPaiement, devise, idempotencyKey } = req.body;
+    const { items, clientNom, clientTelephone, moyenPaiement, devise, montantRecu, montantPaye, montantRestant, dateEcheance, statutPaiement, idempotencyKey } = req.body;
     if (idempotencyKey) {
       const existing = await getCache(`idempotency:${idempotencyKey}`);
       if (existing) {
@@ -1230,7 +1982,11 @@ router.post("/ventes/directe", async (req, res, next) => {
       return res.status(400).json({ message: "Le panier de vente est vide." });
     }
 
-    const saleCurrency = (devise && String(devise).toUpperCase() === "FCFA") ? "FCFA" : "KMF";
+    const boutique = await Boutique.findByPk(req.boutiqueId);
+    const devisesDisponibles = normalizeBoutiqueCurrencies(boutique);
+    const primaryDevise = devisesDisponibles[0] || "KMF";
+    const requestedDevise = devise ? String(devise).trim().toUpperCase() : primaryDevise;
+    const saleCurrency = requestedDevise === "XOF" ? "FCFA" : (devisesDisponibles.includes(requestedDevise) ? requestedDevise : (requestedDevise || primaryDevise));
 
     // Client par défaut ou client renseigné
     let client = null;
@@ -1269,14 +2025,38 @@ router.post("/ventes/directe", async (req, res, next) => {
         prixEffectif = Number(it.prixVendu);
       } else if (it.prixUnitaire !== undefined && it.prixUnitaire !== null && !isNaN(Number(it.prixUnitaire)) && Number(it.prixUnitaire) > 0) {
         prixEffectif = Number(it.prixUnitaire);
-      } else if (saleCurrency === "FCFA") {
-        prixEffectif = p.enPromo && p.prixPromoSenegal ? Number(p.prixPromoSenegal) : Number(p.prixSenegal || p.prix);
       } else {
-        prixEffectif = p.enPromo && p.prixPromo ? Number(p.prixPromo) : Number(p.prix);
+        prixEffectif = getProductUnitPriceForCurrency(p, saleCurrency, primaryDevise);
       }
 
       it.prixUnitaire = prixEffectif;
       sousTotal += prixEffectif * it.quantite;
+    }
+
+    // Calcul automatique du statut de paiement et des dettes (acompte / reste à payer)
+    let finalStatutPaiement = "paye";
+    let finalMontantPaye = sousTotal;
+    let finalMontantRestant = 0;
+    let finalDateEcheance = null;
+
+    if (montantRestant !== undefined && Number(montantRestant) > 0) {
+      finalMontantRestant = Number(montantRestant);
+      finalMontantPaye = montantPaye !== undefined ? Number(montantPaye) : Math.max(0, sousTotal - finalMontantRestant);
+      finalStatutPaiement = finalMontantPaye > 0 ? "partiel" : "non_paye";
+      finalDateEcheance = dateEcheance || null;
+    } else if (montantRecu !== undefined && Number(montantRecu) < sousTotal) {
+      const recu = Math.max(0, Number(montantRecu) || 0);
+      finalMontantPaye = recu;
+      finalMontantRestant = Math.max(0, sousTotal - recu);
+      finalStatutPaiement = recu > 0 ? "partiel" : "non_paye";
+      finalDateEcheance = dateEcheance || null;
+    } else if (statutPaiement) {
+      finalStatutPaiement = statutPaiement;
+      if (finalStatutPaiement === "non_paye") {
+        finalMontantPaye = 0;
+        finalMontantRestant = sousTotal;
+        finalDateEcheance = dateEcheance || null;
+      }
     }
 
     // Création de la commande directe (statut "recuperee" / effectuée)
@@ -1292,7 +2072,11 @@ router.post("/ventes/directe", async (req, res, next) => {
       sousTotal,
       fraisLivraison: 0,
       total: sousTotal,
-      devise: saleCurrency
+      devise: saleCurrency,
+      statutPaiement: finalStatutPaiement,
+      montantPaye: finalMontantPaye,
+      montantRestant: finalMontantRestant,
+      dateEcheance: finalDateEcheance
     });
 
     // Enregistrement des items et décrémentation directe des stocks
@@ -1490,14 +2274,59 @@ router.get("/achats", async (req, res, next) => {
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) {
-        where.createdAt[Op.gte] = new Date(startDate);
+        where.createdAt[Op.gte] = new Date(`${startDate}T00:00:00.000Z`);
       }
       if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+        const end = new Date(`${endDate}T23:59:59.999Z`);
         where.createdAt[Op.lte] = end;
       }
     }
+
+    // Récupérer tous les achats de la boutique pour identifier l'achat initial de chaque produit et les totaux Hier / Aujourd'hui
+    const allBoutiqueAchats = await Achat.findAll({
+      where: { boutiqueId: req.boutiqueId },
+      order: [["createdAt", "ASC"], ["id", "ASC"]]
+    });
+
+    const firstAchatByProduct = new Map();
+    allBoutiqueAchats.forEach(a => {
+      if (a.productId && !firstAchatByProduct.has(a.productId)) {
+        firstAchatByProduct.set(a.productId, a);
+      }
+    });
+
+    const now = new Date();
+    const todayKey = getLocalDateKey(now);
+    const yesterdayDate = new Date(now);
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayKey = getLocalDateKey(yesterdayDate);
+    const currentMonthPrefix = todayKey.slice(0, 7);
+
+    let totalDepensesGlobal = 0;
+    let achatsAujourdhuiFCFA = 0;
+    let nbAchatsAujourdhui = 0;
+    let achatsHierFCFA = 0;
+    let nbAchatsHier = 0;
+    let achatsMoisFCFA = 0;
+    let nbAchatsMois = 0;
+
+    allBoutiqueAchats.forEach(a => {
+      const m = Number(a.totalAchat || 0);
+      totalDepensesGlobal += m;
+      const k = getLocalDateKey(a.createdAt || a.dateAchat);
+      if (k === todayKey) {
+        achatsAujourdhuiFCFA += m;
+        nbAchatsAujourdhui += 1;
+      }
+      if (k === yesterdayKey) {
+        achatsHierFCFA += m;
+        nbAchatsHier += 1;
+      }
+      if (k.startsWith(currentMonthPrefix)) {
+        achatsMoisFCFA += m;
+        nbAchatsMois += 1;
+      }
+    });
 
     const list = await Achat.findAll({
       where,
@@ -1505,20 +2334,38 @@ router.get("/achats", async (req, res, next) => {
         { model: Product, as: "product" },
         { model: Fournisseur, as: "fournisseur" }
       ],
-      order: [["createdAt", "DESC"]]
+      order: [["createdAt", "DESC"], ["id", "DESC"]]
+    });
+
+    const enrichedList = list.map(item => {
+      const plain = item.toJSON ? item.toJSON() : item;
+      const firstForProd = firstAchatByProduct.get(plain.productId);
+      const isInitial = !firstForProd || firstForProd.id === plain.id;
+      const achatRef = `#ACH-${String(plain.id).padStart(3, "0")}`;
+      const initialAchatRef = firstForProd ? `#ACH-${String(firstForProd.id).padStart(3, "0")}` : achatRef;
+      const initialAchatDate = firstForProd ? (firstForProd.createdAt || firstForProd.dateAchat) : (plain.createdAt || plain.dateAchat);
+      return {
+        ...plain,
+        achatRef,
+        isInitial,
+        isApprovisionnement: !isInitial || Boolean(plain.notes && plain.notes.toLowerCase().includes("approvisionnement")),
+        initialAchatId: firstForProd ? firstForProd.id : plain.id,
+        initialAchatRef,
+        initialAchatDate
+      };
     });
 
     // Calculs de rentabilité et bénéfices
-    const totalDepenses = list.reduce((sum, a) => sum + Number(a.totalAchat || 0), 0);
+    const totalDepenses = enrichedList.reduce((sum, a) => sum + Number(a.totalAchat || 0), 0);
 
     // Calcul potentiel / prévisionnel sur le stock et sur les ventes
     let potentielVenteKMF = 0;
     let potentielVenteFCFA = 0;
 
-    for (const item of list) {
+    for (const item of enrichedList) {
       if (item.product) {
-        const pKmf = Number(item.product.prixPromo || item.product.prix || 0);
-        const pFcfa = Number(item.product.prixPromoSenegal || item.product.prixSenegal || 0);
+        const pKmf = Number((item.product.enPromo && item.product.prixPromo) ? item.product.prixPromo : (item.product.prix || 0));
+        const pFcfa = Number((item.product.enPromo && item.product.prixPromoSenegal) ? item.product.prixPromoSenegal : (item.product.prixSenegal || 0));
         const q = Number(item.quantite || 0);
         potentielVenteKMF += (pKmf * q);
         potentielVenteFCFA += (pFcfa * q);
@@ -1529,8 +2376,15 @@ router.get("/achats", async (req, res, next) => {
     const beneficePrevisionnelFCFA = Math.max(0, potentielVenteFCFA - totalDepenses);
 
     res.json({
-      achats: list,
+      achats: enrichedList,
       totalDepenses,
+      totalDepensesGlobal,
+      achatsAujourdhuiFCFA,
+      nbAchatsAujourdhui,
+      achatsHierFCFA,
+      nbAchatsHier,
+      achatsMoisFCFA,
+      nbAchatsMois,
       beneficePrevisionnelKMF,
       beneficePrevisionnelFCFA,
       potentielVenteKMF,
@@ -1546,17 +2400,34 @@ router.post("/achats", requireRole("admin", "employe"), async (req, res, next) =
     if (!prod) return res.status(404).json({ message: "Produit introuvable." });
 
     const qty = Number(quantite) || 1;
-    const unitPrice = Number(prixAchatUnitaire) || 0;
+    const unitPrice = prixAchatUnitaire !== undefined && prixAchatUnitaire !== "" ? Number(prixAchatUnitaire) : Number(prod.coutAchat || 0);
     const totalAchat = qty * unitPrice;
+
+    // Vérifier s'il existe déjà un achat initial pour ce produit afin d'identifier l'approvisionnement
+    const firstAchat = await Achat.findOne({
+      where: { productId: prod.id, boutiqueId: req.boutiqueId },
+      order: [["createdAt", "ASC"], ["id", "ASC"]]
+    });
+
+    let finalNotes = notes ? String(notes).trim() : "";
+    if (!finalNotes) {
+      if (firstAchat) {
+        const refInit = `#ACH-${String(firstAchat.id).padStart(3, "0")}`;
+        const dateInit = new Date(firstAchat.createdAt || firstAchat.dateAchat).toLocaleDateString("fr-FR");
+        finalNotes = `Approvisionnement (+${qty}) lié à l'achat ${refInit} du ${dateInit}`;
+      } else {
+        finalNotes = `Achat initial - ${prod.nom}`;
+      }
+    }
 
     const achat = await Achat.create({
       boutiqueId: req.boutiqueId,
       productId: prod.id,
-      fournisseurId: fournisseurId || null,
+      fournisseurId: fournisseurId || prod.fournisseurId || null,
       quantite: qty,
       prixAchatUnitaire: unitPrice,
       totalAchat,
-      notes: notes || ""
+      notes: finalNotes
     });
 
     // Mise à jour automatique du stock et du prix/coût d'achat du produit
@@ -1567,6 +2438,7 @@ router.post("/achats", requireRole("admin", "employe"), async (req, res, next) =
     await prod.save();
     purgeCache();
     broadcast("product_updated", { productId: prod.id, boutiqueId: req.boutiqueId });
+    broadcast("achat_updated", { achatId: achat.id, productId: prod.id, boutiqueId: req.boutiqueId });
 
     const fullAchat = await Achat.findByPk(achat.id, {
       include: [
@@ -1619,6 +2491,7 @@ router.put("/achats/:id", requireRole("admin", "employe"), async (req, res, next
     await t.commit();
     purgeCache();
     broadcast("product_updated", { productId: achat.productId, boutiqueId: req.boutiqueId });
+    broadcast("achat_updated", { achatId: achat.id, productId: achat.productId, boutiqueId: req.boutiqueId });
 
     const updatedAchat = await Achat.findByPk(achat.id, {
       include: [
@@ -1660,6 +2533,7 @@ router.delete("/achats/:id", requireRole("admin", "employe"), async (req, res, n
 
     purgeCache();
     broadcast("product_updated", { productId: achat.productId, boutiqueId: req.boutiqueId });
+    broadcast("achat_updated", { achatId: req.params.id, productId: achat.productId, boutiqueId: req.boutiqueId });
 
     res.json({ message: "Approvisionnement supprimé avec succès et stock réajusté." });
   } catch (err) {
@@ -1849,7 +2723,8 @@ const {
   quoteCustomRequest,
   createAdminCustomRequest,
   updateAdminCustomRequest,
-  deleteAdminCustomRequest
+  deleteAdminCustomRequest,
+  toggleStatutAchat
 } = require("../controllers/customOrder.controller");
 
 router.get("/custom-requests", requireRole("admin", "employe"), listAdminCustomRequests);
@@ -1857,6 +2732,7 @@ router.post("/custom-requests", requireRole("admin", "employe"), createAdminCust
 router.put("/custom-requests/:id", requireRole("admin", "employe"), updateAdminCustomRequest);
 router.delete("/custom-requests/:id", requireRole("admin", "employe"), deleteAdminCustomRequest);
 router.put("/custom-requests/:id/quote", requireRole("admin", "employe"), quoteCustomRequest);
+router.patch("/custom-requests/:id/achat-status", requireRole("admin", "employe"), toggleStatutAchat);
 
 // --- ROUTES DÉPENSES (EXPENSES) ---
 function checkExpensePerm(req, perm) {
@@ -1921,12 +2797,15 @@ router.get("/expenses", async (req, res, next) => {
 
     let totalMontantKMF = 0;
     let totalMontantFCFA = 0;
+    const totalParDevise = {};
 
     expenses.forEach(e => {
       const m = Number(e.montant || 0);
-      if (e.devise === "FCFA") {
+      const dev = (e.devise === "XOF") ? "FCFA" : String(e.devise || "KMF").toUpperCase();
+      totalParDevise[dev] = (totalParDevise[dev] || 0) + m;
+      if (dev === "FCFA") {
         totalMontantFCFA += m;
-      } else {
+      } else if (dev === "KMF") {
         totalMontantKMF += m;
       }
     });
@@ -1936,12 +2815,21 @@ router.get("/expenses", async (req, res, next) => {
       attributes: ["id", "nom", "email", "role"]
     });
 
+    const fin = await computeBoutiqueFinancials(req.boutiqueId);
+
     res.json({
       expenses,
+      devisesDisponibles: fin.devisesDisponibles,
+      statsByCurrency: fin.statsByCurrency,
       kpis: {
         totalCount: expenses.length,
+        totalParDevise,
         totalMontantKMF,
-        totalMontantFCFA
+        totalMontantFCFA,
+        beneficeDisponibleKMF: fin.beneficeComores,
+        beneficeDisponibleFCFA: fin.beneficeSenegal,
+        beneficeVentesKMF: fin.beneficeVentesComores,
+        beneficeVentesFCFA: fin.beneficeVentesSenegal
       },
       employees
     });
@@ -1964,7 +2852,9 @@ router.post("/expenses", async (req, res, next) => {
       return res.status(400).json({ message: "Le montant doit être supérieur à 0." });
     }
 
-    let finalDevise = devise || "KMF";
+    const finBefore = await computeBoutiqueFinancials(req.boutiqueId);
+    const reqDev = devise ? String(devise).trim().toUpperCase() : finBefore.primaryDevise;
+    let finalDevise = reqDev === "XOF" ? "FCFA" : (reqDev || finBefore.primaryDevise);
     if (req.user.role === "employe" && req.user.deviseAutorisee && req.user.deviseAutorisee !== "TOUTES") {
       finalDevise = req.user.deviseAutorisee;
     }
@@ -1987,8 +2877,17 @@ router.post("/expenses", async (req, res, next) => {
       include: [{ model: User, as: "creePar", attributes: ["id", "nom", "email", "role"] }]
     });
 
+    const fin = await computeBoutiqueFinancials(req.boutiqueId);
+    const stDev = fin.statsByCurrency[finalDevise] || {};
+    const newBenefice = stDev.beneficeNet !== undefined ? stDev.beneficeNet : (finalDevise === "FCFA" ? fin.beneficeSenegal : fin.beneficeComores);
+    const paysLabel = finalDevise === "FCFA" ? "Sénégal (FCFA)" : (finalDevise === "KMF" ? "Comores (KMF)" : finalDevise);
+
+    purgeCache();
     broadcast("expense_updated", { action: "create", expenseId: expense.id, boutiqueId: req.boutiqueId });
-    res.status(201).json(fullExpense);
+    res.status(201).json({
+      ...fullExpense.toJSON(),
+      actionMessage: `Dépense de ${Math.round(Number(montant)).toLocaleString("fr-FR")} ${finalDevise} enregistrée et déduite du bénéfice ${paysLabel} (Nouveau bénéfice net : ${Math.round(newBenefice).toLocaleString("fr-FR")} ${finalDevise}).`
+    });
   } catch (err) {
     next(err);
   }
@@ -2015,7 +2914,8 @@ router.put("/expenses/:id", async (req, res, next) => {
       if (req.user.role === "employe" && req.user.deviseAutorisee && req.user.deviseAutorisee !== "TOUTES") {
         expense.devise = req.user.deviseAutorisee;
       } else {
-        expense.devise = devise;
+        const cleanDev = String(devise).trim().toUpperCase();
+        expense.devise = cleanDev === "XOF" ? "FCFA" : cleanDev;
       }
     }
     if (categorie !== undefined) expense.categorie = categorie;
@@ -2031,6 +2931,7 @@ router.put("/expenses/:id", async (req, res, next) => {
       include: [{ model: User, as: "creePar", attributes: ["id", "nom", "email", "role"] }]
     });
 
+    purgeCache();
     broadcast("expense_updated", { action: "update", expenseId: expense.id, boutiqueId: req.boutiqueId });
     res.json(fullExpense);
   } catch (err) {
@@ -2053,8 +2954,9 @@ router.delete("/expenses/:id", async (req, res, next) => {
     }
 
     await expense.destroy();
+    purgeCache();
     broadcast("expense_updated", { action: "delete", expenseId: req.params.id, boutiqueId: req.boutiqueId });
-    res.json({ success: true, message: "Dépense supprimée avec succès." });
+    res.json({ success: true, message: "Dépense supprimée avec succès. Le bénéfice net a été réajusté." });
   } catch (err) {
     next(err);
   }
@@ -2104,40 +3006,25 @@ router.get("/savings", async (req, res, next) => {
       order: [["dateOperation", "DESC"], ["id", "DESC"]]
     });
 
-    const allSavings = await Saving.findAll({
-      where: { boutiqueId: req.boutiqueId },
-      attributes: ["type", "montant", "devise"]
-    });
-
-    let totalDepotsKMF = 0;
-    let totalRetraitsKMF = 0;
-    let totalDepotsFCFA = 0;
-    let totalRetraitsFCFA = 0;
-
-    allSavings.forEach(s => {
-      const m = Number(s.montant || 0);
-      const isDepot = s.type === "depot";
-      if (s.devise === "FCFA") {
-        if (isDepot) totalDepotsFCFA += m;
-        else totalRetraitsFCFA += m;
-      } else {
-        if (isDepot) totalDepotsKMF += m;
-        else totalRetraitsKMF += m;
-      }
-    });
-
-    const totalEpargneKMF = totalDepotsKMF - totalRetraitsKMF;
-    const totalEpargneFCFA = totalDepotsFCFA - totalRetraitsFCFA;
+    const fin = await computeBoutiqueFinancials(req.boutiqueId);
 
     res.json({
       savings,
+      devisesDisponibles: fin.devisesDisponibles,
+      statsByCurrency: fin.statsByCurrency,
       kpis: {
-        totalEpargneKMF,
-        totalEpargneFCFA,
-        totalDepotsKMF,
-        totalRetraitsKMF,
-        totalDepotsFCFA,
-        totalRetraitsFCFA,
+        totalEpargneKMF: fin.totalEpargneKMF,
+        totalEpargneFCFA: fin.totalEpargneFCFA,
+        totalDepotsKMF: fin.totalDepotsKMF,
+        totalRetraitsKMF: fin.totalRetraitsKMF,
+        totalDepotsFCFA: fin.totalDepotsFCFA,
+        totalRetraitsFCFA: fin.totalRetraitsFCFA,
+        beneficeDisponibleKMF: fin.beneficeComores,
+        beneficeDisponibleFCFA: fin.beneficeSenegal,
+        beneficeAvantEpargneKMF: fin.beneficeApresDepensesComores,
+        beneficeAvantEpargneFCFA: fin.beneficeApresDepensesSenegal,
+        depensesKMF: fin.depensesKMF,
+        depensesFCFA: fin.depensesFCFA,
         totalOperations: savings.length
       }
     });
@@ -2153,16 +3040,52 @@ router.post("/savings", async (req, res, next) => {
     }
 
     const { type, montant, devise, dateOperation, compte, reference, notes } = req.body;
-    if (!montant || Number(montant) <= 0) {
+    const opMontant = Number(montant);
+    if (!opMontant || opMontant <= 0) {
       return res.status(400).json({ message: "Le montant doit être supérieur à 0." });
+    }
+
+    const fin = await computeBoutiqueFinancials(req.boutiqueId);
+    const opType = type === "retrait" ? "retrait" : "depot";
+    const reqDev = devise ? String(devise).trim().toUpperCase() : fin.primaryDevise;
+    const opDevise = (reqDev === "FCFA" || reqDev === "XOF") ? "FCFA" : (reqDev || fin.primaryDevise);
+    const paysLabel = opDevise === "FCFA" ? "Sénégal (FCFA)" : (opDevise === "KMF" ? "Comores (KMF)" : opDevise);
+
+    const stDev = fin.statsByCurrency[opDevise] || {};
+    const beneficeDispo = stDev.beneficeNet !== undefined ? stDev.beneficeNet : (opDevise === "FCFA" ? fin.beneficeSenegal : fin.beneficeComores);
+    const soldeEpargneDispo = stDev.epargne !== undefined ? stDev.epargne : (opDevise === "FCFA" ? fin.totalEpargneFCFA : fin.totalEpargneKMF);
+
+    if (opType === "depot") {
+      if (beneficeDispo <= 0) {
+        return res.status(400).json({
+          message: `Opération refusée : votre bénéfice disponible pour ${paysLabel} est actuellement de ${Math.round(beneficeDispo).toLocaleString("fr-FR")} ${opDevise}. Vous ne pouvez pas épargner tant que votre bénéfice n'est pas positif.`
+        });
+      }
+      if (opMontant > beneficeDispo) {
+        return res.status(400).json({
+          message: `Opération refusée : vous ne pouvez pas épargner ${Math.round(opMontant).toLocaleString("fr-FR")} ${opDevise} car votre bénéfice disponible (${paysLabel}) est de ${Math.round(beneficeDispo).toLocaleString("fr-FR")} ${opDevise}. Le montant épargné doit être inférieur ou égal à votre bénéfice.`
+        });
+      }
+    } else {
+      // Retrait d'épargne
+      if (soldeEpargneDispo <= 0) {
+        return res.status(400).json({
+          message: `Retrait refusé : vous n'avez aucune épargne disponible en ${opDevise} (Solde actuel : 0 ${opDevise}).`
+        });
+      }
+      if (opMontant > soldeEpargneDispo) {
+        return res.status(400).json({
+          message: `Retrait refusé : vous ne pouvez pas retirer ${Math.round(opMontant).toLocaleString("fr-FR")} ${opDevise} car votre solde d'épargne disponible en ${opDevise} n'est que de ${Math.round(soldeEpargneDispo).toLocaleString("fr-FR")} ${opDevise}.`
+        });
+      }
     }
 
     const saving = await Saving.create({
       boutiqueId: req.boutiqueId,
       creeParId: req.user.id,
-      type: type === "retrait" ? "retrait" : "depot",
-      montant: Number(montant),
-      devise: devise || "KMF",
+      type: opType,
+      montant: opMontant,
+      devise: opDevise,
       dateOperation: dateOperation ? new Date(dateOperation) : new Date(),
       compte: compte ? compte.trim() : "Compte Épargne",
       reference: reference ? reference.trim() : null,
@@ -2173,8 +3096,21 @@ router.post("/savings", async (req, res, next) => {
       include: [{ model: User, as: "creePar", attributes: ["id", "nom", "email"] }]
     });
 
+    const newEpargne = opType === "depot" ? (soldeEpargneDispo + opMontant) : (soldeEpargneDispo - opMontant);
+    const newBenefice = opType === "depot" ? (beneficeDispo - opMontant) : (beneficeDispo + opMontant);
+
+    const actionMessage = opType === "depot"
+      ? `Épargne de ${Math.round(opMontant).toLocaleString("fr-FR")} ${opDevise} enregistrée ! Votre bénéfice (${paysLabel}) a diminué à ${Math.round(newBenefice).toLocaleString("fr-FR")} ${opDevise} et votre solde d'épargne est maintenant de ${Math.round(newEpargne).toLocaleString("fr-FR")} ${opDevise}.`
+      : `Retrait de ${Math.round(opMontant).toLocaleString("fr-FR")} ${opDevise} effectué ! Votre solde d'épargne (${opDevise}) a diminué à ${Math.round(newEpargne).toLocaleString("fr-FR")} ${opDevise} (Bénéfice disponible : ${Math.round(newBenefice).toLocaleString("fr-FR")} ${opDevise}).`;
+
+    purgeCache();
     broadcast("saving_updated", { action: "create", savingId: saving.id, boutiqueId: req.boutiqueId });
-    res.status(201).json(fullSaving);
+    res.status(201).json({
+      ...fullSaving.toJSON(),
+      actionMessage,
+      newEpargne,
+      newBenefice
+    });
   } catch (err) {
     next(err);
   }
@@ -2195,9 +3131,38 @@ router.put("/savings/:id", async (req, res, next) => {
     }
 
     const { type, montant, devise, dateOperation, compte, reference, notes } = req.body;
-    if (type !== undefined) saving.type = type === "retrait" ? "retrait" : "depot";
-    if (montant !== undefined) saving.montant = Number(montant);
-    if (devise !== undefined) saving.devise = devise;
+    const opType = type !== undefined ? (type === "retrait" ? "retrait" : "depot") : saving.type;
+    const opMontant = montant !== undefined ? Number(montant) : Number(saving.montant);
+    const reqDev = devise !== undefined ? String(devise).trim().toUpperCase() : saving.devise;
+    const opDevise = (reqDev === "FCFA" || reqDev === "XOF") ? "FCFA" : reqDev;
+    const paysLabel = opDevise === "FCFA" ? "Sénégal (FCFA)" : (opDevise === "KMF" ? "Comores (KMF)" : opDevise);
+
+    if (!opMontant || opMontant <= 0) {
+      return res.status(400).json({ message: "Le montant doit être supérieur à 0." });
+    }
+
+    const fin = await computeBoutiqueFinancials(req.boutiqueId, { excludeSavingId: saving.id });
+    const stDev = fin.statsByCurrency[opDevise] || {};
+    const beneficeDispo = stDev.beneficeNet !== undefined ? stDev.beneficeNet : (opDevise === "FCFA" ? fin.beneficeSenegal : fin.beneficeComores);
+    const soldeEpargneDispo = stDev.epargne !== undefined ? stDev.epargne : (opDevise === "FCFA" ? fin.totalEpargneFCFA : fin.totalEpargneKMF);
+
+    if (opType === "depot") {
+      if (opMontant > beneficeDispo) {
+        return res.status(400).json({
+          message: `Modification refusée : le montant (${Math.round(opMontant).toLocaleString("fr-FR")} ${opDevise}) dépasse votre bénéfice disponible pour ${paysLabel} (${Math.round(beneficeDispo).toLocaleString("fr-FR")} ${opDevise}).`
+        });
+      }
+    } else {
+      if (opMontant > soldeEpargneDispo) {
+        return res.status(400).json({
+          message: `Modification refusée : le retrait (${Math.round(opMontant).toLocaleString("fr-FR")} ${opDevise}) dépasse votre solde d'épargne disponible en ${opDevise} (${Math.round(soldeEpargneDispo).toLocaleString("fr-FR")} ${opDevise}).`
+        });
+      }
+    }
+
+    saving.type = opType;
+    saving.montant = opMontant;
+    saving.devise = opDevise;
     if (dateOperation !== undefined) saving.dateOperation = new Date(dateOperation);
     if (compte !== undefined) saving.compte = compte ? compte.trim() : "Compte Épargne";
     if (reference !== undefined) saving.reference = reference ? reference.trim() : null;
@@ -2209,8 +3174,19 @@ router.put("/savings/:id", async (req, res, next) => {
       include: [{ model: User, as: "creePar", attributes: ["id", "nom", "email"] }]
     });
 
+    const newEpargne = opType === "depot" ? (soldeEpargneDispo + opMontant) : (soldeEpargneDispo - opMontant);
+    const newBenefice = opType === "depot" ? (beneficeDispo - opMontant) : (beneficeDispo + opMontant);
+
+    const actionMessage = `Opération mise à jour ! Solde d'épargne (${opDevise}) : ${Math.round(newEpargne).toLocaleString("fr-FR")} ${opDevise} • Bénéfice disponible : ${Math.round(newBenefice).toLocaleString("fr-FR")} ${opDevise}.`;
+
+    purgeCache();
     broadcast("saving_updated", { action: "update", savingId: saving.id, boutiqueId: req.boutiqueId });
-    res.json(fullSaving);
+    res.json({
+      ...fullSaving.toJSON(),
+      actionMessage,
+      newEpargne,
+      newBenefice
+    });
   } catch (err) {
     next(err);
   }
@@ -2231,8 +3207,9 @@ router.delete("/savings/:id", async (req, res, next) => {
     }
 
     await saving.destroy();
+    purgeCache();
     broadcast("saving_updated", { action: "delete", savingId: req.params.id, boutiqueId: req.boutiqueId });
-    res.json({ success: true, message: "Opération d'épargne supprimée avec succès." });
+    res.json({ success: true, message: "Opération d'épargne supprimée avec succès. Le solde d'épargne et votre bénéfice ont été réajustés." });
   } catch (err) {
     next(err);
   }

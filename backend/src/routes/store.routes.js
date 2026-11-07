@@ -73,8 +73,18 @@ router.get("/:slug/manifest.json", loadBoutique, (req, res) => {
 // GET /api/store/:slug and /api/store/:slug/boutique -> infos publiques de la boutique (cached 15s)
 router.get(["/:slug", "/:slug/boutique"], loadBoutique, cacheMiddleware(15), (req, res) => {
   const b = req.boutique;
+  let devisesDisponibles = b.devisesDisponibles;
+  if (typeof devisesDisponibles === "string") {
+    try { devisesDisponibles = JSON.parse(devisesDisponibles); } catch (e) { devisesDisponibles = null; }
+  }
+  if (!Array.isArray(devisesDisponibles) || devisesDisponibles.length === 0) {
+    const primary = b.devise ? String(b.devise).trim().toUpperCase() : "KMF";
+    devisesDisponibles = primary === "KMF" ? ["KMF", "FCFA"] : [primary];
+  }
   res.json({
     id: b.id, nom: b.nom, slug: b.slug, logoUrl: b.logoUrl,
+    devise: b.devise || devisesDisponibles[0] || "KMF",
+    devisesDisponibles,
     couleurPrincipale: b.couleurPrincipale, fraisLivraison: b.fraisLivraison,
     zonesLivraison: b.zonesLivraison, bannerSlides: b.bannerSlides || [],
     sideBanners: b.sideBanners || [],

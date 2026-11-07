@@ -1,21 +1,30 @@
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
 import React, { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { PlusCircle, List, Pencil, Trash2, AlertTriangle, CheckCircle, Package, X, Wand2, Sparkles, Loader2, Smartphone, Shield, Zap, Eye, EyeOff, CheckCircle2, Printer, Star, ChevronDown, ChevronRight, Plus, Palette, Layers, Upload, Link as LinkIcon } from "lucide-react";
+import { PlusCircle, List, Pencil, Trash2, AlertTriangle, CheckCircle, Package, X, Wand2, Sparkles, Loader2, Smartphone, Shield, Zap, Eye, EyeOff, CheckCircle2, Printer, Star, ChevronDown, ChevronRight, Plus, Palette, Layers, Upload, Link as LinkIcon, Building, User } from "lucide-react";
 import api from "../../api";
 import ImageUploader from "../../components/ImageUploader.jsx";
 import TablePagination from "../../components/TablePagination.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { subscribeRealtime } from "../../utils/realtime.js";
 
-import { formatPrice, formatPrice as fcfa } from "../../utils/currency.js";
+import { formatPrice, formatPrice as fcfa, getBoutiqueCurrencies, getBoutiqueCurrencyCodes, getCurrencyMeta } from "../../utils/currency.js";
 
 export default function AdminProduits() {
-  const { boutique, user } = useAuth();
+  const { boutique, user, myBoutiques = [], activeBoutiqueId } = useAuth();
   const perms = Array.isArray(user?.permissions) ? user.permissions : [];
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isMultiBoutiqueAdmin = user?.role === "admin" && myBoutiques.length > 1;
   const canAddEdit = isAdmin || perms.includes("ajouter_modifier_produit") || perms.includes("gerer_produits");
   const canDelete = isAdmin || perms.includes("supprimer_produit") || perms.includes("gerer_produits");
+  const [filterBoutiqueId, setFilterBoutiqueId] = useState("");
+  const [employees, setEmployees] = useState([]);
+
+  useEffect(() => {
+    api.get("/admin/employees")
+      .then(res => setEmployees(res.data || []))
+      .catch(() => {});
+  }, []);
 
   const [activeTab, setActiveTab] = useState("liste"); // "liste" | "ajout"
   const [products, setProducts] = useState([]);
@@ -55,6 +64,8 @@ export default function AdminProduits() {
   const [filterGenre, setFilterGenre] = useState("");
   const [filterMarque, setFilterMarque] = useState("");
   const [filterVisibilite, setFilterVisibilite] = useState(""); // "" | "visible" | "masque"
+  const [filterCreePar, setFilterCreePar] = useState("");
+  const [filterBoutiqueDirect, setFilterBoutiqueDirect] = useState("");
 
   // Modal d'approvisionnement
   const [restockProduct, setRestockProduct] = useState(null);
@@ -71,6 +82,7 @@ export default function AdminProduits() {
 
   const initialForm = {
     nom: "",
+    boutiqueId: activeBoutiqueId || boutique?.id || "",
     categoryId: "",
     famille: "Chargeurs & Blocs Rapides",
     marqueId: "",
@@ -81,6 +93,8 @@ export default function AdminProduits() {
     prixPromo: "",
     prixSenegal: "",
     prixPromoSenegal: "",
+    prixParDevise: {},
+    prixPromoParDevise: {},
     enPromo: false,
     isNouveau: true,
     masquerSurSite: true, // Coché par défaut à l'ajout pour préparer le stock avant affichage sur le site
@@ -100,6 +114,10 @@ export default function AdminProduits() {
     modelesCompatibles: []
   };
   const [form, setForm] = useState(initialForm);
+
+  const currentBoutiqueObj = myBoutiques.find(b => Number(b.id) === Number(form.boutiqueId || activeBoutiqueId || boutique?.id)) || boutique;
+  const boutiqueCurrencies = getBoutiqueCurrencies(boutique);
+  const formBoutiqueCurrencies = getBoutiqueCurrencies(currentBoutiqueObj);
 
   // Fonction de génération automatique IA avec failover
   async function handleAiGenerate() {
@@ -155,8 +173,21 @@ export default function AdminProduits() {
     }
   }
 
-  function silentSyncProducts() {
-    api.get(`/admin/products?_t=${Date.now()}`).then((res) => {
+  function buildProductsUrl(overrideBoutiqueFilter = filterBoutiqueId) {
+    const params = new URLSearchParams();
+    params.set("_t", String(Date.now()));
+    if (isMultiBoutiqueAdmin) {
+      if (overrideBoutiqueFilter === "all") {
+        params.set("allMyBoutiques", "true");
+      } else if (overrideBoutiqueFilter) {
+        params.set("filterBoutiqueId", String(overrideBoutiqueFilter));
+      }
+    }
+    return `/admin/products?${params.toString()}`;
+  }
+
+  function silentSyncProducts(overrideFilter = filterBoutiqueId) {
+    api.get(buildProductsUrl(overrideFilter)).then((res) => {
       const list = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       setProducts(list);
     }).catch(() => {});
@@ -168,9 +199,9 @@ export default function AdminProduits() {
     api.get("/admin/phones").then((res) => setPhoneBrands(res.data || [])).catch(() => {});
   }
 
-  function load() {
+  function load(overrideFilter = filterBoutiqueId) {
     setLoading(true);
-    api.get(`/admin/products?_t=${Date.now()}`).then((res) => {
+    api.get(buildProductsUrl(overrideFilter)).then((res) => {
       const list = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       setProducts(list);
     }).finally(() => setLoading(false));
@@ -183,7 +214,7 @@ export default function AdminProduits() {
   }
 
   useEffect(() => {
-    load();
+    load(filterBoutiqueId);
     const unsub = subscribeRealtime((detail) => {
       const t = detail?.type || detail;
       if (
@@ -193,11 +224,16 @@ export default function AdminProduits() {
         t === "category_updated" ||
         t === "achat_updated"
       ) {
-        silentSyncProducts();
+        silentSyncProducts(filterBoutiqueId);
       }
     });
-    return () => unsub();
-  }, []);
+    const onBoutiqueSwitch = () => load(filterBoutiqueId);
+    window.addEventListener("boutique_switched", onBoutiqueSwitch);
+    return () => {
+      unsub();
+      window.removeEventListener("boutique_switched", onBoutiqueSwitch);
+    };
+  }, [filterBoutiqueId, activeBoutiqueId]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -211,8 +247,28 @@ export default function AdminProduits() {
 
   function startEdit(product) {
     setEditingId(product.id);
+    const rawPrixParDevise = (product.prixParDevise && typeof product.prixParDevise === "object")
+      ? { ...product.prixParDevise }
+      : {};
+    const rawPrixPromoParDevise = (product.prixPromoParDevise && typeof product.prixPromoParDevise === "object")
+      ? { ...product.prixPromoParDevise }
+      : {};
+    if (product.prix !== undefined && product.prix !== null && rawPrixParDevise.KMF === undefined) {
+      rawPrixParDevise.KMF = product.prix;
+    }
+    if (product.prixSenegal !== undefined && product.prixSenegal !== null && rawPrixParDevise.FCFA === undefined) {
+      rawPrixParDevise.FCFA = product.prixSenegal;
+    }
+    if (product.prixPromo !== undefined && product.prixPromo !== null && rawPrixPromoParDevise.KMF === undefined) {
+      rawPrixPromoParDevise.KMF = product.prixPromo;
+    }
+    if (product.prixPromoSenegal !== undefined && product.prixPromoSenegal !== null && rawPrixPromoParDevise.FCFA === undefined) {
+      rawPrixPromoParDevise.FCFA = product.prixPromoSenegal;
+    }
+
     setForm({
       nom: product.nom || "",
+      boutiqueId: product.boutiqueId || activeBoutiqueId || boutique?.id || "",
       categoryId: product.categoryId || "",
       famille: product.famille || "Cosmétique",
       marqueId: product.marqueId || "",
@@ -223,7 +279,9 @@ export default function AdminProduits() {
       prixPromo: product.prixPromo ?? "",
       prixSenegal: product.prixSenegal ?? "",
       prixPromoSenegal: product.prixPromoSenegal ?? "",
-      enPromo: Boolean(product.enPromo || product.prixPromo),
+      prixParDevise: rawPrixParDevise,
+      prixPromoParDevise: rawPrixPromoParDevise,
+      enPromo: Boolean(product.enPromo || product.prixPromo || Object.values(rawPrixPromoParDevise).some(v => Number(v) > 0)),
       isNouveau: Boolean(product.isNouveau),
       masquerSurSite: Boolean(product.masquerSurSite),
       noteEtoiles: product.noteEtoiles !== undefined && product.noteEtoiles !== null ? String(product.noteEtoiles) : "5",
@@ -529,12 +587,49 @@ export default function AdminProduits() {
     }
 
     // Sanitize: empty string → 0 or null
+    const cleanPrixParDevise = {};
+    const cleanPrixPromoParDevise = {};
+    formBoutiqueCurrencies.forEach((cur, idx) => {
+      const code = cur.code;
+      const rawVal = form.prixParDevise?.[code] !== undefined
+        ? form.prixParDevise[code]
+        : (code === "KMF" ? form.prix : code === "FCFA" ? form.prixSenegal : (idx === 0 ? form.prix : ""));
+      if (rawVal !== "" && rawVal !== null && rawVal !== undefined) {
+        cleanPrixParDevise[code] = Number(rawVal);
+      }
+      const rawPromo = form.prixPromoParDevise?.[code] !== undefined
+        ? form.prixPromoParDevise[code]
+        : (code === "KMF" ? form.prixPromo : code === "FCFA" ? form.prixPromoSenegal : (idx === 0 ? form.prixPromo : ""));
+      if (form.enPromo && rawPromo !== "" && rawPromo !== null && rawPromo !== undefined && Number(rawPromo) > 0) {
+        cleanPrixPromoParDevise[code] = Number(rawPromo);
+      } else {
+        cleanPrixPromoParDevise[code] = null;
+      }
+    });
+
+    const primaryCurrencyCode = formBoutiqueCurrencies[0]?.code || "KMF";
+    const resolvedPrix = cleanPrixParDevise.KMF !== undefined
+      ? cleanPrixParDevise.KMF
+      : (cleanPrixParDevise[primaryCurrencyCode] !== undefined ? cleanPrixParDevise[primaryCurrencyCode] : (form.prix !== "" ? Number(form.prix) : 0));
+    const resolvedPrixPromo = form.enPromo
+      ? (cleanPrixPromoParDevise.KMF ?? cleanPrixPromoParDevise[primaryCurrencyCode] ?? (form.prixPromo !== "" && form.prixPromo !== null ? Number(form.prixPromo) : null))
+      : null;
+    const resolvedPrixSenegal = cleanPrixParDevise.FCFA !== undefined
+      ? cleanPrixParDevise.FCFA
+      : (form.prixSenegal !== "" && form.prixSenegal !== null ? Number(form.prixSenegal) : null);
+    const resolvedPrixPromoSenegal = form.enPromo
+      ? (cleanPrixPromoParDevise.FCFA ?? (form.prixPromoSenegal !== "" && form.prixPromoSenegal !== null ? Number(form.prixPromoSenegal) : null))
+      : null;
+
     const payload = {
       ...form,
-      prix: form.prix !== "" ? Number(form.prix) : 0,
-      prixPromo: form.enPromo && form.prixPromo !== "" && form.prixPromo !== null ? Number(form.prixPromo) : null,
-      prixSenegal: form.prixSenegal !== "" && form.prixSenegal !== null ? Number(form.prixSenegal) : null,
-      prixPromoSenegal: form.enPromo && form.prixPromoSenegal !== "" && form.prixPromoSenegal !== null ? Number(form.prixPromoSenegal) : null,
+      boutiqueId: form.boutiqueId ? Number(form.boutiqueId) : (activeBoutiqueId || boutique?.id),
+      prix: resolvedPrix,
+      prixPromo: resolvedPrixPromo,
+      prixSenegal: resolvedPrixSenegal,
+      prixPromoSenegal: resolvedPrixPromoSenegal,
+      prixParDevise: cleanPrixParDevise,
+      prixPromoParDevise: cleanPrixPromoParDevise,
       enPromo: Boolean(form.enPromo),
       isNouveau: Boolean(form.isNouveau),
       masquerSurSite: Boolean(form.masquerSurSite),
@@ -683,43 +778,110 @@ export default function AdminProduits() {
     const matchVisibilite = !filterVisibilite
       || (filterVisibilite === "masque" && Boolean(p.masquerSurSite))
       || (filterVisibilite === "visible" && !p.masquerSurSite);
+    const creatorName = p.creePar?.nom || "Admin Boutique";
+    const matchCreePar = !filterCreePar || String(p.creeParId || p.creePar?.id) === String(filterCreePar) || creatorName === filterCreePar;
+    const prodBoutiqueNom = p.boutique?.nom || myBoutiques.find(b => Number(b.id) === Number(p.boutiqueId))?.nom || boutique?.nom || "Boutique";
+    const matchBoutiqueDirect = !filterBoutiqueDirect || String(p.boutiqueId || p.boutique?.id) === String(filterBoutiqueDirect) || prodBoutiqueNom === filterBoutiqueDirect;
 
-    return matchSearch && matchCat && matchStock && matchGenre && matchMarque && matchVisibilite;
+    return matchSearch && matchCat && matchStock && matchGenre && matchMarque && matchVisibilite && matchCreePar && matchBoutiqueDirect;
   });
 
   // Reset page to 1 when filters change
-  useEffect(() => { setCurrentPage(1); }, [search, filterCat, filterStock, filterGenre, filterMarque, filterVisibilite]);
+  useEffect(() => { setCurrentPage(1); }, [search, filterCat, filterStock, filterGenre, filterMarque, filterVisibilite, filterCreePar, filterBoutiqueDirect]);
+
+  // Extraction dynamique et robuste de la liste des personnes ayant enregistré des produits
+  const creatorsMap = new Map();
+  const mainAdminNom = boutique?.admin?.nom || user?.nom || "Admin Boutique";
+  creatorsMap.set(mainAdminNom, { id: mainAdminNom, nom: mainAdminNom, role: "Admin" });
+  
+  (employees || []).forEach(emp => {
+    creatorsMap.set(emp.nom, {
+      id: emp.nom,
+      nom: emp.nom,
+      role: emp.role === "admin" ? "Admin" : "Employé"
+    });
+  });
+
+  products.forEach(p => {
+    if (p.creePar?.nom) {
+      creatorsMap.set(p.creePar.nom, {
+        id: p.creePar.nom,
+        nom: p.creePar.nom,
+        role: p.creePar.role === "employe" ? "Employé" : p.creePar.role === "super_admin" ? "Super Admin" : "Admin"
+      });
+    } else if (p.creeParId) {
+      const fallbackNom = `Utilisateur #${p.creeParId}`;
+      if (!creatorsMap.has(fallbackNom)) {
+        creatorsMap.set(fallbackNom, {
+          id: fallbackNom,
+          nom: fallbackNom,
+          role: "Auteur"
+        });
+      }
+    }
+  });
+  const creatorsList = Array.from(creatorsMap.values());
+
+  // Extraction dynamique et robuste de la liste des boutiques
+  const boutiquesMap = new Map();
+  if (boutique?.nom) {
+    boutiquesMap.set(boutique.nom, { id: boutique.nom, nom: boutique.nom });
+  }
+  (myBoutiques || []).forEach(b => {
+    if (b.nom) boutiquesMap.set(b.nom, { id: b.nom, nom: b.nom });
+  });
+  products.forEach(p => {
+    if (p.boutique?.nom) {
+      boutiquesMap.set(p.boutique.nom, { id: p.boutique.nom, nom: p.boutique.nom });
+    }
+  });
+  const availableBoutiquesList = Array.from(boutiquesMap.values());
 
   const totalItems = filteredProducts.length;
 
-  // Règle stricte : 1 seul prix par article (Prix Promo s'il existe et > 0, sinon Prix Normal. Jamais les 2 additionnés et le prix barré n'est pas compté)
-  const getProductPriceKMF = (p) => {
-    const promo = Number(p.prixPromo || 0);
-    if (promo > 0) return promo; // Uniquement le prix promo
-    return Number(p.prix || 0);  // Sinon le seul prix normal
+  // Règle stricte : 1 seul prix par article par devise (Prix Promo s'il existe et > 0, sinon Prix Normal)
+  const getProductEffectivePriceForCurrency = (p, currencyCode, isFirstCurrency = false) => {
+    const code = String(currencyCode || "KMF").toUpperCase();
+    const mapNormal = (p.prixParDevise && typeof p.prixParDevise === "object") ? p.prixParDevise : {};
+    const mapPromo = (p.prixPromoParDevise && typeof p.prixPromoParDevise === "object") ? p.prixPromoParDevise : {};
+
+    let normalVal = mapNormal[code];
+    let promoVal = mapPromo[code];
+
+    if (normalVal === undefined || normalVal === null || normalVal === "") {
+      if (code === "KMF") normalVal = p.prix;
+      else if (code === "FCFA") normalVal = p.prixSenegal;
+      else if (isFirstCurrency) normalVal = p.prix;
+    }
+    if (promoVal === undefined || promoVal === null || promoVal === "") {
+      if (code === "KMF") promoVal = p.prixPromo;
+      else if (code === "FCFA") promoVal = p.prixPromoSenegal;
+      else if (isFirstCurrency) promoVal = p.prixPromo;
+    }
+
+    const numNormal = Number(normalVal || 0);
+    const numPromo = Number(promoVal || 0);
+    const hasPromo = Boolean((p.enPromo || numPromo > 0) && numPromo > 0 && (numNormal === 0 || numPromo < numNormal));
+    return {
+      normal: numNormal,
+      promo: hasPromo ? numPromo : null,
+      effective: hasPromo ? numPromo : numNormal
+    };
   };
 
-  const getProductPriceFCFA = (p) => {
-    const promo = Number(p.prixPromoSenegal || 0);
-    if (promo > 0) return promo; // Uniquement le prix promo Sénégal
-    return Number(p.prixSenegal || 0); // Sinon le seul prix normal Sénégal
-  };
-
-  const totalValeurComores = filteredProducts.reduce((sum, p) => {
-    return sum + (getProductPriceKMF(p) * Number(p.stock || 0));
-  }, 0);
-
-  const totalValeurSenegal = filteredProducts.reduce((sum, p) => {
-    return sum + (getProductPriceFCFA(p) * Number(p.stock || 0));
-  }, 0);
-
-  const totalUnitairesComores = filteredProducts.reduce((sum, p) => {
-    return sum + getProductPriceKMF(p);
-  }, 0);
-
-  const totalUnitairesSenegal = filteredProducts.reduce((sum, p) => {
-    return sum + getProductPriceFCFA(p);
-  }, 0);
+  const totalsByCurrency = {};
+  boutiqueCurrencies.forEach((cur, idx) => {
+    const code = cur.code;
+    const totalValeur = filteredProducts.reduce((sum, p) => {
+      const { effective } = getProductEffectivePriceForCurrency(p, code, idx === 0);
+      return sum + (effective * Number(p.stock || 0));
+    }, 0);
+    const totalUnitaire = filteredProducts.reduce((sum, p) => {
+      const { effective } = getProductEffectivePriceForCurrency(p, code, idx === 0);
+      return sum + effective;
+    }, 0);
+    totalsByCurrency[code] = { totalValeur, totalUnitaire };
+  });
 
   const paginatedProducts = filteredProducts.slice(
     (currentPage - 1) * pageSize,
@@ -940,20 +1102,27 @@ export default function AdminProduits() {
               <div style={{ width: 1, background: "var(--line)" }}></div>
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <span style={{ fontSize: 12, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Alertes Stock</span>
-                <span style={{ fontSize: 24, fontWeight: 800, color: "#B4483A" }}>{products.filter(p => p.stock <= p.seuilAlerte).length}</span>
+                <span style={{ fontSize: 24, fontWeight: 800, color: "#B4483A" }}>{filteredProducts.filter(p => Number(p.stock) <= Number(p.seuilAlerte)).length}</span>
               </div>
-              <div style={{ width: 1, background: "var(--line)" }}></div>
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <span style={{ fontSize: 12, color: "var(--forest)", textTransform: "uppercase", fontWeight: 700 }}>Total Prix Comores</span>
-                <span style={{ fontSize: 24, fontWeight: 800, color: "var(--forest-dark)" }}>{formatPrice(totalValeurComores, "KMF")}</span>
-                <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>Unitaire : {formatPrice(totalUnitairesComores, "KMF")}</span>
-              </div>
-              <div style={{ width: 1, background: "var(--line)" }}></div>
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <span style={{ fontSize: 12, color: "#D97706", textTransform: "uppercase", fontWeight: 700 }}>Total Prix Sénégal</span>
-                <span style={{ fontSize: 24, fontWeight: 800, color: "#92400E" }}>{formatPrice(totalValeurSenegal, "FCFA")}</span>
-                <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>Unitaire : {formatPrice(totalUnitairesSenegal, "FCFA")}</span>
-              </div>
+              {boutiqueCurrencies.map((cur) => {
+                const stats = totalsByCurrency[cur.code] || { totalValeur: 0, totalUnitaire: 0 };
+                return (
+                  <React.Fragment key={cur.code}>
+                    <div style={{ width: 1, background: "var(--line)" }}></div>
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <span style={{ fontSize: 12, color: cur.color || "var(--forest)", textTransform: "uppercase", fontWeight: 700 }}>
+                        Valeur Stock ({cur.shortLabel || cur.code})
+                      </span>
+                      <span style={{ fontSize: 24, fontWeight: 800, color: cur.color || "var(--forest-dark)" }}>
+                        {formatPrice(stats.totalValeur, cur.code)}
+                      </span>
+                      <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>
+                        Unitaire : {formatPrice(stats.totalUnitaire, cur.code)}
+                      </span>
+                    </div>
+                  </React.Fragment>
+                );
+              })}
             </div>
             
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -964,6 +1133,46 @@ export default function AdminProduits() {
                 value={search} 
                 onChange={(e) => setSearch(e.target.value)} 
               />
+              {isMultiBoutiqueAdmin && (
+                <select
+                  className="bs-select"
+                  style={{ width: 210, fontWeight: 700, borderColor: "var(--forest)" }}
+                  value={filterBoutiqueId}
+                  onChange={(e) => setFilterBoutiqueId(e.target.value)}
+                >
+                  <option value="">Boutique active ({boutique?.nom})</option>
+                  <option value="all">🌐 Toutes mes boutiques ({myBoutiques.length})</option>
+                  {myBoutiques.map((b) => (
+                    <option key={b.id} value={String(b.id)}>
+                      🏪 {b.nom}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <select
+                className="bs-select"
+                style={{ width: 175, fontWeight: 600 }}
+                value={filterBoutiqueDirect}
+                onChange={(e) => setFilterBoutiqueDirect(e.target.value)}
+              >
+                <option value="">Toutes les boutiques ({availableBoutiquesList.length})</option>
+                {availableBoutiquesList.map(b => (
+                  <option key={b.id} value={b.nom}>{b.nom}</option>
+                ))}
+              </select>
+
+              <select
+                className="bs-select"
+                style={{ width: 185, fontWeight: 600 }}
+                value={filterCreePar}
+                onChange={(e) => setFilterCreePar(e.target.value)}
+              >
+                <option value="">Tous les auteurs ({creatorsList.length})</option>
+                {creatorsList.map(c => (
+                  <option key={c.id} value={c.nom}>{c.nom} ({c.role})</option>
+                ))}
+              </select>
+
               <select 
                 className="bs-select" 
                 style={{ width: 170 }} 
@@ -1003,15 +1212,18 @@ export default function AdminProduits() {
           </div>
 
           <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%" }}>
-            <table className="bs-table" style={{ minWidth: 1140 }}>
+            <table className="bs-table" style={{ minWidth: 1280 }}>
             <thead>
               <tr>
                 <th>Photo</th>
                 <th>Nom du produit</th>
+                <th>Boutique</th>
+                <th>Enregistré par</th>
                 <th>Marque</th>
                 <th>Catégorie / Fournisseur</th>
-                <th>Prix Vente Comores</th>
-                <th>Prix Vente Sénégal</th>
+                {boutiqueCurrencies.map((cur) => (
+                  <th key={cur.code}>Prix Vente ({cur.code})</th>
+                ))}
                 <th>Coût d'achat (FCFA)</th>
                 <th>Stock</th>
                 <th>Visibilité</th>
@@ -1020,11 +1232,11 @@ export default function AdminProduits() {
             </thead>
             <tbody>
               {loading && (
-                <SkeletonTableRows rows={6} cols={10} />
+                <SkeletonTableRows rows={6} cols={10 + boutiqueCurrencies.length} />
               )}
               {!loading && paginatedProducts.length === 0 && (
                 <tr>
-                  <td colSpan={10} style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+                  <td colSpan={10 + boutiqueCurrencies.length} style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
                     Aucun produit ne correspond à votre recherche.
                   </td>
                 </tr>
@@ -1032,6 +1244,9 @@ export default function AdminProduits() {
               {!loading && paginatedProducts.map((p) => {
                 const supplierName = p.fournisseur ? (p.fournisseur.nom || p.fournisseur.nomCompany || p.fournisseur.nomContact) : null;
                 const marqueNom = p.marque?.nom || p.Marque?.nom;
+                const productBoutiqueNom = p.boutique?.nom || myBoutiques.find(b => Number(b.id) === Number(p.boutiqueId))?.nom || boutique?.nom || "Boutique";
+                const creatorName = p.creePar?.nom || "Admin Boutique";
+                const creatorRoleLabel = p.creePar?.role === "employe" ? "Employé" : p.creePar?.role === "super_admin" ? "Super Admin" : "Admin";
                 return (
                   <tr key={p.id}>
                     <td style={{ width: 60 }}>
@@ -1041,11 +1256,34 @@ export default function AdminProduits() {
                         style={{ width: 46, height: 46, borderRadius: 8, objectFit: "cover", border: "1px solid var(--line)" }}
                       />
                     </td>
-                    <td style={{ fontWeight: 700, color: "var(--ink)" }}>
+                    <td style={{ fontWeight: 700, color: "var(--ink)", minWidth: 180 }}>
                       <div>{p.nom}</div>
                       <div style={{ fontSize: 11.5, color: "#F59E0B", marginTop: 2, display: "flex", alignItems: "center", gap: 3 }}>
                         <Star size={11} fill="#F59E0B" color="#F59E0B" style={{ display: "inline-block" }} /> <strong>{(p.avis?.length ? (p.avis.reduce((s, a) => s + a.note, 0) / p.avis.length) : (p.noteEtoiles !== undefined && p.noteEtoiles !== null ? Number(p.noteEtoiles) : 5.0)).toFixed(1)}</strong>
                         <span style={{ color: "var(--muted)", fontWeight: 400 }}>({p.avis?.length || 0} avis)</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span style={{
+                        fontSize: 11.5, fontWeight: 700, padding: "4px 9px", borderRadius: 8,
+                        background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE",
+                        display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap"
+                      }}>
+                        <Building size={12} /> {productBoutiqueNom}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: "inline-flex", flexDirection: "column" }}>
+                        <span style={{
+                          fontSize: 11.5, fontWeight: 700, padding: "3px 8px", borderRadius: 8,
+                          background: "#F1F5F9", color: "#334155", border: "1px solid #CBD5E1",
+                          whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 5
+                        }}>
+                          <User size={11} /> {creatorName}
+                        </span>
+                        <span style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, paddingLeft: 4 }}>
+                          {creatorRoleLabel}
+                        </span>
                       </div>
                     </td>
                     <td>
@@ -1071,29 +1309,30 @@ export default function AdminProduits() {
                         </div>
                       )}
                     </td>
-                    <td>
-                      {p.prixPromo ? (
-                        <>
-                          <span style={{ textDecoration: "line-through", color: "var(--muted)", marginRight: 6, fontSize: 13 }}>{formatPrice(p.prix, "KMF")}</span>
-                          <span style={{ color: "var(--accent)", fontWeight: 700 }}>{formatPrice(p.prixPromo, "KMF")}</span>
-                        </>
-                      ) : (
-                        <span style={{ fontWeight: 700 }}>{formatPrice(p.prix, "KMF")}</span>
-                      )}
-                      {p.unite ? <span style={{ color: "var(--muted)", fontSize: 11.5 }}> / {p.unite}</span> : null}
-                    </td>
-                    <td>
-                      {p.prixPromoSenegal ? (
-                        <>
-                          <span style={{ textDecoration: "line-through", color: "var(--muted)", marginRight: 6, fontSize: 13 }}>{formatPrice(p.prixSenegal, "FCFA")}</span>
-                          <span style={{ color: "#D97706", fontWeight: 800 }}>{formatPrice(p.prixPromoSenegal, "FCFA")}</span>
-                        </>
-                      ) : p.prixSenegal ? (
-                        <span style={{ fontWeight: 800, color: "#92400E" }}>{formatPrice(p.prixSenegal, "FCFA")}</span>
-                      ) : (
-                        <span style={{ color: "var(--muted)", fontSize: 12 }}>—</span>
-                      )}
-                    </td>
+                    {boutiqueCurrencies.map((cur, idx) => {
+                      const priceData = getProductEffectivePriceForCurrency(p, cur.code, idx === 0);
+                      return (
+                        <td key={cur.code}>
+                          {priceData.promo ? (
+                            <>
+                              <span style={{ textDecoration: "line-through", color: "var(--muted)", marginRight: 6, fontSize: 13 }}>
+                                {formatPrice(priceData.normal, cur.code)}
+                              </span>
+                              <span style={{ color: cur.color || "var(--accent)", fontWeight: 800 }}>
+                                {formatPrice(priceData.promo, cur.code)}
+                              </span>
+                            </>
+                          ) : priceData.normal > 0 ? (
+                            <span style={{ fontWeight: 800, color: cur.color || "var(--ink)" }}>
+                              {formatPrice(priceData.normal, cur.code)}
+                            </span>
+                          ) : (
+                            <span style={{ color: "var(--muted)", fontSize: 12 }}>—</span>
+                          )}
+                          {idx === 0 && p.unite ? <span style={{ color: "var(--muted)", fontSize: 11.5 }}> / {p.unite}</span> : null}
+                        </td>
+                      );
+                    })}
                     <td style={{ color: "var(--muted)" }}>{formatPrice(p.coutAchat || 0, "FCFA")}</td>
                     <td className={p.stock <= p.seuilAlerte ? "bs-stock-low" : ""}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
@@ -1239,6 +1478,34 @@ export default function AdminProduits() {
                 </div>
               </div>
             </div>
+
+            {isMultiBoutiqueAdmin && (
+              <div style={{
+                background: "#EFF6FF",
+                border: "1.5px solid #93C5FD",
+                borderRadius: 12,
+                padding: "14px 16px"
+              }}>
+                <label style={{ fontWeight: 800, fontSize: 13.5, color: "#1E3A8A", display: "block", marginBottom: 6 }}>
+                  🏪 Boutique de destination du produit *
+                </label>
+                <select
+                  className="bs-select"
+                  value={form.boutiqueId || activeBoutiqueId || boutique?.id || ""}
+                  onChange={(e) => set("boutiqueId", Number(e.target.value))}
+                  style={{ background: "#fff", fontWeight: 700 }}
+                >
+                  {myBoutiques.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.nom} — Devises : {(b.devisesDisponibles || [b.devise || "KMF"]).join(" + ")}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ fontSize: 11.5, color: "#1D4ED8", marginTop: 4 }}>
+                  Ce produit sera enregistré dans la boutique sélectionnée et tracé sous votre compte ({user?.nom || "Admin"}).
+                </div>
+              </div>
+            )}
 
             <div className="bs-input-group">
               <label>Nom du produit *</label>
@@ -1600,118 +1867,124 @@ export default function AdminProduits() {
               </div>
             </div>
 
-            {/* PROMO & TARIFS PAYS SECTION (COMORES KMF & SÉNÉGAL FCFA) */}
+            {/* PROMO & TARIFS DYNAMIQUES SELON LES DEVISES AUTORISÉES PAR LE SUPER ADMIN */}
             <div style={{ background: "var(--paper)", padding: 16, borderRadius: 12, border: "1px solid var(--line)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                <input
-                  type="checkbox"
-                  id="enPromo"
-                  checked={form.enPromo}
-                  onChange={(e) => set("enPromo", e.target.checked)}
-                  style={{ width: 18, height: 18, accentColor: "var(--forest)", cursor: "pointer" }}
-                />
-                <label htmlFor="enPromo" style={{ fontWeight: 700, fontSize: 13.5, color: "var(--forest-dark)", cursor: "pointer", margin: 0 }}>
-                  Activer une Promotion sur ce produit ?
-                </label>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <input
+                    type="checkbox"
+                    id="enPromo"
+                    checked={form.enPromo}
+                    onChange={(e) => set("enPromo", e.target.checked)}
+                    style={{ width: 18, height: 18, accentColor: "var(--forest)", cursor: "pointer" }}
+                  />
+                  <label htmlFor="enPromo" style={{ fontWeight: 700, fontSize: 13.5, color: "var(--forest-dark)", cursor: "pointer", margin: 0 }}>
+                    Activer une Promotion sur ce produit ?
+                  </label>
+                </div>
+                <span style={{
+                  fontSize: 11.5, fontWeight: 800, padding: "4px 10px", borderRadius: 20,
+                  background: "#ECFDF5", color: "#065F46", border: "1px solid #A7F3D0"
+                }}>
+                  {formBoutiqueCurrencies.length === 1
+                    ? `1 Devise configurée : ${formBoutiqueCurrencies[0].code}`
+                    : `${formBoutiqueCurrencies.length} Devises configurées : ${formBoutiqueCurrencies.map(c => c.code).join(" + ")}`}
+                </span>
               </div>
 
-              {/* LIGNE 1 : TARIFS COMORES (KMF) */}
-              <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px dashed var(--line)" }}>
-                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#2563EB", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                  <span>Tarifs Comores (KMF) *</span>
-                </div>
-                <div className="bs-form-row-3">
-                  <div className="bs-input-group">
-                    <label>Prix Normal Comores (KMF) *</label>
-                    <input
-                      className="bs-input"
-                      type="number"
-                      step="1"
-                      required
-                      placeholder="ex: 6500"
-                      value={form.prix}
-                      onChange={(e) => set("prix", e.target.value)}
-                    />
-                  </div>
+              {formBoutiqueCurrencies.map((cur, idx) => {
+                const code = cur.code;
+                const isFirst = idx === 0;
+                const isLast = idx === formBoutiqueCurrencies.length - 1;
+                const currentNormal = form.prixParDevise?.[code] !== undefined
+                  ? form.prixParDevise[code]
+                  : (code === "KMF" ? form.prix : code === "FCFA" ? form.prixSenegal : (isFirst ? form.prix : ""));
+                const currentPromo = form.prixPromoParDevise?.[code] !== undefined
+                  ? form.prixPromoParDevise[code]
+                  : (code === "KMF" ? form.prixPromo : code === "FCFA" ? form.prixPromoSenegal : (isFirst ? form.prixPromo : ""));
 
-                  <div className="bs-input-group">
-                    <label>Prix Promo Comores (KMF)</label>
-                    <input
-                      className="bs-input"
-                      type="number"
-                      step="1"
-                      disabled={!form.enPromo}
-                      placeholder="ex: 5500"
-                      value={form.prixPromo}
-                      onChange={(e) => set("prixPromo", e.target.value)}
-                    />
-                  </div>
+                const handleNormalChange = (val) => {
+                  setForm(prev => {
+                    const nextMap = { ...(prev.prixParDevise || {}), [code]: val };
+                    const updates = { prixParDevise: nextMap };
+                    if (code === "KMF" || isFirst) updates.prix = val;
+                    if (code === "FCFA") updates.prixSenegal = val;
+                    return { ...prev, ...updates };
+                  });
+                };
 
-                  <div className="bs-input-group">
-                    <label>Réduction Comores</label>
-                    <div style={{
-                      height: 44, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center",
-                      padding: "0 14px", background: "#E0F2FE", borderRadius: 8, border: "1.5px solid #BAE6FD",
-                      fontWeight: 800, color: "#0369A1", fontSize: 13, textAlign: "center"
-                    }}>
-                      {form.enPromo && form.prixPromo && Number(form.prix) > 0 ? (
-                        `-${Math.round(((Number(form.prix) - Number(form.prixPromo)) / Number(form.prix)) * 100)} % de remise`
-                      ) : (
-                        "Aucune promo active"
+                const handlePromoChange = (val) => {
+                  setForm(prev => {
+                    const nextMap = { ...(prev.prixPromoParDevise || {}), [code]: val };
+                    const updates = { prixPromoParDevise: nextMap };
+                    if (code === "KMF" || isFirst) updates.prixPromo = val;
+                    if (code === "FCFA") updates.prixPromoSenegal = val;
+                    return { ...prev, ...updates };
+                  });
+                };
+
+                return (
+                  <div
+                    key={code}
+                    style={{
+                      marginBottom: isLast ? 0 : 14,
+                      paddingBottom: isLast ? 0 : 14,
+                      borderBottom: isLast ? "none" : "1px dashed var(--line)"
+                    }}
+                  >
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: cur.color || "#2563EB", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>Tarifs {cur.label} {isFirst ? "*" : ""}</span>
+                      {!isFirst && (
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)" }}>
+                          (Affiché lorsque la devise {code} est sélectionnée)
+                        </span>
                       )}
                     </div>
-                  </div>
-                </div>
-              </div>
+                    <div className="bs-form-row-3">
+                      <div className="bs-input-group">
+                        <label>Prix Vente ({code}) {isFirst ? "*" : ""}</label>
+                        <input
+                          className="bs-input"
+                          type="number"
+                          step="any"
+                          required={isFirst}
+                          placeholder={`ex: ${code === "EUR" || code === "USD" ? "29.90" : "6500"}`}
+                          value={currentNormal}
+                          onChange={(e) => handleNormalChange(e.target.value)}
+                        />
+                      </div>
 
-              {/* LIGNE 2 : TARIFS SÉNÉGAL (FCFA) */}
-              <div>
-                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#15803D", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                  <span>Tarifs Sénégal (FCFA)</span>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)" }}>(S'affiche si le client choisit Sénégal)</span>
-                </div>
-                <div className="bs-form-row-3">
-                  <div className="bs-input-group">
-                    <label>Prix Vente Sénégal (FCFA)</label>
-                    <input
-                      className="bs-input"
-                      type="number"
-                      step="1"
-                      placeholder="ex: 8000"
-                      value={form.prixSenegal}
-                      onChange={(e) => set("prixSenegal", e.target.value)}
-                    />
-                  </div>
+                      <div className="bs-input-group">
+                        <label>Prix Promo ({code})</label>
+                        <input
+                          className="bs-input"
+                          type="number"
+                          step="any"
+                          disabled={!form.enPromo}
+                          placeholder={`ex: ${code === "EUR" || code === "USD" ? "24.90" : "5500"}`}
+                          value={currentPromo}
+                          onChange={(e) => handlePromoChange(e.target.value)}
+                        />
+                      </div>
 
-                  <div className="bs-input-group">
-                    <label>Prix Promo Sénégal (FCFA)</label>
-                    <input
-                      className="bs-input"
-                      type="number"
-                      step="1"
-                      disabled={!form.enPromo}
-                      placeholder="ex: 7000"
-                      value={form.prixPromoSenegal}
-                      onChange={(e) => set("prixPromoSenegal", e.target.value)}
-                    />
-                  </div>
-
-                  <div className="bs-input-group">
-                    <label>Réduction Sénégal</label>
-                    <div style={{
-                      height: 44, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center",
-                      padding: "0 14px", background: "#DCFCE7", borderRadius: 8, border: "1.5px solid #86EFAC",
-                      fontWeight: 800, color: "#166534", fontSize: 13, textAlign: "center"
-                    }}>
-                      {form.enPromo && form.prixPromoSenegal && Number(form.prixSenegal) > 0 ? (
-                        `-${Math.round(((Number(form.prixSenegal) - Number(form.prixPromoSenegal)) / Number(form.prixSenegal)) * 100)} % de remise`
-                      ) : (
-                        "Aucune promo active"
-                      )}
+                      <div className="bs-input-group">
+                        <label>Réduction ({code})</label>
+                        <div style={{
+                          height: 44, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center",
+                          padding: "0 14px", background: cur.bg || "#E0F2FE", borderRadius: 8, border: `1.5px solid ${cur.border || "#BAE6FD"}`,
+                          fontWeight: 800, color: cur.color || "#0369A1", fontSize: 13, textAlign: "center"
+                        }}>
+                          {form.enPromo && currentPromo && Number(currentNormal) > 0 && Number(currentPromo) < Number(currentNormal) ? (
+                            `-${Math.round(((Number(currentNormal) - Number(currentPromo)) / Number(currentNormal)) * 100)} % de remise`
+                          ) : (
+                            "Aucune promo active"
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
+                );
+              })}
             </div>
 
             <div className="bs-form-row-2">

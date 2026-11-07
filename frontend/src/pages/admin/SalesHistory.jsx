@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { 
   Search, FileText, Download, Printer, Eye, Calendar, DollarSign, 
   CreditCard, Smartphone, CheckCircle, User, ShoppingBag, History, X, Building,
-  Pencil, Trash2, AlertTriangle
+  Pencil, Trash2, AlertTriangle, MessageCircle, Clock, AlertCircle
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import api from "../../api";
@@ -12,7 +12,7 @@ import TablePagination from "../../components/TablePagination.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { subscribeRealtime } from "../../utils/realtime.js";
 import ReceiptModal from "../../components/ReceiptModal.jsx";
-import { formatPrice, formatPrice as fcfa } from "../../utils/currency.js";
+import { formatPrice, formatPrice as fcfa, getBoutiqueCurrencies } from "../../utils/currency.js";
 import { getOfflineSales, saveCache, getCache } from "../../utils/offlineStorage.js";
 
 const MONTHS = [
@@ -32,8 +32,11 @@ const MONTHS = [
 
 export default function SalesHistory() {
   const navigate = useNavigate();
-  const { user, boutique } = useAuth();
+  const { user, boutique, activeBoutiqueId } = useAuth();
   const storeName = boutique?.nom || "Marché Vert";
+  const boutiqueCurrencies = getBoutiqueCurrencies(boutique);
+  const isSingleCurrency = boutiqueCurrencies.length === 1;
+  const primaryCurrencyCode = boutiqueCurrencies[0]?.code || boutique?.devise || "KMF";
   const [orders, setOrders] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +53,7 @@ export default function SalesHistory() {
   const [filterPays, setFilterPays] = useState("tous"); // "tous" | "KM" | "SN"
   const [filterType, setFilterType] = useState("tous"); // "tous" | "vente_directe" | "commande_enligne"
   const [filterPaiement, setFilterPaiement] = useState("tous"); // "tous" | "cash" | "mvola" | "wero" | "carte"
+  const [filterStatutPaiement, setFilterStatutPaiement] = useState("tous"); // "tous" | "dettes" | "paye" | "partiel" | "non_paye"
   const [filterEmploye, setFilterEmploye] = useState("tous");
   const [filterAnnee, setFilterAnnee] = useState(new Date().getFullYear().toString());
   const [filterMois, setFilterMois] = useState("");
@@ -59,6 +63,10 @@ export default function SalesHistory() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [editingOrder, setEditingOrder] = useState(null);
   const [orderToDelete, setOrderToDelete] = useState(null);
+  const [whatsappModalData, setWhatsappModalData] = useState(null);
+  const [reglerModalOrder, setReglerModalOrder] = useState(null);
+  const [reglerMontant, setReglerMontant] = useState("");
+  const [reglerMoyen, setReglerMoyen] = useState("cash");
   const [submitting, setSubmitting] = useState(false);
 
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
@@ -118,6 +126,38 @@ export default function SalesHistory() {
     }
   }
 
+  async function handleConfirmReglement() {
+    if (!reglerModalOrder) return;
+    const total = Number(reglerModalOrder.total || 0);
+    const dejaPaye = Number(reglerModalOrder.montantPaye !== undefined && reglerModalOrder.montantPaye !== null ? reglerModalOrder.montantPaye : 0);
+    const montantPercu = Number(reglerMontant) || 0;
+    if (montantPercu <= 0) {
+      toast.error("Veuillez saisir un montant valide à encaisser.");
+      return;
+    }
+    const nouveauPaye = dejaPaye + montantPercu;
+    const nouveauRestant = Math.max(0, total - nouveauPaye);
+    const nouveauStatutPaiement = nouveauRestant <= 0 ? "paye" : "partiel";
+
+    setSubmitting(true);
+    try {
+      await api.put(`/admin/orders/${reglerModalOrder.id}`, {
+        montantPaye: nouveauPaye,
+        montantRestant: nouveauRestant,
+        statutPaiement: nouveauStatutPaiement,
+        moyenPaiement: reglerMoyen
+      });
+      toast.success(nouveauRestant <= 0 ? "Paiement soldé avec succès !" : `Acompte enregistré. Reste à payer : ${fcfa(nouveauRestant, reglerModalOrder.devise)}`);
+      setReglerModalOrder(null);
+      setReglerMontant("");
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erreur lors de l'enregistrement du paiement.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleSaveEdit(e) {
     e.preventDefault();
     if (!editingOrder) return;
@@ -126,6 +166,10 @@ export default function SalesHistory() {
       await api.put(`/admin/orders/${editingOrder.id}`, {
         moyenPaiement: editingOrder.moyenPaiement,
         statut: editingOrder.statut,
+        statutPaiement: editingOrder.statutPaiement,
+        montantPaye: editingOrder.montantPaye !== undefined && editingOrder.montantPaye !== "" ? Number(editingOrder.montantPaye) : null,
+        montantRestant: editingOrder.montantRestant !== undefined && editingOrder.montantRestant !== "" ? Number(editingOrder.montantRestant) : null,
+        dateEcheance: editingOrder.dateEcheance || null,
         clientNom: editingOrder.clientNom,
         clientTelephone: editingOrder.clientTelephone,
         notes: editingOrder.notes
@@ -152,16 +196,29 @@ export default function SalesHistory() {
     const handleSynced = () => {
       loadData();
     };
+    const onBoutiqueSwitch = () => {
+      loadData();
+    };
     window.addEventListener("offline_synced", handleSynced);
+    window.addEventListener("boutique_switched", onBoutiqueSwitch);
 
     return () => {
       if (typeof unsub === "function") unsub();
       window.removeEventListener("offline_synced", handleSynced);
+      window.removeEventListener("boutique_switched", onBoutiqueSwitch);
     };
-  }, []);
+  }, [activeBoutiqueId]);
 
-  // Filter logic
+  const normalizeSaleCurrency = (o) => {
+    const raw = o.devise === "XOF" ? "FCFA" : String(o.devise || primaryCurrencyCode).toUpperCase();
+    if (boutiqueCurrencies.some(c => c.code === raw)) return raw;
+    return primaryCurrencyCode;
+  };
+
+  // Filter logic (Seules les ventes confirmées/effectuées comptent dans l'historique des ventes et le CA)
   const filteredOrders = orders.filter((o) => {
+    if (["annulee", "en_attente", "en_attente_paiement"].includes(o.statut)) return false;
+
     // Type detection
     const isRecharge = o.typeVente === "recharge_mobile" || o.notes?.includes("recharge_mobile") || o.items?.some(it => it.product?.nom?.toLowerCase().includes("recharge"));
     const isPOS = !isRecharge && (o.typeVente === "vente_directe" || o.adresseLivraison?.includes("Achat direct") || o.modeLivraison === "retrait");
@@ -173,9 +230,11 @@ export default function SalesHistory() {
     if (filterType !== "tous" && saleType !== filterType) return false;
 
     // Filter Pays / Devise
-    const orderDevise = o.devise || "KMF";
-    if (filterPays === "KM" && orderDevise === "FCFA") return false;
-    if (filterPays === "SN" && orderDevise !== "FCFA") return false;
+    const orderDevise = normalizeSaleCurrency(o);
+    if (!isSingleCurrency && filterPays !== "tous") {
+      const normalizedFilter = filterPays === "KM" ? "KMF" : filterPays === "SN" ? "FCFA" : filterPays;
+      if (orderDevise !== normalizedFilter) return false;
+    }
 
     // Paiement filter
     if (filterPaiement !== "tous") {
@@ -186,6 +245,20 @@ export default function SalesHistory() {
       if (filterPaiement === "orange_money" && p !== "orange_money" && p !== "orange" && p !== "om") return false;
       if (filterPaiement === "wero" && p !== "wero" && p !== "holam") return false;
       if (filterPaiement === "carte" && p !== "carte") return false;
+    }
+
+    // Statut Paiement (Dettes / Impayés / Partiel / Payé)
+    const restant = Number(o.montantRestant || 0);
+    const paye = Number(o.montantPaye !== undefined && o.montantPaye !== null ? o.montantPaye : (restant === 0 ? Number(o.total || 0) : 0));
+    const hasDebt = restant > 0 && o.statutPaiement !== "paye";
+    const orderStatutPaiement = hasDebt ? (paye > 0 ? "partiel" : "non_paye") : "paye";
+
+    if (filterStatutPaiement !== "tous") {
+      if (filterStatutPaiement === "dettes") {
+        if (!hasDebt) return false;
+      } else if (orderStatutPaiement !== filterStatutPaiement) {
+        return false;
+      }
     }
 
     // Employe filter
@@ -228,23 +301,22 @@ export default function SalesHistory() {
     return true;
   });
 
-  // Calculate totals for KPI cards
+  // Calculate totals for KPI cards dynamically per configured currency
   const totalVentesCount = filteredOrders.length;
-
-  const totalCash = filteredOrders
-    .filter(o => o.moyenPaiement === "cash" || o.moyenPaiement === "especes")
-    .reduce((sum, o) => sum + Number(o.total || 0), 0);
-
-  const totalComores = filteredOrders
-    .filter(o => !o.devise || o.devise === "KMF")
-    .reduce((sum, o) => sum + Number(o.total || 0), 0);
-
-  const totalSenegal = filteredOrders
-    .filter(o => o.devise === "FCFA")
-    .reduce((sum, o) => sum + Number(o.total || 0), 0);
+  const salesTotalsByCurrency = {};
+  const cashTotalsByCurrency = {};
+  boutiqueCurrencies.forEach((cur) => {
+    const code = cur.code;
+    salesTotalsByCurrency[code] = filteredOrders
+      .filter(o => normalizeSaleCurrency(o) === code)
+      .reduce((sum, o) => sum + Number(o.total || 0), 0);
+    cashTotalsByCurrency[code] = filteredOrders
+      .filter(o => normalizeSaleCurrency(o) === code && (o.moyenPaiement === "cash" || o.moyenPaiement === "especes"))
+      .reduce((sum, o) => sum + Number(o.total || 0), 0);
+  });
 
   // Reset page
-  useEffect(() => { setCurrentPage(1); }, [search, filterPays, filterType, filterPaiement, filterEmploye, filterAnnee, filterMois, isTodayOnly]);
+  useEffect(() => { setCurrentPage(1); }, [search, filterPays, filterType, filterPaiement, filterStatutPaiement, filterEmploye, filterAnnee, filterMois, isTodayOnly]);
 
   const totalItems = filteredOrders.length;
   const paginatedOrders = filteredOrders.slice(
@@ -335,17 +407,20 @@ export default function SalesHistory() {
             />
           </div>
 
-          {/* FILTER: PAYS (COMORES VS SÉNÉGAL) */}
-          <select
-            className="bs-select"
-            style={{ flex: 1, minWidth: 160, height: 40, fontWeight: 700 }}
-            value={filterPays}
-            onChange={(e) => setFilterPays(e.target.value)}
-          >
-            <option value="tous">Tous les pays</option>
-            <option value="KM">Comores (KMF)</option>
-            <option value="SN">Sénégal (FCFA)</option>
-          </select>
+          {/* FILTER: DEVISE (AFFICHÉ UNIQUEMENT SI 2+ DEVISES) */}
+          {!isSingleCurrency && (
+            <select
+              className="bs-select"
+              style={{ flex: 1, minWidth: 160, height: 40, fontWeight: 700 }}
+              value={filterPays}
+              onChange={(e) => setFilterPays(e.target.value)}
+            >
+              <option value="tous">Toutes les devises</option>
+              {boutiqueCurrencies.map(cur => (
+                <option key={cur.code} value={cur.code}>{cur.label}</option>
+              ))}
+            </select>
+          )}
 
           {/* FILTER: TYPE VENTE */}
           <select
@@ -367,13 +442,33 @@ export default function SalesHistory() {
             value={filterPaiement}
             onChange={(e) => setFilterPaiement(e.target.value)}
           >
-            <option value="tous">Tous les paiements</option>
+            <option value="tous">Tous les modes</option>
             <option value="cash">Espèces / Cash</option>
             <option value="mvola">MVola</option>
             <option value="wave">Wave</option>
             <option value="orange_money">Orange Money</option>
             <option value="wero">Wero / Holam</option>
             <option value="carte">Carte Bancaire</option>
+          </select>
+
+          {/* FILTER: STATUT PAIEMENT (DETTES & PARTIEL) */}
+          <select
+            className="bs-select"
+            style={{
+              flex: 1, minWidth: 165, height: 40,
+              fontWeight: filterStatutPaiement === "dettes" ? 800 : 500,
+              borderColor: filterStatutPaiement === "dettes" ? "#DC2626" : undefined,
+              color: filterStatutPaiement === "dettes" ? "#991B1B" : undefined,
+              background: filterStatutPaiement === "dettes" ? "#FEF2F2" : undefined
+            }}
+            value={filterStatutPaiement}
+            onChange={(e) => setFilterStatutPaiement(e.target.value)}
+          >
+            <option value="tous">Tous les règlements</option>
+            <option value="dettes">Dettes (Non payé & Partiel)</option>
+            <option value="paye">Payé intégralement</option>
+            <option value="partiel">Partiel (Acompte restant)</option>
+            <option value="non_paye">Non payé (Dette totale)</option>
           </select>
 
           {/* FILTER: EMPLOYÉ */}
@@ -461,41 +556,55 @@ export default function SalesHistory() {
           </div>
         </div>
 
-        {/* VENTES COMORES */}
-        <div className="bs-panel" style={{ padding: 16, background: "#EBF7F0", border: "1.5px solid #A7F3D0", borderRadius: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#166534", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
-            <span style={{ background: "var(--forest)", color: "#fff", padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 900 }}>KM</span> VENTES COMORES
+        {/* VENTES PAR DEVISE CONFIGURÉE */}
+        {boutiqueCurrencies.map((cur) => (
+          <div
+            key={cur.code}
+            className="bs-panel"
+            style={{ padding: 16, background: cur.bg || "#EBF7F0", border: `1.5px solid ${cur.border || "#A7F3D0"}`, borderRadius: 14 }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: cur.color || "#166534", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
+              <span style={{ background: cur.color || "var(--forest)", color: "#fff", padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 900 }}>
+                {cur.badge || cur.code}
+              </span>
+              VENTES {cur.shortLabel || cur.code}
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: cur.color || "var(--forest-dark)", marginTop: 6 }}>
+              {formatPrice(salesTotalsByCurrency[cur.code] || 0, cur.code)}
+            </div>
           </div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: "var(--forest-dark)", marginTop: 6 }}>
-            {formatPrice(totalComores, "KMF")}
-          </div>
-        </div>
+        ))}
 
-        {/* VENTES SÉNÉGAL */}
-        <div className="bs-panel" style={{ padding: 16, background: "#FEF3C7", border: "1.5px solid #FDE68A", borderRadius: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#92400E", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
-            <span style={{ background: "#D97706", color: "#fff", padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 900 }}>SN</span> VENTES SÉNÉGAL
-          </div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: "#92400E", marginTop: 6 }}>
-            {formatPrice(totalSenegal, "FCFA")}
-          </div>
-        </div>
-
-        {/* TOTAL CASH */}
+        {/* TOTAL CASH PAR DEVISE */}
         <div className="bs-panel" style={{ padding: 16, background: "#F0FDF4", border: "1.5px solid #BBF7D0", borderRadius: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#166534", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
             <DollarSign size={15} /> TOTAL CASH ENCAISSÉ
           </div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: "#15803D", marginTop: 6 }}>
-            {formatPrice(totalCash, boutique?.devise || "KMF")}
-          </div>
+          {isSingleCurrency ? (
+            <div style={{ fontSize: 24, fontWeight: 900, color: "#15803D", marginTop: 6 }}>
+              {formatPrice(cashTotalsByCurrency[primaryCurrencyCode] || 0, primaryCurrencyCode)}
+            </div>
+          ) : filterPays !== "tous" && cashTotalsByCurrency[filterPays] !== undefined ? (
+            <div style={{ fontSize: 24, fontWeight: 900, color: "#15803D", marginTop: 6 }}>
+              {formatPrice(cashTotalsByCurrency[filterPays] || 0, filterPays)}
+            </div>
+          ) : (
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#15803D", marginTop: 6 }}>
+              {boutiqueCurrencies.map((cur, idx) => (
+                <React.Fragment key={cur.code}>
+                  {idx > 0 && <span style={{ color: "var(--muted)", fontWeight: 600 }}> / </span>}
+                  {formatPrice(cashTotalsByCurrency[cur.code] || 0, cur.code)}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       {/* SALES HISTORY DATA TABLE */}
       <div className="bs-panel" style={{ padding: 0 }}>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%" }}>
-          <table className="bs-table" style={{ minWidth: 800 }}>
+          <table className="bs-table" style={{ minWidth: 1000 }}>
           <thead>
             <tr>
               <th>DATE</th>
@@ -503,6 +612,8 @@ export default function SalesHistory() {
               <th>PRODUIT(S)</th>
               <th>TYPE</th>
               <th>EMPLOYÉ</th>
+              <th>STATUT PAIEMENT</th>
+              <th>ÉCHÉANCE</th>
               <th>PAIEMENT</th>
               <th>MONTANT</th>
               <th>ACTIONS</th>
@@ -510,11 +621,11 @@ export default function SalesHistory() {
           </thead>
           <tbody>
             {loading && (
-              <SkeletonTableRows rows={6} cols={8} />
+              <SkeletonTableRows rows={6} cols={10} />
             )}
             {!loading && paginatedOrders.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+                <td colSpan={10} style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
                   Aucune vente enregistrée pour les filtres sélectionnés.
                 </td>
               </tr>
@@ -536,6 +647,12 @@ export default function SalesHistory() {
               const isWave = o.moyenPaiement === "wave";
               const isOrange = o.moyenPaiement === "orange_money" || o.moyenPaiement === "orange" || o.moyenPaiement === "om";
               const isWero = o.moyenPaiement === "wero" || o.moyenPaiement === "holam";
+
+              const totalNum = Number(o.total || 0);
+              const restant = Number(o.montantRestant !== undefined && o.montantRestant !== null ? o.montantRestant : 0);
+              const paye = Number(o.montantPaye !== undefined && o.montantPaye !== null ? o.montantPaye : (restant === 0 ? totalNum : 0));
+              const hasDebt = restant > 0 && o.statutPaiement !== "paye";
+              const orderStatutP = hasDebt ? (paye > 0 ? "partiel" : "non_paye") : "paye";
 
               return (
                 <tr key={o.id}>
@@ -585,6 +702,70 @@ export default function SalesHistory() {
                     </span>
                   </td>
                   <td>
+                    {orderStatutP === "paye" ? (
+                      <span style={{
+                        padding: "4px 10px", borderRadius: 12, fontSize: 11.5, fontWeight: 800,
+                        background: "#DCFCE7", color: "#166534", border: "1px solid #86EFAC",
+                        display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap"
+                      }}>
+                        <CheckCircle size={12} /> Payé
+                      </span>
+                    ) : orderStatutP === "partiel" ? (
+                      <div style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
+                        <span style={{
+                          padding: "3px 8px", borderRadius: 10, fontSize: 11, fontWeight: 800,
+                          background: "#FEF3C7", color: "#B45309", border: "1px solid #FDE68A",
+                          display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap"
+                        }}>
+                          <Clock size={11} /> Partiel
+                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#DC2626", whiteSpace: "nowrap" }}>
+                          Reste: {fcfa(restant, o.devise || "KMF")}
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
+                        <span style={{
+                          padding: "3px 8px", borderRadius: 10, fontSize: 11, fontWeight: 800,
+                          background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FECACA",
+                          display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap"
+                        }}>
+                          <AlertCircle size={11} /> Non payé
+                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#DC2626", whiteSpace: "nowrap" }}>
+                          Dû: {fcfa(restant || o.total, o.devise || "KMF")}
+                        </span>
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {o.dateEcheance ? (
+                      (() => {
+                        const echDate = new Date(o.dateEcheance);
+                        const isOverdue = hasDebt && echDate < new Date().setHours(0,0,0,0);
+                        return (
+                          <div style={{ display: "inline-flex", flexDirection: "column" }}>
+                            <span style={{
+                              fontSize: 12, fontWeight: 700,
+                              color: isOverdue ? "#DC2626" : "var(--ink)",
+                              display: "inline-flex", alignItems: "center", gap: 4
+                            }}>
+                              <Calendar size={12} color={isOverdue ? "#DC2626" : "var(--muted)"} />
+                              {echDate.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
+                            </span>
+                            {isOverdue && (
+                              <span style={{ fontSize: 10, fontWeight: 800, color: "#DC2626", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                <AlertTriangle size={10} /> En retard
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <span style={{ color: "var(--muted)", fontSize: 13 }}>—</span>
+                    )}
+                  </td>
+                  <td>
                     <span style={{
                       padding: "4px 10px", borderRadius: 12, fontSize: 11.5, fontWeight: 800,
                       background: isCash ? "#FEF3C7" : isMvola ? "#DCFCE7" : isWave ? "#E0F2FE" : isOrange ? "#FFEDD5" : isWero ? "#FEF9C3" : "#F3E8FF",
@@ -597,7 +778,15 @@ export default function SalesHistory() {
                     <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--forest-dark)" }}>
                       {fcfa(o.total, o.devise || "KMF")}
                     </div>
-                    <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: (o.devise === "FCFA" ? "#FEF3C7" : "#EFF6FF"), color: (o.devise === "FCFA" ? "#B45309" : "#1D4ED8") }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: hasDebt ? "#B45309" : "#166534", marginTop: 2 }}>
+                      Reçu : {fcfa(paye, o.devise || "KMF")}
+                    </div>
+                    {hasDebt && (
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "#DC2626" }}>
+                        Reste dû : {fcfa(restant, o.devise || "KMF")}
+                      </div>
+                    )}
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: (o.devise === "FCFA" ? "#FEF3C7" : "#EFF6FF"), color: (o.devise === "FCFA" ? "#B45309" : "#1D4ED8"), display: "inline-block", marginTop: 3 }}>
                       {o.devise === "FCFA" ? "Sénégal" : "Comores"}
                     </span>
                   </td>
@@ -610,6 +799,40 @@ export default function SalesHistory() {
                       >
                         <Eye size={16} />
                       </button>
+                      {hasDebt && (
+                        <>
+                          <button
+                            className="bs-icon-btn"
+                            title="Régler / Encaisser le solde restant"
+                            style={{ color: "#166534", background: "#DCFCE7", border: "1px solid #86EFAC" }}
+                            onClick={() => {
+                              setReglerModalOrder(o);
+                              setReglerMontant(String(restant));
+                              setReglerMoyen(o.moyenPaiement || "cash");
+                            }}
+                          >
+                            <CreditCard size={15} />
+                          </button>
+                          <button
+                            className="bs-icon-btn"
+                            title="Envoyer un rappel de paiement par WhatsApp"
+                            style={{ color: "#16A34A", background: "#DCFCE7" }}
+                            onClick={() => {
+                              const clientNom = o.client?.nom || "Client";
+                              const restantStr = fcfa(restant, o.devise || "KMF");
+                              const echeanceStr = o.dateEcheance ? new Date(o.dateEcheance).toLocaleDateString("fr-FR") : "convenue";
+                              const defaultMsg = `Bonjour ${clientNom},\n\nNous vous contactons de la part de ${storeName}. Il reste un solde de ${restantStr} à régler pour votre achat (#COM-B${String(o.id).padStart(3, "0")}), avec une date d'échéance au ${echeanceStr}.\n\nMerci de bien vouloir passer en boutique ou nous contacter pour finaliser votre règlement. Cordialement.`;
+                              setWhatsappModalData({
+                                order: o,
+                                phone: o.client?.telephone || "",
+                                message: defaultMsg
+                              });
+                            }}
+                          >
+                            <MessageCircle size={15} />
+                          </button>
+                        </>
+                      )}
                       {isAdmin && (
                         <>
                           <button
@@ -704,11 +927,16 @@ export default function SalesHistory() {
                   Téléphone du client :
                 </label>
                 <input
-                  type="text"
+                  type="tel"
                   className="bs-input"
-                  value={editingOrder.clientTelephone}
-                  onChange={(e) => setEditingOrder({ ...editingOrder, clientTelephone: e.target.value })}
-                  placeholder="ex: +269 ... ou +221 ..."
+                  value={editingOrder.clientTelephone || ""}
+                  onChange={(e) => setEditingOrder({ ...editingOrder, clientTelephone: e.target.value.replace(/[^0-9+ ]/g, "") })}
+                  onKeyDown={(e) => {
+                    if (!/[0-9+ ]/.test(e.key) && !["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Enter"].includes(e.key) && !e.ctrlKey && !e.metaKey) {
+                      e.preventDefault();
+                    }
+                  }}
+                  placeholder="ex: 2693222445 ou 221..."
                   style={{ width: "100%", height: 38, fontSize: 13 }}
                 />
               </div>
@@ -731,6 +959,53 @@ export default function SalesHistory() {
                   <option value="carte">Carte Bancaire</option>
                 </select>
               </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5 }}>
+                  Statut du règlement / Paiement :
+                </label>
+                <select
+                  className="bs-select"
+                  value={editingOrder.statutPaiement || (Number(editingOrder.montantRestant || 0) > 0 ? "partiel" : "paye")}
+                  onChange={(e) => setEditingOrder({ ...editingOrder, statutPaiement: e.target.value })}
+                  style={{ width: "100%", height: 38, fontSize: 13 }}
+                >
+                  <option value="paye">Payé intégralement</option>
+                  <option value="partiel">Paiement partiel (Acompte)</option>
+                  <option value="non_paye">Non payé (Dette totale)</option>
+                </select>
+              </div>
+
+              {(editingOrder.statutPaiement === "partiel" || editingOrder.statutPaiement === "non_paye" || Number(editingOrder.montantRestant || 0) > 0) && (
+                <div style={{ background: "#FEF2F2", padding: 12, borderRadius: 10, border: "1px solid #FECACA", display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#991B1B", marginBottom: 4 }}>
+                      Reste à payer (Dette) :
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="bs-input"
+                      value={editingOrder.montantRestant ?? ""}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, montantRestant: e.target.value })}
+                      placeholder="Montant restant à régler"
+                      style={{ width: "100%", height: 36, fontSize: 13, borderColor: "#F87171" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#991B1B", marginBottom: 4 }}>
+                      📅 Date d'échéance :
+                    </label>
+                    <input
+                      type="date"
+                      className="bs-input"
+                      value={editingOrder.dateEcheance ? editingOrder.dateEcheance.substring(0, 10) : ""}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, dateEcheance: e.target.value })}
+                      style={{ width: "100%", height: 36, fontSize: 13, borderColor: "#F87171" }}
+                    />
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5 }}>
@@ -839,6 +1114,230 @@ export default function SalesHistory() {
               >
                 {submitting ? "Suppression..." : "Confirmer la suppression"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL RELANCE WHATSAPP DETTE CLIENT */}
+      {whatsappModalData && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 10000,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 16
+        }}>
+          <div style={{
+            background: "#fff", borderRadius: 16, width: "100%", maxWidth: 500,
+            boxShadow: "0 20px 50px rgba(0,0,0,0.25)", overflow: "hidden"
+          }}>
+            <div style={{
+              padding: "16px 20px", borderBottom: "1px solid var(--line)", background: "#F0FDF4",
+              display: "flex", alignItems: "center", justifyContent: "space-between"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ background: "#22C55E", color: "#fff", padding: 6, borderRadius: 8, display: "flex" }}>
+                  <MessageCircle size={18} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: "#166534" }}>
+                    Rappel de paiement WhatsApp
+                  </div>
+                  <div style={{ fontSize: 12, color: "#15803D" }}>
+                    Vente #COM-B{String(whatsappModalData.order?.id).padStart(3, "0")} · Reste dû : {fcfa(whatsappModalData.order?.montantRestant || whatsappModalData.order?.total, whatsappModalData.order?.devise || "KMF")}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWhatsappModalData(null)}
+                style={{ border: "none", background: "none", cursor: "pointer", color: "var(--muted)" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5 }}>
+                  Numéro de téléphone WhatsApp du client :
+                </label>
+                <input
+                  type="tel"
+                  className="bs-input"
+                  value={whatsappModalData.phone}
+                  onChange={(e) => setWhatsappModalData({ ...whatsappModalData, phone: e.target.value.replace(/[^0-9+ ]/g, "") })}
+                  onKeyDown={(e) => {
+                    if (!/[0-9+ ]/.test(e.key) && !["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Enter"].includes(e.key) && !e.ctrlKey && !e.metaKey) {
+                      e.preventDefault();
+                    }
+                  }}
+                  placeholder="ex: 2693222445 ou 221..."
+                  style={{ width: "100%", height: 38, fontSize: 13, fontWeight: 700 }}
+                />
+              </div>
+
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                  <label style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)" }}>
+                    Message de relance (Personnalisable) :
+                  </label>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>Vous pouvez modifier le texte avant d'envoyer</span>
+                </div>
+                <textarea
+                  className="bs-input"
+                  rows={6}
+                  value={whatsappModalData.message}
+                  onChange={(e) => setWhatsappModalData({ ...whatsappModalData, message: e.target.value })}
+                  style={{ width: "100%", padding: 10, fontSize: 13, lineHeight: "1.5", resize: "vertical" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => setWhatsappModalData(null)}
+                  className="bs-btn-secondary"
+                  style={{ padding: "8px 16px", fontSize: 13 }}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const clean = whatsappModalData.phone.replace(/[^0-9]/g, "");
+                    if (!clean) {
+                      toast.error("Veuillez renseigner un numéro de téléphone valide.");
+                      return;
+                    }
+                    const url = `https://wa.me/${clean}?text=${encodeURIComponent(whatsappModalData.message)}`;
+                    window.open(url, "_blank");
+                    setWhatsappModalData(null);
+                    toast.success("Redirection vers WhatsApp...");
+                  }}
+                  style={{
+                    background: "#22C55E", color: "#fff", border: "none", borderRadius: 8,
+                    padding: "8px 18px", fontSize: 13, fontWeight: 800, cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: 6
+                  }}
+                >
+                  <MessageCircle size={16} /> Envoyer via WhatsApp
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL REGLER / ENCAISSER LE PAIEMENT D'UNE DETTE */}
+      {reglerModalOrder && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 10001,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 16
+        }}>
+          <div style={{
+            background: "#fff", borderRadius: 16, width: "100%", maxWidth: 460,
+            boxShadow: "0 20px 50px rgba(0,0,0,0.25)", overflow: "hidden"
+          }}>
+            <div style={{
+              padding: "16px 20px", borderBottom: "1px solid var(--line)", background: "#F0FDF4",
+              display: "flex", alignItems: "center", justifyContent: "space-between"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ background: "#16A34A", color: "#fff", padding: 6, borderRadius: 8, display: "flex" }}>
+                  <CreditCard size={18} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: "#166534" }}>
+                    Régler le paiement de la vente
+                  </div>
+                  <div style={{ fontSize: 12, color: "#15803D" }}>
+                    #COM-B{String(reglerModalOrder.id).padStart(3, "0")} · Client : {reglerModalOrder.client?.nom || "Client comptoir"}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReglerModalOrder(null)}
+                style={{ border: "none", background: "none", cursor: "pointer", color: "var(--muted)" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ background: "#F8FAFC", padding: 12, borderRadius: 10, border: "1px solid #E2E8F0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div>
+                  <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Total Vente</span>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: "var(--ink)" }}>{fcfa(reglerModalOrder.total, reglerModalOrder.devise)}</div>
+                </div>
+                <div>
+                  <span style={{ fontSize: 11, color: "#DC2626", textTransform: "uppercase", fontWeight: 700 }}>Reste dû actuel</span>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: "#DC2626" }}>{fcfa(reglerModalOrder.montantRestant || reglerModalOrder.total, reglerModalOrder.devise)}</div>
+                </div>
+              </div>
+
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <label style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)" }}>
+                    Montant perçu maintenant ({reglerModalOrder.devise || "KMF"}) :
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setReglerMontant(String(Number(reglerModalOrder.montantRestant || reglerModalOrder.total)))}
+                    style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "#DCFCE7", color: "#166534", border: "1px solid #86EFAC", cursor: "pointer" }}
+                  >
+                    Tout solder
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  max={Number(reglerModalOrder.montantRestant || reglerModalOrder.total)}
+                  className="bs-input"
+                  value={reglerMontant}
+                  onChange={(e) => setReglerMontant(e.target.value)}
+                  placeholder="0"
+                  style={{ width: "100%", height: 42, fontSize: 16, fontWeight: 800 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 6 }}>
+                  Moyen de paiement utilisé :
+                </label>
+                <select
+                  className="bs-select"
+                  value={reglerMoyen}
+                  onChange={(e) => setReglerMoyen(e.target.value)}
+                  style={{ width: "100%", height: 40, fontSize: 13 }}
+                >
+                  <option value="cash">Espèces / Cash</option>
+                  <option value="wave">Wave</option>
+                  <option value="orange_money">Orange Money</option>
+                  <option value="mvola">MVola</option>
+                  <option value="wero">Wero / Holam</option>
+                  <option value="carte">Carte Bancaire</option>
+                </select>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setReglerModalOrder(null)}
+                  className="bs-btn-secondary"
+                  disabled={submitting}
+                  style={{ padding: "9px 16px", fontSize: 13 }}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmReglement}
+                  disabled={submitting || Number(reglerMontant) <= 0}
+                  className="bs-btn-primary"
+                  style={{ padding: "9px 20px", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}
+                >
+                  <CheckCircle size={16} /> {submitting ? "Enregistrement..." : "Valider l'encaissement"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

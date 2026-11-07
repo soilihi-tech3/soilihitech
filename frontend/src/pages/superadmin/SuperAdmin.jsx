@@ -84,13 +84,19 @@ export default function SuperAdmin() {
   }
 
   async function submitCreateBoutique() {
-    if (!createForm?.nomBoutique || !createForm?.slug || !createForm?.emailAdmin) {
-      showError("Veuillez remplir tous les champs obligatoires (nom, slug, email admin).");
+    if (!createForm?.nomBoutique || !createForm?.slug) {
+      showError("Veuillez remplir le nom de la boutique et son slug.");
+      return;
+    }
+    if (!createForm?.existingAdminId && (!createForm?.nomAdmin || (!createForm?.emailAdmin && !createForm?.telephoneAdmin))) {
+      showError("Veuillez renseigner un nouvel administrateur ou sélectionner un administrateur existant.");
       return;
     }
     try {
       const res = await api.post("/superadmin/boutiques", createForm);
-      showSuccess("Nouvelle boutique et son compte admin créés avec succès !");
+      showSuccess(res.data?.attachedExistingAdmin
+        ? "Nouvelle boutique créée et rattachée à l'administrateur existant (accès Multi-Boutiques activé) !"
+        : "Nouvelle boutique et son compte admin créés avec succès !");
       loadData();
       return res.data;
     } catch (err) {
@@ -106,10 +112,12 @@ export default function SuperAdmin() {
         slug: editForm.slug,
         customDomain: editForm.customDomain,
         formuleAbonnement: editForm.formuleAbonnement,
+        devise: editForm.devise,
+        devisesDisponibles: editForm.devisesDisponibles,
         motDePasseAdmin: editForm.motDePasseAdmin
       });
       setEditForm(null);
-      showSuccess("Boutique mise à jour avec succès !");
+      showSuccess("Boutique et devises mises à jour avec succès !");
       loadData();
     } catch (err) {
       showError(err.response?.data?.message || "Impossible de modifier la boutique.");
@@ -314,6 +322,7 @@ export default function SuperAdmin() {
         <CreateBoutiqueModal
           form={createForm}
           setForm={setCreateForm}
+          existingAdmins={(users || []).filter(u => u && u.role === "admin")}
           onSubmit={submitCreateBoutique}
           onClose={() => setCreateForm(null)}
         />

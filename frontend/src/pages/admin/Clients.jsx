@@ -299,15 +299,26 @@ export default function AdminClients() {
                       </td>
 
                       <td style={{ padding: "14px 18px" }}>
-                        <span style={{
-                          display: "inline-flex", alignItems: "center", gap: 5,
-                          padding: "4px 10px", borderRadius: 12, fontSize: 11.5, fontWeight: 700,
-                          background: isActif ? "#EBF7F0" : "#FDF2F0",
-                          color: isActif ? "#1F4D3A" : "#B4483A"
-                        }}>
-                          {isActif ? <CheckCircle size={13} /> : <Ban size={13} />}
-                          {isActif ? "Actif" : "Suspendu"}
-                        </span>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                          <span style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            padding: "4px 10px", borderRadius: 12, fontSize: 11.5, fontWeight: 700,
+                            background: isActif ? "#EBF7F0" : "#FDF2F0",
+                            color: isActif ? "#1F4D3A" : "#B4483A"
+                          }}>
+                            {isActif ? <CheckCircle size={13} /> : <Ban size={13} />}
+                            {isActif ? "Actif" : "Suspendu"}
+                          </span>
+                          {!isActif && (c.lockReason === "5_tentatives_mdp" || Number(c.failedLoginAttempts) >= 5) && (
+                            <span style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              padding: "2px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 800,
+                              background: "#FEE2E2", color: "#991B1B", border: "1px solid #FCA5A5"
+                            }}>
+                              🔒 Bloqué (5 essais MDP)
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td style={{ padding: "14px 18px", fontSize: 12.5, color: "var(--muted)" }}>
@@ -416,7 +427,20 @@ export default function AdminClients() {
 
                 <div className="bs-field">
                   <label style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 4 }}>Téléphone *</label>
-                  <input className="bs-input" value={form.telephone} onChange={(e) => setForm({ ...form, telephone: e.target.value })} placeholder="ex: +269 332 10 00" required />
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    className="bs-input"
+                    value={form.telephone}
+                    onChange={(e) => setForm({ ...form, telephone: e.target.value.replace(/[^0-9+ ]/g, "") })}
+                    onKeyDown={(e) => {
+                      if (!/[0-9+ ]/.test(e.key) && !["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Enter"].includes(e.key) && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                      }
+                    }}
+                    placeholder="ex: +269 332 10 00"
+                    required
+                  />
                 </div>
               </div>
 

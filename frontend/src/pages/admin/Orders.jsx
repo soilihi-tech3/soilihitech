@@ -9,7 +9,7 @@ import { SkeletonStatCards, SkeletonTableRows } from "../../components/Skeleton.
 import { readCache, writeCache } from "../../utils/swrCache.js";
 import ReceiptModal from "../../components/ReceiptModal.jsx";
 
-import { formatPrice as fcfa } from "../../utils/currency.js";
+import { formatPrice as fcfa, getBoutiqueCurrencies } from "../../utils/currency.js";
 const formatOrderNum = (id) => `COM-B${String(id).padStart(3, "0")}`;
 
 const STATUTS_FILTER = [
@@ -79,12 +79,16 @@ import { subscribeRealtime } from "../../utils/realtime.js";
 
 export default function AdminOrders() {
   const { showToast } = useCart();
-  const { user } = useAuth();
+  const { user, boutique, activeBoutiqueId } = useAuth();
+  const boutiqueCurrencies = getBoutiqueCurrencies(boutique);
+  const isSingleCurrency = boutiqueCurrencies.length === 1;
+  const primaryCurrencyCode = boutiqueCurrencies[0]?.code || boutique?.devise || "KMF";
   const [orders, setOrders] = useState(() => readCache("admin_orders:tous") || []);
   const [loaded, setLoaded] = useState(() => readCache("admin_orders:tous") !== undefined);
   const [employees, setEmployees] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("tous");
+  const [paysFilter, setPaysFilter] = useState("tous");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("tous");
   const [employeeFilter, setEmployeeFilter] = useState("tous");
   const [dateFilter, setDateFilter] = useState("");
@@ -134,22 +138,25 @@ export default function AdminOrders() {
     // 2. Filet de sécurité léger (le SSE assure le temps réel)
     const interval = setInterval(() => { if (!document.hidden) load(); }, 30000);
 
-    // 3. Window focus refresh
+    // 3. Window focus & boutique switch refresh
     const onFocus = () => { if (!document.hidden) load(); };
+    const onBoutiqueSwitch = () => load();
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("boutique_switched", onBoutiqueSwitch);
 
     return () => {
       unsubscribe();
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener("boutique_switched", onBoutiqueSwitch);
     };
-  }, [statusFilter]);
+  }, [statusFilter, activeBoutiqueId]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter, employeeFilter, dateFilter, monthFilter, yearFilter]);
+  }, [search, statusFilter, paysFilter, employeeFilter, dateFilter, monthFilter, yearFilter]);
 
   useEffect(() => {
     api.get("/admin/employees")
@@ -282,13 +289,25 @@ export default function AdminOrders() {
       (paymentStatusFilter === "paye_en_ligne" && isOnlinePaid) ||
       (paymentStatusFilter === "a_encaissement" && !isOnlinePaid);
 
-    return matchSearch && matchEmp && matchDate && matchMonth && matchYear && matchPaymentStatus;
+    // Country / Currency filter
+    const normOrderCur = (o.devise === "XOF" ? "FCFA" : String(o.devise || primaryCurrencyCode).toUpperCase());
+    const matchPays = isSingleCurrency || paysFilter === "tous" || normOrderCur === paysFilter;
+
+    return matchSearch && matchEmp && matchDate && matchMonth && matchYear && matchPaymentStatus && matchPays;
   });
 
-  // Summary stats
-  const totalAmount = filteredOrders.reduce((sum, o) => sum + Number(o.total), 0);
-  const pendingCount = orders.filter(o => ["en_attente", "validee", "en_livraison"].includes(o.statut)).length;
-  const deliveredCount = orders.filter(o => o.statut === "recuperee" || o.statut === "livree").length;
+  // Summary stats dynamiques selon les devises autorisées de la boutique
+  const isUnconfirmed = (s) => ["annulee", "en_attente", "en_attente_paiement"].includes(s);
+  const isPendingOnly = (s) => ["en_attente", "en_attente_paiement"].includes(s);
+
+  const normalizeOrderCurrency = (o) => {
+    const raw = o.devise === "XOF" ? "FCFA" : String(o.devise || primaryCurrencyCode).toUpperCase();
+    if (boutiqueCurrencies.some(c => c.code === raw)) return raw;
+    return primaryCurrencyCode;
+  };
+
+  const pendingCount = filteredOrders.filter(o => ["en_attente", "en_attente_paiement", "validee", "en_preparation", "pret_retrait", "en_livraison"].includes(o.statut) && o.statut !== "livree" && o.statut !== "recuperee").length;
+  const deliveredCount = filteredOrders.filter(o => o.statut === "recuperee" || o.statut === "livree").length;
 
   const paginatedOrders = filteredOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
@@ -298,39 +317,67 @@ export default function AdminOrders() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 26, margin: 0, color: "var(--forest-dark)" }}>Gestion des Commandes</h1>
         <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 14 }}>
-          Suivez, filtrez et assignez les commandes en temps réel à vos employés.
+          Suivez, filtrez et assignez les commandes en temps réel. Les commandes en attente ou annulées ne sont comptées dans le CA qu'une fois confirmées.
         </p>
       </div>
 
       {/* ── SUMMARY KPI CARDS ── */}
-      {!loaded ? <SkeletonStatCards count={4} /> : (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
+      {!loaded ? <SkeletonStatCards count={3 + boutiqueCurrencies.length} /> : (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(215px, 1fr))", gap: 16, marginBottom: 28 }}>
         <div className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ background: "var(--forest-light)", color: "var(--forest)", borderRadius: 12, padding: 12 }}>
             <ShoppingBag size={22} />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase" }}>Total Commandes</div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Total Commandes</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)" }}>{filteredOrders.length}</div>
+            {!isSingleCurrency && (
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                {boutiqueCurrencies.map(c => `${filteredOrders.filter(o => normalizeOrderCurrency(o) === c.code).length} ${c.shortLabel || c.code}`).join(" • ")}
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ background: "var(--accent-light)", color: "var(--accent)", borderRadius: 12, padding: 12 }}>
-            <DollarSign size={22} />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase" }}>Montant Total</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--forest-dark)" }}>{fcfa(totalAmount)}</div>
-          </div>
-        </div>
+        {/* KPI DYNAMIQUES PAR DEVISE CONFIGURÉE */}
+        {boutiqueCurrencies.map((cur) => {
+          const curOrders = filteredOrders.filter(o => normalizeOrderCurrency(o) === cur.code);
+          const curConfirmees = curOrders.filter(o => !isUnconfirmed(o.statut));
+          const curEnAttente = curOrders.filter(o => isPendingOnly(o.statut));
+          const totalConfirme = curConfirmees.reduce((sum, o) => sum + Number(o.total || 0), 0);
+          const totalAttente = curEnAttente.reduce((sum, o) => sum + Number(o.total || 0), 0);
+
+          return (
+            <div
+              key={cur.code}
+              className="bs-panel"
+              style={{ padding: 18, display: "flex", alignItems: "center", gap: 14, borderLeft: `4px solid ${cur.color || "#059669"}` }}
+            >
+              <div style={{ background: cur.bg || "#ECFDF5", color: cur.color || "#059669", borderRadius: 12, padding: "10px 12px", fontWeight: 900, fontSize: 12 }}>
+                {cur.badge || cur.code}
+              </div>
+              <div>
+                <div style={{ fontSize: 11.5, color: cur.color || "#047857", fontWeight: 700, textTransform: "uppercase" }}>
+                  Commandes {cur.shortLabel || cur.code} ({curOrders.length})
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: cur.color || "#065F46" }}>
+                  {fcfa(totalConfirme, cur.code)}
+                </div>
+                <div style={{ fontSize: 11, color: curEnAttente.length > 0 ? "#D97706" : "var(--muted)", fontWeight: 600, marginTop: 2 }}>
+                  {curConfirmees.length} confirmée(s)
+                  {curEnAttente.length > 0 ? ` • ${curEnAttente.length} en attente (${fcfa(totalAttente, cur.code)})` : ""}
+                </div>
+              </div>
+            </div>
+          );
+        })}
 
         <div className="bs-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ background: "#FEF3C7", color: "#D97706", borderRadius: 12, padding: 12 }}>
             <Clock size={22} />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: "#B45309", fontWeight: 600, textTransform: "uppercase" }}>À Traiter / En cours</div>
+            <div style={{ fontSize: 11.5, color: "#B45309", fontWeight: 700, textTransform: "uppercase" }}>À Traiter / En cours</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: "#92400E" }}>{pendingCount}</div>
           </div>
         </div>
@@ -340,7 +387,7 @@ export default function AdminOrders() {
             <CheckCircle2 size={22} />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: "#047857", fontWeight: 600, textTransform: "uppercase" }}>Commandes Livrées</div>
+            <div style={{ fontSize: 11.5, color: "#047857", fontWeight: 700, textTransform: "uppercase" }}>Commandes Livrées</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: "#064E3B" }}>{deliveredCount}</div>
           </div>
         </div>
@@ -361,7 +408,7 @@ export default function AdminOrders() {
               style={{ paddingLeft: 38, borderRadius: 10, fontSize: 13.5, height: 40 }}
             />
           </div>
-          {(search || dateFilter || monthFilter !== "tous" || yearFilter !== "tous" || statusFilter !== "tous" || paymentStatusFilter !== "tous" || employeeFilter !== "tous") && (
+          {(search || dateFilter || monthFilter !== "tous" || yearFilter !== "tous" || statusFilter !== "tous" || paysFilter !== "tous" || paymentStatusFilter !== "tous" || employeeFilter !== "tous") && (
             <button
               onClick={() => {
                 setSearch("");
@@ -369,6 +416,7 @@ export default function AdminOrders() {
                 setMonthFilter("tous");
                 setYearFilter("tous");
                 setStatusFilter("tous");
+                setPaysFilter("tous");
                 setPaymentStatusFilter("tous");
                 setEmployeeFilter("tous");
               }}
@@ -386,6 +434,24 @@ export default function AdminOrders() {
 
         {/* Row 2: Filter Controls Pills */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+          {/* Country / Currency Filter (affiché uniquement si 2+ devises) */}
+          {!isSingleCurrency && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--paper)", padding: "4px 10px", borderRadius: 10, border: "1px solid var(--line)" }}>
+              <MapPin size={14} color="var(--muted)" />
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", whiteSpace: "nowrap" }}>Devise :</span>
+              <select
+                className="bs-select"
+                value={paysFilter}
+                onChange={(e) => setPaysFilter(e.target.value)}
+                style={{ border: "none", background: "transparent", fontSize: 12.5, padding: "2px 4px", outline: "none", cursor: "pointer", fontWeight: 700 }}
+              >
+                <option value="tous">Toutes ({boutiqueCurrencies.map(c => c.code).join(" & ")})</option>
+                {boutiqueCurrencies.map((cur) => (
+                  <option key={cur.code} value={cur.code}>{cur.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {/* Encaissement / Paiement Filter */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--paper)", padding: "4px 10px", borderRadius: 10, border: "1px solid var(--line)" }}>
             <CreditCard size={14} color="var(--muted)" />

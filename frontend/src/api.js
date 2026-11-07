@@ -21,6 +21,11 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
 
+  const activeAdminBoutiqueId = localStorage.getItem("active_admin_boutique_id");
+  if (activeAdminBoutiqueId && !config.headers["x-boutique-id"]) {
+    config.headers["x-boutique-id"] = activeAdminBoutiqueId;
+  }
+
   if (typeof window !== "undefined" && window.location && window.location.hostname) {
     config.headers["x-boutique-domain"] = window.location.hostname;
   }

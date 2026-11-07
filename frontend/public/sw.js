@@ -1,4 +1,4 @@
-const CACHE_NAME = "soilihitech-v2";
+const CACHE_NAME = "soilihitech-v4";
 const PRECACHE_URLS = [
   "/",
   "/index.html",
@@ -34,16 +34,19 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
 
-  // Exclure les flux d'evenements temps reel et les appels API dynamiques
+  // Exclure les flux d'evenements temps reel, les appels API dynamiques et les modules de dev Vite
   if (
     url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/src/") ||
+    url.pathname.startsWith("/@") ||
+    url.pathname.startsWith("/node_modules/") ||
     url.pathname.includes("/realtime/events") ||
     url.pathname.includes("/events")
   ) {
     return;
   }
 
-  // Pour les requetes de navigation HTML (ex: /admin/vente, /admin/demandes), renvoyer index.html en cas de hors-ligne
+  // Pour les requetes de navigation HTML (ex: /super-admin, /admin/vente), toujours privilégier le réseau puis fallback index.html
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request).catch(async () => {
@@ -55,7 +58,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Pour les assets statiques (js, css, images, polices) : Stale-While-Revalidate
+  // Pour les assets statiques de production (images, polices, bundles)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request)

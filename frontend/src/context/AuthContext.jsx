@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import api, { SLUG } from "../api";
 import { clearSwrCache } from "../utils/swrCache.js";
+import { getBoutiqueCurrencyCodes, setActiveCurrency } from "../utils/currency.js";
 
 export const AuthContext = createContext(null);
 
@@ -13,6 +14,11 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return null;
     }
+  });
+  const [myBoutiques, setMyBoutiques] = useState([]);
+  const [activeBoutiqueId, setActiveBoutiqueId] = useState(() => {
+    const saved = localStorage.getItem("active_admin_boutique_id");
+    return saved ? Number(saved) : null;
   });
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem("app_theme") || "light";
@@ -29,7 +35,13 @@ export function AuthProvider({ children }) {
   };
 
   const sanitizeBoutique = (data) => {
-    if (!data) return data;
+    if (!data || typeof data !== "object") return null;
+    // devisesDisponibles
+    data.devisesDisponibles = getBoutiqueCurrencyCodes(data);
+    if (!data.devise && data.devisesDisponibles.length > 0) {
+      data.devise = data.devisesDisponibles[0];
+    }
+
     // modesPaiement
     if (typeof data.modesPaiement === "string") {
       try { data.modesPaiement = JSON.parse(data.modesPaiement); } catch (e) { data.modesPaiement = null; }
@@ -68,37 +80,104 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const refreshBoutique = () => {
+  const syncBoutiqueCurrency = (b) => {
+    if (!b) return;
+    const allowed = getBoutiqueCurrencyCodes(b);
+    const saved = localStorage.getItem("soilihi_active_currency");
+    if (!saved || !allowed.includes(saved)) {
+      setActiveCurrency(allowed[0] || b.devise || "KMF");
+    } else {
+      window.dispatchEvent(new CustomEvent("currency_changed", { detail: saved }));
+    }
+  };
+
+  const fetchMyBoutiques = async () => {
+    try {
+      const res = await api.get("/admin/my-boutiques");
+      if (res.data && Array.isArray(res.data.boutiques)) {
+        const sanitizedList = res.data.boutiques.map(sanitizeBoutique);
+        setMyBoutiques(sanitizedList);
+        if (res.data.activeBoutiqueId) {
+          setActiveBoutiqueId(Number(res.data.activeBoutiqueId));
+          localStorage.setItem("active_admin_boutique_id", String(res.data.activeBoutiqueId));
+        }
+      }
+    } catch (_) {}
+  };
+
+  const refreshBoutique = (overrideUser = null) => {
     const timestamp = Date.now();
+    const token = localStorage.getItem("token");
+    let currentUser = overrideUser || user;
+    if (!currentUser && token) {
+      try {
+        currentUser = JSON.parse(localStorage.getItem("cached_user") || "null");
+      } catch (_) {}
+    }
+
+    const canFetchAdminBoutique = Boolean(
+      token && currentUser && (currentUser.role === "admin" || currentUser.role === "employe")
+    );
+
+    const fetchPublicStore = () => {
+      api.get(`/store/${SLUG}?t=${timestamp}`).then((res) => {
+        if (res.data && typeof res.data === "object") {
+          const b = sanitizeBoutique(res.data);
+          if (b) {
+            setBoutique(b);
+            try {
+              localStorage.setItem("cached_boutique", JSON.stringify(b));
+              syncBoutiqueCurrency(b);
+            } catch (e) {}
+          }
+        }
+      }).catch(() => {});
+    };
+
+    if (!canFetchAdminBoutique) {
+      fetchPublicStore();
+      return;
+    }
+
     api.get(`/admin/boutique?t=${timestamp}`)
       .then((res) => {
-        if (res.data) {
+        if (res.data && typeof res.data === "object") {
           const b = sanitizeBoutique(res.data);
-          setBoutique(b);
-          try { 
-            localStorage.setItem("cached_boutique", JSON.stringify(b));
-            if (b.devise) {
-              localStorage.setItem("soilihi_active_currency", b.devise);
-              window.dispatchEvent(new CustomEvent("currency_changed", { detail: b.devise }));
+          if (b) {
+            setBoutique(b);
+            if (b.id) {
+              setActiveBoutiqueId(b.id);
             }
-          } catch (e) {}
+            try {
+              localStorage.setItem("cached_boutique", JSON.stringify(b));
+              syncBoutiqueCurrency(b);
+            } catch (e) {}
+          }
+        } else {
+          fetchPublicStore();
         }
       })
       .catch(() => {
-        api.get(`/store/${SLUG}?t=${timestamp}`).then((res) => {
-          if (res.data) {
-            const b = sanitizeBoutique(res.data);
-            setBoutique(b);
-            try { 
-              localStorage.setItem("cached_boutique", JSON.stringify(b));
-              if (b.devise) {
-                localStorage.setItem("soilihi_active_currency", b.devise);
-                window.dispatchEvent(new CustomEvent("currency_changed", { detail: b.devise }));
-              }
-            } catch (e) {}
-          }
-        }).catch(() => {});
+        fetchPublicStore();
       });
+  };
+
+  const switchAdminBoutique = (newBoutiqueId) => {
+    if (!newBoutiqueId) return;
+    const numId = Number(newBoutiqueId);
+    localStorage.setItem("active_admin_boutique_id", String(numId));
+    setActiveBoutiqueId(numId);
+    clearSwrCache();
+    const found = myBoutiques.find(b => Number(b.id) === numId);
+    if (found) {
+      setBoutique(found);
+      try {
+        localStorage.setItem("cached_boutique", JSON.stringify(found));
+        syncBoutiqueCurrency(found);
+      } catch (_) {}
+    }
+    refreshBoutique();
+    window.dispatchEvent(new CustomEvent("boutique_switched", { detail: numId }));
   };
 
   useEffect(() => {
@@ -108,7 +187,6 @@ export function AuthProvider({ children }) {
       setLoading(false); 
       return; 
     }
-    // Restauration instantanée de la session (affichage uniquement ; le serveur vérifie chaque requête)
     try {
       const cachedUser = JSON.parse(localStorage.getItem("cached_user") || "null");
       if (cachedUser) {
@@ -117,16 +195,21 @@ export function AuthProvider({ children }) {
       }
     } catch (e) {}
     api.get("/auth/me").then((res) => {
-      setUser(res.data.user);
-      try { localStorage.setItem("cached_user", JSON.stringify(res.data.user)); } catch (e) {}
+      const u = res.data.user;
+      setUser(u);
+      try { localStorage.setItem("cached_user", JSON.stringify(u)); } catch (e) {}
+      if (u && (u.role === "admin" || u.role === "employe")) {
+        fetchMyBoutiques();
+      }
     })
       .catch((err) => {
-        // Jeton invalide/expiré → déconnexion. Erreur réseau → on garde la session en cache.
         if (err?.response && [401, 403].includes(err.response.status)) {
           localStorage.removeItem("token");
           localStorage.removeItem("cached_user");
+          localStorage.removeItem("active_admin_boutique_id");
           clearSwrCache();
           setUser(null);
+          setMyBoutiques([]);
         }
       })
       .finally(() => setLoading(false));
@@ -136,10 +219,23 @@ export function AuthProvider({ children }) {
     const res = await api.post("/auth/login", { identifiant, email: identifiant, telephone: identifiant, motDePasse });
     clearSwrCache();
     localStorage.setItem("token", res.data.token);
-    try { localStorage.setItem("cached_user", JSON.stringify(res.data.user)); } catch (e) {}
-    setUser(res.data.user);
-    refreshBoutique();
-    return res.data.user;
+    const u = res.data.user;
+    if (u?.boutiqueId) {
+      localStorage.setItem("active_admin_boutique_id", String(u.boutiqueId));
+      setActiveBoutiqueId(Number(u.boutiqueId));
+    } else {
+      localStorage.removeItem("active_admin_boutique_id");
+      setActiveBoutiqueId(null);
+    }
+    try { localStorage.setItem("cached_user", JSON.stringify(u)); } catch (e) {}
+    setUser(u);
+    refreshBoutique(u);
+    if (u && (u.role === "admin" || u.role === "employe")) {
+      fetchMyBoutiques();
+    } else {
+      setMyBoutiques([]);
+    }
+    return u;
   }
 
   async function register(nom, email, telephone, motDePasse) {
@@ -170,8 +266,10 @@ export function AuthProvider({ children }) {
   function logout() {
     localStorage.removeItem("token");
     localStorage.removeItem("cached_user");
+    localStorage.removeItem("active_admin_boutique_id");
     clearSwrCache();
     setUser(null);
+    setMyBoutiques([]);
   }
 
   function updateUser(updatedUserData) {
@@ -179,7 +277,24 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, boutique, refreshBoutique, loading, login, register, verifyOtp, resendOtp, logout, updateUser, theme, toggleTheme }}>
+    <AuthContext.Provider value={{
+      user,
+      boutique,
+      myBoutiques,
+      activeBoutiqueId,
+      switchAdminBoutique,
+      fetchMyBoutiques,
+      refreshBoutique,
+      loading,
+      login,
+      register,
+      verifyOtp,
+      resendOtp,
+      logout,
+      updateUser,
+      theme,
+      toggleTheme
+    }}>
       {children}
     </AuthContext.Provider>
   );
@@ -188,5 +303,3 @@ export function AuthProvider({ children }) {
 export function useAuth() {
   return useContext(AuthContext);
 }
-
-

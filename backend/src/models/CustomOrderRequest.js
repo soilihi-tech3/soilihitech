@@ -60,6 +60,11 @@ const CustomOrderRequest = sequelize.define("CustomOrderRequest", {
     type: DataTypes.STRING(50),
     defaultValue: "en_attente" // "en_attente" | "propose" | "valide" | "refuse"
   },
+  statutAchat: {
+    type: DataTypes.STRING(50),
+    defaultValue: "non_achete",
+    field: "statut_achat" // "non_achete" | "achete"
+  },
   motifRefus: {
     type: DataTypes.TEXT,
     allowNull: true

@@ -15,10 +15,18 @@ const { getCache, setCache, delCache } = require("../config/cache");
 
 
 function publicUser(user) {
+  let boutiquesGerees = user.boutiquesGerees;
+  if (typeof boutiquesGerees === "string") {
+    try { boutiquesGerees = JSON.parse(boutiquesGerees); } catch (e) { boutiquesGerees = []; }
+  }
+  if (!Array.isArray(boutiquesGerees)) boutiquesGerees = [];
+
   return {
     id: user.id, nom: user.nom, email: user.email, telephone: user.telephone,
     adresse: user.adresse, role: user.role, boutiqueId: user.boutiqueId, permissions: user.permissions,
     deviseAutorisee: user.deviseAutorisee || "TOUTES",
+    peutGererPlusieursBoutiques: Boolean(user.peutGererPlusieursBoutiques),
+    boutiquesGerees,
     isEmailVerified: user.isEmailVerified, mustChangePassword: user.mustChangePassword,
   };
 }
@@ -391,9 +399,73 @@ router.post("/login", async (req, res, next) => {
 
     if (!user) return res.status(401).json({ message: "Identifiants ou mot de passe incorrects." });
 
+    // Si le compte est déjà suspendu / désactivé
+    if (user.statut === "suspendu") {
+      const contactWho = user.role === "admin"
+        ? "le Super Administrateur de la plateforme"
+        : "l'Administrateur de votre boutique";
+      const reasonMsg = user.lockReason === "5_tentatives_mdp"
+        ? `Votre compte a été automatiquement désactivé après 5 tentatives de mot de passe incorrectes. Veuillez contacter ${contactWho} pour réactiver votre compte.`
+        : `Votre compte est actuellement désactivé. Veuillez contacter ${contactWho} pour le réactiver.`;
+      return res.status(403).json({
+        message: reasonMsg,
+        lockedByAttempts: user.lockReason === "5_tentatives_mdp",
+        role: user.role
+      });
+    }
+
     const ok = await bcrypt.compare(motDePasse, user.motDePasseHash);
-    if (!ok) return res.status(401).json({ message: "Identifiants ou mot de passe incorrects." });
-    if (user.statut === "suspendu") return res.status(403).json({ message: "Compte suspendu." });
+    if (!ok) {
+      // Compteur d'échecs de mot de passe (max 5 tentatives pour admin, employé, client, livreur)
+      if (user.role !== "super_admin") {
+        const attempts = Number(user.failedLoginAttempts || 0) + 1;
+        user.failedLoginAttempts = attempts;
+
+        if (attempts >= 5) {
+          user.statut = "suspendu";
+          user.lockedAt = new Date();
+          user.lockReason = "5_tentatives_mdp";
+          await user.save();
+
+          try {
+            const { broadcast } = require("../utils/broadcaster");
+            broadcast("user_locked", {
+              userId: user.id,
+              nom: user.nom,
+              role: user.role,
+              boutiqueId: user.boutiqueId
+            });
+          } catch (e) {}
+
+          const contactWho = user.role === "admin"
+            ? "le Super Administrateur de la plateforme"
+            : "l'Administrateur de votre boutique";
+
+          return res.status(403).json({
+            message: `Votre compte a été automatiquement désactivé après 5 tentatives de mot de passe incorrectes. Veuillez contacter ${contactWho} pour réactiver votre compte.`,
+            lockedByAttempts: true,
+            attemptsRemaining: 0
+          });
+        }
+
+        await user.save();
+        const remaining = 5 - attempts;
+        return res.status(401).json({
+          message: `Mot de passe incorrect. Attention : il vous reste ${remaining} tentative(s) sur 5 avant la désactivation automatique de votre compte.`,
+          attemptsRemaining: remaining
+        });
+      }
+
+      return res.status(401).json({ message: "Identifiants ou mot de passe incorrects." });
+    }
+
+    // Connexion réussie : réinitialiser le compteur d'échecs s'il y en avait
+    if (user.failedLoginAttempts > 0 || user.lockReason || user.lockedAt) {
+      user.failedLoginAttempts = 0;
+      user.lockedAt = null;
+      user.lockReason = null;
+      await user.save();
+    }
 
     const token = signToken({ id: user.id, role: user.role });
     res.json({ token, user: publicUser(user) });

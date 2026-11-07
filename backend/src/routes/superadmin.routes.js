@@ -73,13 +73,23 @@ router.post("/users", async (req, res, next) => {
     const rawPassword = motDePasse && motDePasse.trim() ? motDePasse.trim() : Math.random().toString(36).slice(-8) + "A1!";
     const motDePasseHash = await bcrypt.hash(rawPassword, 10);
 
+    let cleanBoutiquesGerees = Array.isArray(req.body.boutiquesGerees)
+      ? req.body.boutiquesGerees.map(Number).filter(n => !isNaN(n) && n > 0)
+      : [];
+    if (boutiqueId && !cleanBoutiquesGerees.includes(Number(boutiqueId))) {
+      cleanBoutiquesGerees.unshift(Number(boutiqueId));
+    }
+    const multiAllowed = Boolean(req.body.peutGererPlusieursBoutiques || cleanBoutiquesGerees.length > 1);
+
     const newUser = await User.create({
       nom: nom.trim(),
       email: cleanEmail,
       telephone: cleanPhone,
       motDePasseHash,
       role: targetRole,
-      boutiqueId: boutiqueId ? Number(boutiqueId) : null,
+      boutiqueId: boutiqueId ? Number(boutiqueId) : (cleanBoutiquesGerees[0] || null),
+      peutGererPlusieursBoutiques: targetRole === "admin" ? multiAllowed : false,
+      boutiquesGerees: targetRole === "admin" ? cleanBoutiquesGerees : [],
       statut: "actif",
       mustChangePassword: true,
       isEmailVerified: true
@@ -117,15 +127,38 @@ router.put("/users/:id", async (req, res, next) => {
     const userToUpdate = await User.findByPk(req.params.id);
     if (!userToUpdate) return res.status(404).json({ message: "Utilisateur introuvable." });
     
-    const { nom, email, telephone, role, boutiqueId, motDePasse } = req.body;
+    const { nom, email, telephone, role, boutiqueId, motDePasse, peutGererPlusieursBoutiques, boutiquesGerees } = req.body;
     
     if (nom) userToUpdate.nom = nom;
     if (email) userToUpdate.email = email;
     if (telephone !== undefined) userToUpdate.telephone = telephone;
     if (role) userToUpdate.role = role;
-    if (boutiqueId !== undefined) userToUpdate.boutiqueId = boutiqueId || null;
+    if (boutiqueId !== undefined) userToUpdate.boutiqueId = boutiqueId ? Number(boutiqueId) : null;
+
+    if (peutGererPlusieursBoutiques !== undefined) {
+      userToUpdate.peutGererPlusieursBoutiques = Boolean(peutGererPlusieursBoutiques);
+    }
+    if (boutiquesGerees !== undefined) {
+      let cleanList = Array.isArray(boutiquesGerees)
+        ? boutiquesGerees.map(Number).filter(n => !isNaN(n) && n > 0)
+        : [];
+      if (userToUpdate.boutiqueId && !cleanList.includes(Number(userToUpdate.boutiqueId))) {
+        cleanList.unshift(Number(userToUpdate.boutiqueId));
+      }
+      userToUpdate.boutiquesGerees = Array.from(new Set(cleanList));
+      if (userToUpdate.boutiquesGerees.length > 1) {
+        userToUpdate.peutGererPlusieursBoutiques = true;
+      }
+    }
+
     if (motDePasse && motDePasse.trim()) {
       userToUpdate.motDePasseHash = await bcrypt.hash(motDePasse.trim(), 10);
+      userToUpdate.failedLoginAttempts = 0;
+      userToUpdate.lockedAt = null;
+      userToUpdate.lockReason = null;
+      if (userToUpdate.statut === "suspendu") {
+        userToUpdate.statut = "actif";
+      }
     }
     
     await userToUpdate.save();
@@ -133,7 +166,7 @@ router.put("/users/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PATCH /api/superadmin/users/:id/statut -> Suspendre / Réactiver un utilisateur
+// PATCH /api/superadmin/users/:id/statut -> Suspendre / Réactiver un utilisateur (et débloquer un Admin ou Employé après 5 échecs)
 router.patch("/users/:id/statut", async (req, res, next) => {
   try {
     const targetUser = await User.findByPk(req.params.id);
@@ -141,9 +174,18 @@ router.patch("/users/:id/statut", async (req, res, next) => {
 
     const newStatut = req.body.statut || (targetUser.statut === "actif" ? "suspendu" : "actif");
     targetUser.statut = newStatut;
+    if (newStatut === "actif") {
+      targetUser.failedLoginAttempts = 0;
+      targetUser.lockedAt = null;
+      targetUser.lockReason = null;
+    }
     await targetUser.save();
     
-    res.json({ message: `Compte ${newStatut === "actif" ? "réactivé" : "suspendu"} avec succès.`, statut: newStatut });
+    res.json({
+      message: `Compte de « ${targetUser.nom} » ${newStatut === "actif" ? "réactivé (compteur de tentatives remis à 0)" : "suspendu"} avec succès.`,
+      statut: newStatut,
+      user: targetUser
+    });
   } catch (err) { next(err); }
 });
 
@@ -173,10 +215,23 @@ router.delete("/users/:id", async (req, res, next) => {
 });
 
 
-// POST /api/superadmin/boutiques -> crée une boutique + son compte Admin
+// POST /api/superadmin/boutiques -> crée une boutique (avec ses devises) + son compte Admin (ou rattache à un Admin existant)
 router.post("/boutiques", async (req, res, next) => {
   try {
-    const { nomBoutique, slug, customDomain, formuleAbonnement, nomAdmin, emailAdmin, telephoneAdmin, motDePasseAdmin } = req.body;
+    const {
+      nomBoutique,
+      slug,
+      customDomain,
+      formuleAbonnement,
+      devise,
+      devisesDisponibles,
+      existingAdminId,
+      nomAdmin,
+      emailAdmin,
+      telephoneAdmin,
+      motDePasseAdmin
+    } = req.body;
+
     const existant = await Boutique.findOne({ where: { slug } });
     if (existant) return res.status(409).json({ message: "Ce slug de boutique est déjà utilisé." });
 
@@ -186,8 +241,69 @@ router.post("/boutiques", async (req, res, next) => {
       if (existantDomain) return res.status(409).json({ message: "Ce domaine personnalisé est déjà utilisé par une autre boutique." });
     }
 
-    const boutique = await Boutique.create({ nom: nomBoutique, slug, customDomain: formattedDomain || null, formuleAbonnement });
-    
+    // Normalisation des devises choisies par le Super Admin (1, 2 ou plusieurs devises)
+    let cleanDevises = Array.isArray(devisesDisponibles)
+      ? devisesDisponibles.map(d => String(d).trim().toUpperCase()).filter(Boolean)
+      : [];
+    if (cleanDevises.length === 0) {
+      cleanDevises = [devise ? String(devise).trim().toUpperCase() : "KMF"];
+    }
+    cleanDevises = Array.from(new Set(cleanDevises));
+    const primaryDevise = devise && cleanDevises.includes(String(devise).trim().toUpperCase())
+      ? String(devise).trim().toUpperCase()
+      : cleanDevises[0];
+
+    const boutique = await Boutique.create({
+      nom: nomBoutique,
+      slug,
+      customDomain: formattedDomain || null,
+      formuleAbonnement: formuleAbonnement || "standard",
+      devise: primaryDevise,
+      devisesDisponibles: cleanDevises
+    });
+
+    // Cas 1 : Rattachement de la nouvelle boutique à un Admin existant (Accès Multi-Boutiques accordé par le Super Admin)
+    if (existingAdminId) {
+      const existingAdmin = await User.findByPk(existingAdminId);
+      if (!existingAdmin) {
+        return res.status(404).json({ message: "L'administrateur existant sélectionné est introuvable." });
+      }
+      let currentManaged = existingAdmin.boutiquesGerees;
+      if (typeof currentManaged === "string") {
+        try { currentManaged = JSON.parse(currentManaged); } catch (e) { currentManaged = []; }
+      }
+      if (!Array.isArray(currentManaged)) currentManaged = [];
+      const mergedIds = Array.from(new Set([
+        ...(existingAdmin.boutiqueId ? [Number(existingAdmin.boutiqueId)] : []),
+        ...currentManaged.map(Number).filter(n => !isNaN(n) && n > 0),
+        Number(boutique.id)
+      ]));
+
+      existingAdmin.role = "admin";
+      existingAdmin.peutGererPlusieursBoutiques = true;
+      existingAdmin.boutiquesGerees = mergedIds;
+      if (!existingAdmin.boutiqueId) existingAdmin.boutiqueId = boutique.id;
+      await existingAdmin.save();
+
+      boutique.proprietaireId = existingAdmin.id;
+      await boutique.save();
+
+      purgeCache();
+      broadcast("boutique_updated", { boutiqueId: boutique.id });
+      return res.status(201).json({
+        boutique,
+        attachedToExistingAdmin: true,
+        admin: {
+          id: existingAdmin.id,
+          nom: existingAdmin.nom,
+          email: existingAdmin.email,
+          telephone: existingAdmin.telephone,
+          boutiquesGerees: mergedIds
+        }
+      });
+    }
+
+    // Cas 2 : Création d'un nouveau compte Admin pour cette boutique
     const rawPassword = motDePasseAdmin && motDePasseAdmin.trim() ? motDePasseAdmin.trim() : Math.random().toString(36).slice(-8) + "A1!";
     const motDePasseHash = await bcrypt.hash(rawPassword, 10);
     
@@ -201,10 +317,15 @@ router.post("/boutiques", async (req, res, next) => {
       motDePasseHash,
       role: "admin",
       boutiqueId: boutique.id,
+      peutGererPlusieursBoutiques: Boolean(req.body.peutGererPlusieursBoutiques),
+      boutiquesGerees: [boutique.id],
       statut: "actif",
       mustChangePassword: true,
       isEmailVerified: true
     });
+
+    boutique.proprietaireId = admin.id;
+    await boutique.save();
 
     if (cleanEmail) {
       const { envoyerEmailCreationCompte } = require("../services/emailService");
@@ -245,13 +366,23 @@ router.put("/boutiques/:id", async (req, res, next) => {
     const boutique = await Boutique.findByPk(req.params.id);
     if (!boutique) return res.status(404).json({ message: "Boutique introuvable." });
     
-    const { nom, slug, customDomain, stripePublishableKey, stripeSecretKey, stripeAccountId, formuleAbonnement, motDePasseAdmin, modulesActifs } = req.body;
+    const { nom, slug, customDomain, stripePublishableKey, stripeSecretKey, stripeAccountId, formuleAbonnement, devise, devisesDisponibles, motDePasseAdmin, modulesActifs } = req.body;
     
     if (nom) boutique.nom = nom;
     if (slug && slug !== boutique.slug) {
       const existant = await Boutique.findOne({ where: { slug, id: { [Op.ne]: boutique.id } } });
       if (existant) return res.status(409).json({ message: "Ce slug de boutique est déjà utilisé." });
       boutique.slug = slug;
+    }
+
+    if (Array.isArray(devisesDisponibles) && devisesDisponibles.length > 0) {
+      const cleanDevises = Array.from(new Set(devisesDisponibles.map(d => String(d).trim().toUpperCase()).filter(Boolean)));
+      boutique.devisesDisponibles = cleanDevises;
+      boutique.devise = devise && cleanDevises.includes(String(devise).trim().toUpperCase())
+        ? String(devise).trim().toUpperCase()
+        : cleanDevises[0];
+    } else if (devise) {
+      boutique.devise = String(devise).trim().toUpperCase();
     }
 
     if (customDomain !== undefined) {

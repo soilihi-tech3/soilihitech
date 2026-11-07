@@ -76,7 +76,8 @@ export default function SuiviDemande() {
 
   function handleOpenWhatsApp() {
     if (!request) return;
-    const msg = `Bonjour Soilihitech,\n\nJe vous contacte concernant ma demande sur-mesure *#${request.code}* pour mon *${request.modeleAppareil}*.\n\nStatut actuel : *${request.statut}*\nMontant chiffré : *${fcfa(request.totalPropose || 0)}*`;
+    const storeName = boutique?.nom || "la boutique";
+    const msg = `Bonjour ${storeName},\n\nJe vous contacte concernant ma demande sur-mesure *#${request.code}* pour mon *${request.modeleAppareil}*.\n\nStatut actuel : *${request.statut}*\nMontant chiffré : *${fcfa(request.totalPropose || 0)}*`;
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, "_blank");
   }
 

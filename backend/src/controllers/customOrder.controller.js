@@ -227,12 +227,16 @@ async function respondCustomRequest(req, res) {
 async function listAdminCustomRequests(req, res) {
   try {
     const boutiqueId = req.boutiqueId || req.user?.boutiqueId || 1;
-    const { search = "", statut = "", page = 1, limit = 25 } = req.query;
+    const { search = "", statut = "", statutAchat = "", page = 1, limit = 25 } = req.query;
 
     const andConditions = [{ boutiqueId }];
 
     if (statut && statut !== "all") {
       andConditions.push({ statut });
+    }
+
+    if (statutAchat && statutAchat !== "all") {
+      andConditions.push({ statutAchat });
     }
 
     if (search && search.trim()) {
@@ -535,6 +539,7 @@ async function updateAdminCustomRequest(req, res) {
     if (totalPropose !== undefined) request.totalPropose = Number(totalPropose) || 0;
     if (devisTotal !== undefined) request.devisTotal = devisTotal !== null ? Number(devisTotal) : null;
     if (messageAdmin !== undefined) request.messageAdmin = messageAdmin ? messageAdmin.trim() : null;
+    if (req.body.statutAchat !== undefined) request.statutAchat = req.body.statutAchat;
     if (req.body.employeId !== undefined) {
       request.employeId = req.body.employeId ? Number(req.body.employeId) : null;
     }
@@ -588,6 +593,38 @@ async function deleteAdminCustomRequest(req, res) {
   }
 }
 
+/**
+ * Admin / Employé - Basculer le statut d'achat (acheté / non acheté)
+ */
+async function toggleStatutAchat(req, res) {
+  try {
+    const boutiqueId = req.boutiqueId || req.user?.boutiqueId || 1;
+    const { id } = req.params;
+
+    const request = await CustomOrderRequest.findOne({ where: { id, boutiqueId } });
+    if (!request) {
+      return res.status(404).json({ message: "Demande sur-mesure introuvable." });
+    }
+
+    const currentStatut = request.statutAchat || "non_achete";
+    const newStatut = req.body.statutAchat || (currentStatut === "achete" ? "non_achete" : "achete");
+    request.statutAchat = newStatut;
+    await request.save();
+
+    broadcast("custom_order_updated", { requestId: request.id, boutiqueId, action: "update" });
+
+    return res.json({
+      success: true,
+      message: `Statut d'achat mis à jour : ${newStatut === "achete" ? "Acheté" : "Pas encore acheté"}`,
+      statutAchat: newStatut,
+      request
+    });
+  } catch (err) {
+    console.error("Erreur toggleStatutAchat:", err);
+    return res.status(500).json({ message: "Erreur serveur", error: err.message });
+  }
+}
+
 module.exports = {
   createCustomRequest,
   getCustomRequestByCode,
@@ -597,5 +634,6 @@ module.exports = {
   listClientCustomRequests,
   createAdminCustomRequest,
   updateAdminCustomRequest,
-  deleteAdminCustomRequest
+  deleteAdminCustomRequest,
+  toggleStatutAchat
 };

@@ -3,7 +3,7 @@ import {
   ClipboardList, Search, Clock, CheckCircle2, XCircle, 
   Sparkles, Smartphone, Eye, MessageCircle, Printer, 
   Send, RefreshCw, X, ArrowUpDown, Filter, AlertCircle,
-  Plus, FileText, Trash2, Pencil, Image as ImageIcon, Camera, Upload, Download, User
+  Plus, FileText, Trash2, Pencil, Image as ImageIcon, Camera, Upload, Download, User, Package
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -37,7 +37,20 @@ export default function DemandesSpeciales() {
   }, [isAdmin]);
   const [search, setSearch] = useState("");
   const [statutFilter, setStatutFilter] = useState("all");
+  const [statutAchatFilter, setStatutAchatFilter] = useState("all"); // 'all' | 'achete' | 'non_achete'
   const [pendingCount, setPendingCount] = useState(0);
+
+  async function handleToggleStatutAchat(req) {
+    const nextStatus = req.statutAchat === "achete" ? "non_achete" : "achete";
+    try {
+      setRequests(prev => prev.map(r => r.id === req.id ? { ...r, statutAchat: nextStatus } : r));
+      await api.patch(`/admin/custom-requests/${req.id}/achat-status`, { statutAchat: nextStatus });
+      toast.success(nextStatus === "achete" ? "Statut : Acheté auprès du fournisseur !" : "Statut : Pas encore acheté.");
+    } catch (err) {
+      setRequests(prev => prev.map(r => r.id === req.id ? { ...r, statutAchat: req.statutAchat } : r));
+      toast.error(err.response?.data?.message || "Erreur lors du changement de statut d'achat.");
+    }
+  }
 
   // File input refs pour les photos
   const createFileInputRef = useRef(null);
@@ -494,6 +507,7 @@ export default function DemandesSpeciales() {
       telephoneClient: req.telephoneClient || "",
       modeleAppareil: req.modeleAppareil || "",
       statut: req.statut || "en_attente",
+      statutAchat: req.statutAchat || "non_achete",
       articles: existingArticles,
       fraisLivraison: Number(req.fraisLivraison || 0),
       totalPropose: req.totalPropose ?? "",
@@ -571,6 +585,7 @@ export default function DemandesSpeciales() {
         fraisLivraison: Number(editForm.fraisLivraison) || 0,
         totalPropose: calculatedSubtotal > 0 ? calculatedSubtotal : (Number(editForm.totalPropose) || 0),
         statut: editForm.statut,
+        statutAchat: editForm.statutAchat || "non_achete",
         description: editForm.description ? editForm.description.trim() : null,
         messageAdmin: editForm.messageAdmin ? editForm.messageAdmin.trim() : null,
         photos: editPhotos,
@@ -1187,7 +1202,7 @@ export default function DemandesSpeciales() {
         justifyContent: "space-between", flexWrap: "wrap", gap: 14, boxShadow: "0 2px 10px rgba(0,0,0,0.02)"
       }}>
         {/* STATUT TABS */}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {[
             { key: "all", label: "Toutes les demandes" },
             { key: "en_attente", label: "En attente", count: pendingCount },
@@ -1211,23 +1226,100 @@ export default function DemandesSpeciales() {
           ))}
         </div>
 
-        {/* BARRE DE RECHERCHE RAPIDE */}
-        <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 8, flex: "1 1 280px", maxWidth: 420 }}>
-          <div style={{ position: "relative", flex: 1 }}>
-            <input
-              type="text"
-              className="bs-input"
-              placeholder="Rechercher par client, téléphone, modèle..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{ paddingLeft: 36, height: 40, fontSize: 13 }}
-            />
-            <Search size={16} color="var(--muted)" style={{ position: "absolute", left: 12, top: 12 }} />
+        {/* FILTRE STATUT ACHAT ET RECHERCHE */}
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flex: "1 1 500px", justifyContent: "flex-end", flexWrap: "wrap" }}>
+          {/* SEGMENTED PILLS - ZERO EMOJIS */}
+          <div style={{
+            display: "inline-flex",
+            background: "#F1F5F9",
+            borderRadius: 12,
+            padding: 3,
+            gap: 2,
+            border: "1px solid #E2E8F0"
+          }}>
+            <button
+              type="button"
+              onClick={() => setStatutAchatFilter("all")}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 9,
+                border: "none",
+                fontSize: 12,
+                fontWeight: statutAchatFilter === "all" ? 800 : 600,
+                background: statutAchatFilter === "all" ? "#FFFFFF" : "transparent",
+                color: statutAchatFilter === "all" ? "var(--ink)" : "var(--muted)",
+                boxShadow: statutAchatFilter === "all" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5
+              }}
+            >
+              <Package size={13} />
+              <span>Tous ({requests.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatutAchatFilter("achete")}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 9,
+                border: "none",
+                fontSize: 12,
+                fontWeight: statutAchatFilter === "achete" ? 800 : 600,
+                background: statutAchatFilter === "achete" ? "#DCFCE7" : "transparent",
+                color: statutAchatFilter === "achete" ? "#166534" : "var(--muted)",
+                boxShadow: statutAchatFilter === "achete" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5
+              }}
+            >
+              <CheckCircle2 size={13} color={statutAchatFilter === "achete" ? "#166534" : "currentColor"} />
+              <span>Déjà achetés ({requests.filter(r => r.estAchete).length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatutAchatFilter("non_achete")}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 9,
+                border: "none",
+                fontSize: 12,
+                fontWeight: statutAchatFilter === "non_achete" ? 800 : 600,
+                background: statutAchatFilter === "non_achete" ? "#FEF3C7" : "transparent",
+                color: statutAchatFilter === "non_achete" ? "#92400E" : "var(--muted)",
+                boxShadow: statutAchatFilter === "non_achete" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5
+              }}
+            >
+              <Clock size={13} color={statutAchatFilter === "non_achete" ? "#92400E" : "currentColor"} />
+              <span>Pas encore achetés ({requests.filter(r => !r.estAchete).length})</span>
+            </button>
           </div>
-          <button type="submit" className="bs-btn-primary" style={{ padding: "0 16px", height: 40 }}>
-            Filtrer
-          </button>
-        </form>
+
+          {/* BARRE DE RECHERCHE RAPIDE */}
+          <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 8, flex: "1 1 220px", maxWidth: 320 }}>
+            <div style={{ position: "relative", flex: 1 }}>
+              <input
+                type="text"
+                className="bs-input"
+                placeholder="Rechercher..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ paddingLeft: 34, height: 40, fontSize: 13 }}
+              />
+              <Search size={15} color="var(--muted)" style={{ position: "absolute", left: 11, top: 12 }} />
+            </div>
+            <button type="submit" className="bs-btn-primary" style={{ padding: "0 14px", height: 40, fontSize: 13 }}>
+              Filtrer
+            </button>
+          </form>
+        </div>
       </div>
 
       {/* ── TABLE DES DEMANDES ── */}
@@ -1247,11 +1339,12 @@ export default function DemandesSpeciales() {
                   <th style={{ padding: "12px 16px", fontSize: 12, fontWeight: 800, color: "#64748B" }}>ARTICLES DEMANDÉS</th>
                   <th style={{ padding: "12px 16px", fontSize: 12, fontWeight: 800, color: "#64748B" }}>TOTAL DEVIS</th>
                   <th style={{ padding: "12px 16px", fontSize: 12, fontWeight: 800, color: "#64748B" }}>STATUT</th>
+                  <th style={{ padding: "12px 16px", fontSize: 12, fontWeight: 800, color: "#64748B" }}>ACHAT FOURNISSEUR</th>
                   <th className="no-print" style={{ padding: "12px 16px", fontSize: 12, fontWeight: 800, color: "#64748B", textAlign: "right" }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                <SkeletonTableRows rows={6} cols={8} />
+                <SkeletonTableRows rows={6} cols={9} />
               </tbody>
             </table>
           </div>
@@ -1273,11 +1366,16 @@ export default function DemandesSpeciales() {
                   <th style={{ padding: "12px 16px", fontSize: 12, fontWeight: 800, color: "#64748B" }}>ARTICLES DEMANDÉS</th>
                   <th style={{ padding: "12px 16px", fontSize: 12, fontWeight: 800, color: "#64748B" }}>TOTAL DEVIS</th>
                   <th style={{ padding: "12px 16px", fontSize: 12, fontWeight: 800, color: "#64748B" }}>STATUT</th>
+                  <th style={{ padding: "12px 16px", fontSize: 12, fontWeight: 800, color: "#64748B" }}>ACHAT FOURNISSEUR</th>
                   <th className="no-print" style={{ padding: "12px 16px", fontSize: 12, fontWeight: 800, color: "#64748B", textAlign: "right" }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                {requests.slice(0, visibleCount).map(req => {
+                {requests.filter(req => {
+                  if (statutAchatFilter === "achete" && req.statutAchat !== "achete") return false;
+                  if (statutAchatFilter === "non_achete" && req.statutAchat === "achete") return false;
+                  return true;
+                }).slice(0, visibleCount).map(req => {
                   const s = statusBadge[req.statut] || statusBadge.en_attente;
                   const total = Number(req.totalPropose || 0) + Number(req.fraisLivraison || 0);
 
@@ -1381,6 +1479,41 @@ export default function DemandesSpeciales() {
                         }}>
                           {s.label}
                         </span>
+                      </td>
+
+                      {/* STATUT ACHAT FOURNISSEUR TOGGLE */}
+                      <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleStatutAchat(req)}
+                          title="Cliquer pour changer le statut d'approvisionnement"
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: 20,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            background: req.statutAchat === "achete" ? "#DCFCE7" : "#FEF3C7",
+                            color: req.statutAchat === "achete" ? "#166534" : "#92400E",
+                            border: `1.5px solid ${req.statutAchat === "achete" ? "#86EFAC" : "#FDE68A"}`
+                          }}
+                        >
+                          {req.statutAchat === "achete" ? (
+                            <>
+                              <CheckCircle2 size={13} color="#166534" />
+                              <span>Acheté</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clock size={13} color="#92400E" />
+                              <span>Pas encore acheté</span>
+                            </>
+                          )}
+                        </button>
                       </td>
 
                       <td className="no-print" style={{ padding: "14px 16px", textAlign: "right" }}>
@@ -1528,11 +1661,17 @@ export default function DemandesSpeciales() {
                     Téléphone (WhatsApp) * :
                   </label>
                   <input
-                    type="text"
+                    type="tel"
+                    inputMode="tel"
                     required
                     className="bs-input"
                     value={editForm.telephoneClient}
-                    onChange={(e) => setEditForm({ ...editForm, telephoneClient: e.target.value })}
+                    onChange={(e) => setEditForm({ ...editForm, telephoneClient: e.target.value.replace(/[^0-9+ ]/g, "") })}
+                    onKeyDown={(e) => {
+                      if (!/[0-9+ ]/.test(e.key) && !["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Enter"].includes(e.key) && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                      }
+                    }}
                   />
                 </div>
               </div>
@@ -1564,6 +1703,20 @@ export default function DemandesSpeciales() {
                     <option value="propose">Devis envoyé</option>
                     <option value="valide">Validée par client</option>
                     <option value="refuse">Refusée</option>
+                  </select>
+                </div>
+
+                <div className="bs-input-group">
+                  <label style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 6 }}>
+                    Achat fournisseur :
+                  </label>
+                  <select
+                    className="bs-input"
+                    value={editForm.statutAchat || "non_achete"}
+                    onChange={(e) => setEditForm({ ...editForm, statutAchat: e.target.value })}
+                  >
+                    <option value="non_achete">⏳ Pas encore acheté</option>
+                    <option value="achete">✓ Déjà acheté auprès du fournisseur</option>
                   </select>
                 </div>
               </div>
@@ -1900,12 +2053,18 @@ export default function DemandesSpeciales() {
                     Téléphone (WhatsApp) * :
                   </label>
                   <input
-                    type="text"
+                    type="tel"
+                    inputMode="tel"
                     required
                     className="bs-input"
                     placeholder="Ex: +269 341 00 00"
                     value={createForm.telephoneClient}
-                    onChange={(e) => setCreateForm({ ...createForm, telephoneClient: e.target.value })}
+                    onChange={(e) => setCreateForm({ ...createForm, telephoneClient: e.target.value.replace(/[^0-9+ ]/g, "") })}
+                    onKeyDown={(e) => {
+                      if (!/[0-9+ ]/.test(e.key) && !["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Enter"].includes(e.key) && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                      }
+                    }}
                   />
                 </div>
               </div>

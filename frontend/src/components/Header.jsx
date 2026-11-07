@@ -9,7 +9,7 @@ import CartDrawer from "./CartDrawer.jsx";
 import NotificationMenu from "./NotificationMenu.jsx";
 import ProfileModal from "./ProfileModal.jsx";
 
-import { formatPrice as fcfa, CURRENCIES, getActiveCurrency, setActiveCurrency } from "../utils/currency.js";
+import { formatPrice as fcfa, getBoutiqueCurrencies, getActiveCurrency, setActiveCurrency } from "../utils/currency.js";
 
 export default function Header({ setCartOpen: setCartOpenProp }) {
   const { user, boutique: boutiqueContext, logout, theme, toggleTheme } = useAuth();
@@ -571,38 +571,40 @@ export default function Header({ setCartOpen: setCartOpenProp }) {
               </div>
             )}
 
-            {/* SÉLECTEUR DE DEVISE & PAYS : COMORES (KMF) OU SÉNÉGAL (FCFA) */}
-            <div className="bs-currency-switch" style={{ display: "flex", alignItems: "center", background: "var(--paper)", border: "1.5px solid var(--line)", borderRadius: 24, padding: "3px 4px", gap: 3, flexShrink: 0 }}>
-              {CURRENCIES.map(c => {
-                const isActive = currentCurrency === c.code;
-                return (
-                  <button
-                    key={c.code}
-                    type="button"
-                    className="bs-currency-btn"
-                    onClick={() => setActiveCurrency(c.code)}
-                    style={{
-                      border: "none",
-                      background: isActive ? "var(--forest-dark)" : "transparent",
-                      color: isActive ? "#ffffff" : "var(--ink)",
-                      borderRadius: 18,
-                      padding: "6px 10px",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      transition: "all 0.15s ease",
-                      boxShadow: isActive ? "0 2px 8px rgba(0,0,0,0.15)" : "none"
-                    }}
-                    title={`Afficher les prix en ${c.label}`}
-                  >
-                    <span style={{ letterSpacing: "0.03em" }}>{c.code}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* SÉLECTEUR DE DEVISE DYNAMIQUE (MASQUÉ SI LA BOUTIQUE N'A QU'UNE SEULE DEVISE) */}
+            {getBoutiqueCurrencies(boutique).length > 1 && (
+              <div className="bs-currency-switch" style={{ display: "flex", alignItems: "center", background: "var(--paper)", border: "1.5px solid var(--line)", borderRadius: 24, padding: "3px 4px", gap: 3, flexShrink: 0 }}>
+                {getBoutiqueCurrencies(boutique).map(c => {
+                  const isActive = currentCurrency === c.code;
+                  return (
+                    <button
+                      key={c.code}
+                      type="button"
+                      className="bs-currency-btn"
+                      onClick={() => setActiveCurrency(c.code)}
+                      style={{
+                        border: "none",
+                        background: isActive ? "var(--forest-dark)" : "transparent",
+                        color: isActive ? "#ffffff" : "var(--ink)",
+                        borderRadius: 18,
+                        padding: "6px 10px",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        transition: "all 0.15s ease",
+                        boxShadow: isActive ? "0 2px 8px rgba(0,0,0,0.15)" : "none"
+                      }}
+                      title={`Afficher les prix en ${c.label}`}
+                    >
+                      <span style={{ letterSpacing: "0.03em" }}>{c.code}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* BOUTON CHANGER LE THÈME */}
             <button

@@ -1089,7 +1089,7 @@ export default function ProductDetail() {
               <div style={{ fontSize: 13.5, lineHeight: 1.45 }}>
                 <strong style={{ display: "block", marginBottom: 3, fontSize: 14 }}>Variante en rupture de stock</strong>
                 {selectedColorStock !== null && selectedColorStock <= 0 && (
-                  <div>Le coloris <strong>{selectedColor}</strong> est actuellement épuisé. Veuillez choisir un autre coloris disponible.</div>
+                  <div>Le coloris <strong>{selectedCouleur?.nom}</strong> est actuellement épuisé. Veuillez choisir un autre coloris disponible.</div>
                 )}
                 {selectedSenteurStock !== null && selectedSenteurStock <= 0 && (
                   <div>La senteur <strong>{selectedSenteur?.nom}</strong> est actuellement épuisée. Veuillez choisir une autre senteur disponible.</div>

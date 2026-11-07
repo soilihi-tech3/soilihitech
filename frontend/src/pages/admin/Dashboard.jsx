@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, AreaChart, Area, LineChart, Line, Legend } from "recharts";
-import { TrendingUp, ShoppingBag, AlertTriangle, Layers, DollarSign, Package, Users, Star, UserCheck, CheckCircle2, Clock, CheckCircle, RefreshCw, CreditCard, ArrowUpRight } from "lucide-react";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, AreaChart, Area, Legend } from "recharts";
+import { TrendingUp, ShoppingBag, AlertTriangle, Layers, DollarSign, Package, Users, Star, UserCheck, CheckCircle2, Clock, CheckCircle, PiggyBank, Receipt, Store, Globe } from "lucide-react";
 import api from "../../api";
 import Stars from "../../components/Stars.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -9,54 +9,76 @@ import { subscribeRealtime } from "../../utils/realtime.js";
 import { Skel, SkeletonStatCards } from "../../components/Skeleton.jsx";
 import { readCache, writeCache } from "../../utils/swrCache.js";
 
-import { formatPrice, formatPrice as fcfa, getActiveCurrency, setActiveCurrency } from "../../utils/currency.js";
+import { formatPrice, getActiveCurrency, setActiveCurrency, getBoutiqueCurrencies, getCurrencyMeta } from "../../utils/currency.js";
 
 export default function Dashboard() {
-  const { user, boutique, theme } = useAuth();
+  const { user, boutique, theme, myBoutiques = [], activeBoutiqueId, switchAdminBoutique } = useAuth();
   const [data, setData] = useState(() => readCache("admin_dashboard") || null);
+  const [multiOverview, setMultiOverview] = useState(null);
+  const [showMultiBoutiquesView, setShowMultiBoutiquesView] = useState(false);
+
   const isEmploye = user?.role === "employe";
-  const assignedCurrency = isEmploye && user?.deviseAutorisee && user.deviseAutorisee !== "TOUTES" 
-    ? user.deviseAutorisee 
+  const isMultiBoutiqueAdmin = user?.role === "admin" && myBoutiques.length > 1;
+  const assignedCurrency = isEmploye && user?.deviseAutorisee && user.deviseAutorisee !== "TOUTES"
+    ? user.deviseAutorisee
     : null;
 
-  const [activeCurrency, setActiveCurrencyState] = useState(() => assignedCurrency || getActiveCurrency() || "KMF");
-  const [countryFilter, setCountryFilter] = useState(() => assignedCurrency || getActiveCurrency() || "KMF");
+  const boutiqueCurrencies = getBoutiqueCurrencies({
+    devisesDisponibles: data?.devisesDisponibles || boutique?.devisesDisponibles,
+    devise: boutique?.devise
+  });
+  const isSingleCurrencyBoutique = boutiqueCurrencies.length === 1;
+  const singleCurrencyCode = boutiqueCurrencies[0]?.code || boutique?.devise || "KMF";
+
+  const [activeCurrency, setActiveCurrencyState] = useState(() => assignedCurrency || getActiveCurrency() || singleCurrencyCode);
+  const [countryFilter, setCountryFilter] = useState(() => assignedCurrency || getActiveCurrency() || singleCurrencyCode);
   const [prodChartTab, setProdChartTab] = useState("top");
 
   useEffect(() => {
-    const cur = assignedCurrency || getActiveCurrency() || boutique?.devise || "KMF";
-    setActiveCurrencyState(cur);
-    setCountryFilter(cur);
+    const allowedCodes = boutiqueCurrencies.map(c => c.code);
+    if (isSingleCurrencyBoutique) {
+      setActiveCurrencyState(singleCurrencyCode);
+      setCountryFilter(singleCurrencyCode);
+      return;
+    }
+    const cur = assignedCurrency || getActiveCurrency() || singleCurrencyCode;
+    const validCur = allowedCodes.includes(cur) ? cur : singleCurrencyCode;
+    setActiveCurrencyState(validCur);
+    setCountryFilter((prev) => (prev === "ALL" && !assignedCurrency ? "ALL" : validCur));
 
     const handleCurChange = (e) => {
-      if (assignedCurrency) {
+      if (isSingleCurrencyBoutique) {
+        setActiveCurrencyState(singleCurrencyCode);
+        setCountryFilter(singleCurrencyCode);
+      } else if (assignedCurrency) {
         setActiveCurrencyState(assignedCurrency);
         setCountryFilter(assignedCurrency);
       } else {
-        const newCur = e.detail || getActiveCurrency() || "KMF";
-        setActiveCurrencyState(newCur);
-        setCountryFilter(newCur);
+        const newCur = e.detail || getActiveCurrency() || singleCurrencyCode;
+        if (allowedCodes.includes(newCur)) {
+          setActiveCurrencyState(newCur);
+          setCountryFilter(newCur);
+        }
       }
     };
     window.addEventListener("currency_changed", handleCurChange);
     return () => window.removeEventListener("currency_changed", handleCurChange);
-  }, [boutique?.devise, assignedCurrency]);
+  }, [boutique?.devise, JSON.stringify(boutique?.devisesDisponibles), JSON.stringify(data?.devisesDisponibles), assignedCurrency, isSingleCurrencyBoutique, singleCurrencyCode]);
 
   const handleFilterCountry = (filter) => {
-    if (assignedCurrency) return; // Verrouillé pour l'employé avec devise assignée
+    if (assignedCurrency || isSingleCurrencyBoutique) return;
     setCountryFilter(filter);
-    if (filter === "KMF" || filter === "FCFA") {
+    if (filter !== "ALL") {
       setActiveCurrency(filter);
       setActiveCurrencyState(filter);
     }
   };
 
-  const storeDevise = activeCurrency || boutique?.devise || "KMF";
+  const storeDevise = isSingleCurrencyBoutique ? singleCurrencyCode : (activeCurrency || boutique?.devise || "KMF");
   const isDark = theme === "dark";
 
-  // Chart styling options based on active theme
   const chartColors = {
-    stroke: isDark ? "#10B981" : "#163424", // Vibrant Emerald in Dark Mode
+    stroke: isDark ? "#10B981" : "#163424",
     grid: isDark ? "rgba(255, 255, 255, 0.12)" : "#E5E9DE",
     axisText: isDark ? "#94A3B8" : "#64748B",
     yAxisCategoryText: isDark ? "#F1F5F9" : "var(--ink)",
@@ -69,10 +91,18 @@ export default function Dashboard() {
   };
 
   function loadDashboard() {
-    api.get("/admin/dashboard").then((res) => { setData(res.data); writeCache("admin_dashboard", res.data); }).catch(() => {});
+    api.get("/admin/dashboard").then((res) => {
+      setData(res.data);
+      writeCache("admin_dashboard", res.data);
+    }).catch(() => {});
+    if (user?.role === "admin") {
+      api.get("/admin/multi-boutiques-overview").then((res) => {
+        setMultiOverview(res.data);
+      }).catch(() => {});
+    }
   }
 
-  useEffect(() => { 
+  useEffect(() => {
     loadDashboard();
     const unsub = subscribeRealtime((detail) => {
       const t = detail?.type || detail;
@@ -83,16 +113,28 @@ export default function Dashboard() {
         t === "product_updated" ||
         t === "product_created" ||
         t === "product_deleted" ||
+        t === "achat_updated" ||
         t === "category_updated" ||
         t === "expense_updated" ||
         t === "saving_updated" ||
+        t === "boutique_updated" ||
         t === "user_registered"
       ) {
         loadDashboard();
       }
     });
-    return unsub;
-  }, []);
+    const onFocus = () => { if (!document.hidden) loadDashboard(); };
+    const onBoutiqueSwitch = () => loadDashboard();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("boutique_switched", onBoutiqueSwitch);
+    return () => {
+      if (typeof unsub === "function") unsub();
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener("boutique_switched", onBoutiqueSwitch);
+    };
+  }, [activeBoutiqueId]);
 
   if (!data) return (
     <div role="status" aria-label="Chargement">
@@ -122,9 +164,7 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* STATS DE L'EMPLOYÉ */}
         <div className="bs-dashboard-kpi-grid">
-          
           <div className="bs-panel bs-dashboard-kpi-card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ color: "var(--muted)", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Chiffre d'affaires</span>
@@ -168,10 +208,8 @@ export default function Dashboard() {
             <div style={{ fontSize: "clamp(17px, 3.8vw, 22px)", fontWeight: 800, color: "var(--ink)" }}>{data.nbMesCommandes || 0}</div>
             <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Total des commandes</div>
           </div>
-
         </div>
 
-        {/* LISTE DES COMMANDES ASSIGNÉES À L'EMPLOYÉ */}
         <div className="bs-panel" style={{ padding: "20px 20px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <div>
@@ -215,7 +253,7 @@ export default function Dashboard() {
                       Client: {c.client?.nom || "Client non inscrit"}
                     </div>
                     <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>Tél: {c.client?.telephone || c.telephoneClient || "Non renseigné"}</div>
-                    
+
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px dashed var(--line)" }}>
                       <span style={{ fontWeight: 800, fontSize: 14, color: "var(--forest)", whiteSpace: "nowrap" }}>{formatPrice(c.total, c.devise || storeDevise)}</span>
                       <Link to="/admin/commandes" style={{ fontSize: 12, fontWeight: 700, color: "var(--forest-dark)", textDecoration: "underline" }}>
@@ -232,50 +270,50 @@ export default function Dashboard() {
     );
   }
 
-  // ── 2. DASHBOARD GLOBAL ADMINISTRATEUR ──
-  const isComores = countryFilter === "KMF";
-  const isSenegal = countryFilter === "FCFA";
-  const isAll = countryFilter === "ALL";
-
-  const comoresData = data.comores || {
-    chiffreAffaires: Number(data.chiffreAffairesComores || 0),
-    coutAchats: Number(data.coutAchatsComores || 0),
-    beneficeNet: Number(data.beneficeComores || 0),
-    nbCommandes: Number(data.nbCommandesComores || 0),
-    totalVentesCount: Number(data.totalVentesCountComores || 0),
-    panierMoyen: Number(data.panierMoyenComores || 0),
-    valeurStockVente: Number(data.valeurStockComores || 0),
-    chartData: [],
-    modesPaiement: []
+  // ── Helper pour récupérer les stats d'une devise spécifique ──
+  const getCurrencyStats = (code) => {
+    const upper = String(code || "KMF").toUpperCase();
+    if (data.statsByCurrency && data.statsByCurrency[upper]) {
+      return data.statsByCurrency[upper];
+    }
+    if (upper === "KMF" && data.comores) return data.comores;
+    if (upper === "FCFA" && data.senegal) return data.senegal;
+    return {
+      chiffreAffaires: 0,
+      coutAchats: 0,
+      beneficeVentes: 0,
+      depenses: 0,
+      epargne: 0,
+      beneficeNet: 0,
+      nbCommandes: 0,
+      totalVentesCount: 0,
+      panierMoyen: 0,
+      valeurStockVente: 0,
+      chartData: [],
+      modesPaiement: []
+    };
   };
 
-  const senegalData = data.senegal || {
-    chiffreAffaires: Number(data.chiffreAffairesSenegal || 0),
-    coutAchats: Number(data.coutAchatsSenegal || 0),
-    beneficeNet: Number(data.beneficeSenegal || 0),
-    nbCommandes: Number(data.nbCommandesSenegal || 0),
-    totalVentesCount: Number(data.totalVentesCountSenegal || 0),
-    panierMoyen: Number(data.panierMoyenSenegal || 0),
-    valeurStockVente: Number(data.valeurStockSenegal || 0),
-    chartData: [],
-    modesPaiement: []
-  };
+  const effectiveFilter = isSingleCurrencyBoutique ? singleCurrencyCode : countryFilter;
+  const isAll = !isSingleCurrencyBoutique && effectiveFilter === "ALL";
+  const currenciesToRender = isAll
+    ? boutiqueCurrencies
+    : boutiqueCurrencies.filter(c => c.code === effectiveFilter);
+  const activeCurrenciesList = currenciesToRender.length > 0 ? currenciesToRender : [boutiqueCurrencies[0]];
 
-  // Sélection dynamique des données de graphiques
-  const currentChartData = isComores
-    ? (comoresData.chartData?.length ? comoresData.chartData : [])
-    : isSenegal
-    ? (senegalData.chartData?.length ? senegalData.chartData : [])
-    : (data.chartData || []);
+  const primarySelectedCurrency = isAll ? singleCurrencyCode : activeCurrenciesList[0]?.code || singleCurrencyCode;
+  const primaryStats = getCurrencyStats(primarySelectedCurrency);
 
-  const currentCurrencySymbol = isComores ? "KMF" : isSenegal ? "FCFA" : "FCFA";
+  const currentChartData = isAll
+    ? (data.chartData || [])
+    : (primaryStats.chartData?.length ? primaryStats.chartData : (data.chartData || []));
 
-  const currentModesPaiement = isComores
-    ? (comoresData.modesPaiement?.length ? comoresData.modesPaiement : [{ name: "Espèces (Cash)", value: 1 }])
-    : isSenegal
-    ? (senegalData.modesPaiement?.length ? senegalData.modesPaiement : [{ name: "Espèces / Wave", value: 1 }])
+  const currentCurrencySymbol = isAll ? singleCurrencyCode : primarySelectedCurrency;
+
+  const currentModesPaiement = !isAll && primaryStats.modesPaiement?.length
+    ? primaryStats.modesPaiement
     : [
-        { name: "Espèces (Cash)", value: Math.max(1, (comoresData.nbCommandes || 0) + (senegalData.nbCommandes || 0)) },
+        { name: "Espèces (Cash)", value: Math.max(1, data.nbCommandes || 1) },
         { name: "Paiement Mobile", value: Math.max(1, Math.round(((data.nbCommandes || 1) * 0.4))) }
       ];
 
@@ -286,97 +324,598 @@ export default function Dashboard() {
       <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 14 }}>
         <div>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--forest-light)", color: "var(--forest)", padding: "3px 10px", borderRadius: 16, fontSize: 11.5, fontWeight: 700, marginBottom: 6 }}>
-            <span>{isComores ? "Comores Actif" : isSenegal ? "Sénégal Actif" : "Vue Globale"}</span>
+            <span>
+              {showMultiBoutiquesView
+                ? `🌐 Vue Globale Multi-Boutiques (${myBoutiques.length} boutiques)`
+                : isSingleCurrencyBoutique
+                ? `${boutique?.nom || "Boutique"} • Devise unique (${singleCurrencyCode})`
+                : isAll
+                ? `${boutique?.nom || "Boutique"} • Vue Globale (${boutiqueCurrencies.map(c => c.code).join(" + ")})`
+                : `${boutique?.nom || "Boutique"} • ${getCurrencyMeta(effectiveFilter).label}`}
+            </span>
           </div>
-          <h1 style={{ fontSize: "clamp(20px, 4vw, 26px)", margin: 0, color: "var(--forest-dark)" }}>Tableau de bord Général Admin</h1>
+          <h1 style={{ fontSize: "clamp(20px, 4vw, 26px)", margin: 0, color: "var(--forest-dark)" }}>
+            {showMultiBoutiquesView ? "Vue Globale de toutes mes Boutiques" : `Tableau de bord — ${boutique?.nom || "Admin"}`}
+          </h1>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 13.5 }}>
-            Aperçu dynamique des ventes, des bénéfices réels et des achats par pays.
+            {showMultiBoutiquesView
+              ? "Supervision consolidée du chiffre d'affaires, des bénéfices, des stocks et des équipes de toutes vos boutiques."
+              : isSingleCurrencyBoutique
+              ? `Suivi financier 100% dynamique en ${getCurrencyMeta(singleCurrencyCode).label}.`
+              : "Aperçu dynamique des ventes, des bénéfices réels et des stocks selon les devises configurées."}
           </p>
         </div>
 
-        {/* SÉLECTEUR DE PAYS DYNAMIQUE */}
-        <div className="bs-country-switcher">
-          {(!assignedCurrency || assignedCurrency === "KMF") && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {/* BOUTON VUE GLOBALE MULTI-BOUTIQUES (SI L'ADMIN GÈRE PLUSIEURS BOUTIQUES) */}
+          {isMultiBoutiqueAdmin && (
             <button
               type="button"
-              onClick={() => handleFilterCountry("KMF")}
+              onClick={() => setShowMultiBoutiquesView(v => !v)}
               style={{
-                display: "flex", alignItems: "center", gap: 6,
-                background: countryFilter === "KMF" ? "var(--forest)" : "transparent",
-                color: countryFilter === "KMF" ? "#fff" : "var(--muted)",
-                border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: assignedCurrency ? "default" : "pointer",
-                transition: "all 0.15s ease"
+                display: "inline-flex", alignItems: "center", gap: 7,
+                padding: "8px 14px", borderRadius: 10, fontSize: 12.5, fontWeight: 800,
+                border: showMultiBoutiquesView ? "1.5px solid #1E40AF" : "1.5px solid #93C5FD",
+                background: showMultiBoutiquesView ? "#1D4ED8" : "#EFF6FF",
+                color: showMultiBoutiquesView ? "#fff" : "#1E3A8A",
+                cursor: "pointer", transition: "all 0.15s ease"
               }}
             >
-              <span className="bs-country-label-full">Comores (KMF)</span>
-              <span className="bs-country-label-short">Comores</span>
+              <Globe size={15} />
+              <span>
+                {showMultiBoutiquesView
+                  ? `Retour à ${boutique?.nom || "la boutique active"}`
+                  : `Vue Globale de mes ${myBoutiques.length} Boutiques`}
+              </span>
             </button>
           )}
 
-          {(!assignedCurrency || assignedCurrency === "FCFA") && (
-            <button
-              type="button"
-              onClick={() => handleFilterCountry("FCFA")}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                background: countryFilter === "FCFA" ? "var(--forest)" : "transparent",
-                color: countryFilter === "FCFA" ? "#fff" : "var(--muted)",
-                border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: assignedCurrency ? "default" : "pointer",
-                transition: "all 0.15s ease"
-              }}
-            >
-              <span className="bs-country-label-full">Sénégal (FCFA)</span>
-              <span className="bs-country-label-short">Sénégal</span>
-            </button>
-          )}
+          {/* SÉLECTEUR DE DEVISES DYNAMIQUE (MASQUÉ SI 1 SEULE DEVISE OU EN VUE MULTI-BOUTIQUES) */}
+          {!showMultiBoutiquesView && !isSingleCurrencyBoutique && (
+            <div className="bs-country-switcher">
+              {boutiqueCurrencies.map((cur) => {
+                if (assignedCurrency && assignedCurrency !== cur.code) return null;
+                return (
+                  <button
+                    key={cur.code}
+                    type="button"
+                    onClick={() => handleFilterCountry(cur.code)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      background: effectiveFilter === cur.code ? "var(--forest)" : "transparent",
+                      color: effectiveFilter === cur.code ? "#fff" : "var(--muted)",
+                      border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+                      cursor: assignedCurrency ? "default" : "pointer",
+                      transition: "all 0.15s ease"
+                    }}
+                  >
+                    <span className="bs-country-label-full">{cur.label}</span>
+                    <span className="bs-country-label-short">{cur.code}</span>
+                  </button>
+                );
+              })}
 
-          {!assignedCurrency && (
-            <button
-              type="button"
-              onClick={() => handleFilterCountry("ALL")}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                background: countryFilter === "ALL" ? "var(--forest)" : "transparent",
-                color: countryFilter === "ALL" ? "#fff" : "var(--muted)",
-                border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-                transition: "all 0.15s ease"
-              }}
-            >
-              <span className="bs-country-label-full">Vue Globale (Tous)</span>
-              <span className="bs-country-label-short">Global</span>
-            </button>
+              {!assignedCurrency && (
+                <button
+                  type="button"
+                  onClick={() => handleFilterCountry("ALL")}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    background: effectiveFilter === "ALL" ? "var(--forest)" : "transparent",
+                    color: effectiveFilter === "ALL" ? "#fff" : "var(--muted)",
+                    border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                    transition: "all 0.15s ease"
+                  }}
+                >
+                  <span className="bs-country-label-full">Vue Globale (Tous)</span>
+                  <span className="bs-country-label-short">Global</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
 
-      {/* ── HIGH-ELEGANCE SLIM KPI CARDS GRID (Cartes 100% Dynamiques) ── */}
-      <div className="bs-dashboard-kpi-grid">
-        
-        {/* 1. CHIFFRE D'AFFAIRES DYNAMIQUE */}
-        {isComores && (
+      {/* ── VUE GLOBALE MULTI-BOUTIQUES (POUR UN ADMIN QUI GÈRE 2, 3+ BOUTIQUES) ── */}
+      {showMultiBoutiquesView && multiOverview && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, marginBottom: 28 }}>
+          {/* KPI CONSOLIDÉS DE TOUTES LES BOUTIQUES */}
+          <div className="bs-dashboard-kpi-grid">
+            {Object.entries(multiOverview.totauxParDevise || {}).map(([code, tot]) => {
+              const meta = getCurrencyMeta(code);
+              return (
+                <React.Fragment key={code}>
+                  <div style={{
+                    background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+                    display: "flex", flexDirection: "column", justifyContent: "space-between"
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: meta.color, textTransform: "uppercase" }}>
+                      CA Consolidé ({code})
+                    </div>
+                    <div style={{ fontSize: 21, fontWeight: 900, color: "var(--ink)", marginTop: 6 }}>
+                      {formatPrice(tot.chiffreAffaires || 0, code)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                      {tot.nbCommandes || 0} ventes confirmées • Stock vente : {formatPrice(tot.valeurStockVente || 0, code)}
+                    </div>
+                  </div>
+
+                  <div style={{
+                    background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+                    display: "flex", flexDirection: "column", justifyContent: "space-between"
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "#059669", textTransform: "uppercase" }}>
+                      Bénéfice Net Consolidé ({code})
+                    </div>
+                    <div style={{ fontSize: 21, fontWeight: 900, color: (tot.beneficeNet || 0) < 0 ? "#DC2626" : "#059669", marginTop: 6 }}>
+                      {formatPrice(tot.beneficeNet || 0, code)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                      Dép: -{formatPrice(tot.depenses || 0, code)} • Épargne: -{formatPrice(tot.epargne || 0, code)}
+                    </div>
+                  </div>
+                </React.Fragment>
+              );
+            })}
+
+            <div style={{
+              background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+              display: "flex", flexDirection: "column", justifyContent: "space-between"
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#4F46E5", textTransform: "uppercase" }}>
+                Stock Global ({multiOverview.nbBoutiques} Boutiques)
+              </div>
+              <div style={{ fontSize: 21, fontWeight: 900, color: "var(--ink)", marginTop: 6 }}>
+                {multiOverview.totalUnitsEnStockGlobal || 0} unités
+              </div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                {multiOverview.totalProduitsGlobal || 0} références • Valeur achat : {formatPrice(multiOverview.totalValeurStockAchatGlobalFCFA || 0, "FCFA")}
+              </div>
+            </div>
+
+            <div style={{
+              background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+              display: "flex", flexDirection: "column", justifyContent: "space-between"
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#DC2626", textTransform: "uppercase" }}>
+                Total Achats Stock Global (FCFA)
+              </div>
+              <div style={{ fontSize: 21, fontWeight: 900, color: "#DC2626", marginTop: 6 }}>
+                {formatPrice(multiOverview.totalDepensesAchatsGlobalFCFA || 0, "FCFA")}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                Cumul de toutes vos boutiques
+              </div>
+            </div>
+          </div>
+
+          {/* CARTES DÉTAILLÉES PAR BOUTIQUE */}
+          <div className="bs-panel" style={{ padding: 20 }}>
+            <h3 style={{ margin: "0 0 14px", fontSize: 17, fontWeight: 800, color: "var(--forest-dark)", display: "flex", alignItems: "center", gap: 8 }}>
+              <Store size={19} color="var(--forest)" />
+              <span>Détail en temps réel par Boutique ({multiOverview.detailsBoutiques?.length || 0})</span>
+            </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))", gap: 16 }}>
+              {(multiOverview.detailsBoutiques || []).map((b) => {
+                const isCurrent = Number(b.id) === Number(activeBoutiqueId || boutique?.id);
+                const bCurrencies = Array.isArray(b.devisesDisponibles) && b.devisesDisponibles.length > 0 ? b.devisesDisponibles : [b.devise || "KMF"];
+                return (
+                  <div
+                    key={b.id}
+                    style={{
+                      border: isCurrent ? "2px solid var(--forest)" : "1px solid var(--line)",
+                      borderRadius: 14,
+                      padding: 16,
+                      background: isCurrent ? "var(--forest-light)" : "var(--paper)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                      <div>
+                        <div style={{ fontWeight: 900, fontSize: 16, color: "var(--forest-dark)", display: "flex", alignItems: "center", gap: 6 }}>
+                          <span>🏪 {b.nom}</span>
+                          {isCurrent && (
+                            <span style={{ fontSize: 10.5, background: "var(--forest)", color: "#fff", padding: "2px 8px", borderRadius: 10 }}>
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>
+                          Devises : <strong>{bCurrencies.join(" + ")}</strong> • {b.totalProduits} produits ({b.totalUnitsEnStock} en stock)
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          switchAdminBoutique(b.id);
+                          setShowMultiBoutiquesView(false);
+                        }}
+                        style={{
+                          padding: "6px 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 800,
+                          border: "1px solid var(--forest)", background: isCurrent ? "#fff" : "var(--forest)",
+                          color: isCurrent ? "var(--forest-dark)" : "#fff", cursor: "pointer"
+                        }}
+                      >
+                        {isCurrent ? "Voir détails" : "Gérer cette boutique"}
+                      </button>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8 }}>
+                      {bCurrencies.map((code) => {
+                        const st = b.statsByCurrency?.[code] || {};
+                        return (
+                          <div key={code} style={{ background: "var(--card)", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--line)" }}>
+                            <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase" }}>
+                              Ventes ({code})
+                            </div>
+                            <div style={{ fontSize: 15, fontWeight: 900, color: "var(--ink)", marginTop: 2 }}>
+                              {formatPrice(st.chiffreAffaires || 0, code)}
+                            </div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: (st.beneficeNet || 0) < 0 ? "#DC2626" : "#059669", marginTop: 2 }}>
+                              Bénéfice : {formatPrice(st.beneficeNet || 0, code)}
+                            </div>
+                            <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
+                              Stock : {formatPrice(st.valeurStockVente || 0, code)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11.5, color: "var(--muted)", borderTop: "1px dashed var(--line)", paddingTop: 8, flexWrap: "wrap", gap: 6 }}>
+                      <span>Équipe : <strong>{(b.equipe || []).length}</strong> membre(s)</span>
+                      <span style={{ color: b.stockFaibleCount > 0 ? "#DC2626" : "var(--muted)", fontWeight: 700 }}>
+                        Alertes stock : {b.stockFaibleCount || 0}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CARTES KPI DYNAMIQUES SELON LE NOMBRE DE DEVISES DE LA BOUTIQUE ── */}
+      {!showMultiBoutiquesView && (
+        <div className="bs-dashboard-kpi-grid">
+          {/* 1. CHIFFRE D'AFFAIRES PAR DEVISE ACTIVE */}
+          {activeCurrenciesList.map((cur) => {
+            const st = getCurrencyStats(cur.code);
+            return (
+              <div
+                key={`ca-${cur.code}`}
+                style={{
+                  background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+                  position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+                }}
+              >
+                <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(34,75,53,0.08)", pointerEvents: "none" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: cur.bg || "rgba(34,75,53,0.12)", color: cur.color || "var(--forest-dark)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <TrendingUp size={17} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: cur.color || "var(--ink)", letterSpacing: "-0.02em" }}>
+                    {formatPrice(st.chiffreAffaires || 0, cur.code)}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                    Chiffre d'affaires ({cur.label})
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* 2. COÛT D'ACHAT DES VENTES (SI VUE D'UNE SEULE DEVISE) */}
+          {!isAll && activeCurrenciesList.map((cur) => {
+            const st = getCurrencyStats(cur.code);
+            return (
+              <div
+                key={`cout-${cur.code}`}
+                style={{
+                  background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+                  position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+                }}
+              >
+                <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(239,68,68,0.08)", pointerEvents: "none" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEE2E2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <ShoppingBag size={17} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: "#DC2626", letterSpacing: "-0.02em" }}>
+                    {formatPrice(st.coutAchats || 0, "FCFA")}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                    Coût d'achat ventes {cur.shortLabel} (FCFA)
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* 3. BÉNÉFICE NET DISPONIBLE PAR DEVISE ACTIVE */}
+          {activeCurrenciesList.map((cur) => {
+            const st = getCurrencyStats(cur.code);
+            return (
+              <div
+                key={`ben-${cur.code}`}
+                style={{
+                  background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+                  position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+                }}
+              >
+                <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(5,150,105,0.08)", pointerEvents: "none" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: "#ECFDF5", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <DollarSign size={17} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: (st.beneficeNet || 0) < 0 ? "#DC2626" : "#059669", letterSpacing: "-0.02em" }}>
+                    {formatPrice(st.beneficeNet || 0, cur.code)}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                    Bénéfice net disponible ({cur.code})
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>
+                    Ventes: {formatPrice(st.beneficeVentes ?? st.beneficeNet ?? 0, cur.code)} • Dép: -{formatPrice(st.depenses || 0, cur.code)} • Épargne: -{formatPrice(st.epargne || 0, cur.code)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* 3b. DÉPENSES COURANTES */}
+          <Link to="/admin/depenses" style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)", textDecoration: "none"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(220,38,38,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEF2F2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Receipt size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: activeCurrenciesList.length > 1 ? 15 : 20, fontWeight: 900, color: "#DC2626", letterSpacing: "-0.02em" }}>
+                {activeCurrenciesList.map((cur, idx) => (
+                  <React.Fragment key={cur.code}>
+                    {idx > 0 && <span style={{ color: "var(--muted)", fontWeight: 600 }}> / </span>}
+                    {formatPrice(getCurrencyStats(cur.code).depenses || 0, cur.code)}
+                  </React.Fragment>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Dépenses ({activeCurrenciesList.map(c => c.code).join(" & ")})
+              </div>
+            </div>
+          </Link>
+
+          {/* 3c. ÉPARGNE NETTE */}
+          <Link to="/admin/epargne" style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)", textDecoration: "none"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(22,101,52,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#DCFCE7", color: "#166534", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <PiggyBank size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: activeCurrenciesList.length > 1 ? 15 : 20, fontWeight: 900, color: "#166534", letterSpacing: "-0.02em" }}>
+                {activeCurrenciesList.map((cur, idx) => (
+                  <React.Fragment key={cur.code}>
+                    {idx > 0 && <span style={{ color: "var(--muted)", fontWeight: 600 }}> / </span>}
+                    {formatPrice(getCurrencyStats(cur.code).epargne || 0, cur.code)}
+                  </React.Fragment>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Solde Épargne ({activeCurrenciesList.map(c => c.code).join(" & ")})
+              </div>
+            </div>
+          </Link>
+
+          {/* 4. DÉPENSES TOTALES D'ACHATS DE MARCHANDISES (FCFA) */}
+          <Link to="/admin/achats" style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)", textDecoration: "none"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(239,68,68,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEE2E2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ShoppingBag size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#DC2626", letterSpacing: "-0.02em" }}>
+                {formatPrice(data.totalDepensesAchats || 0, "FCFA")}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Dépenses Totales d'Achats Stock (FCFA)
+              </div>
+              <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>
+                Auj: {formatPrice(data.achatsAujourdhuiFCFA || 0, "FCFA")} • Hier: {formatPrice(data.achatsHierFCFA || 0, "FCFA")}
+              </div>
+            </div>
+          </Link>
+
+          {/* 5. VALEUR DU STOCK EN VENTE PAR DEVISE ACTIVE */}
+          {activeCurrenciesList.map((cur) => {
+            const st = getCurrencyStats(cur.code);
+            return (
+              <div
+                key={`stk-${cur.code}`}
+                style={{
+                  background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+                  position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+                }}
+              >
+                <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(79,70,229,0.08)", pointerEvents: "none" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: cur.bg || "#EEF2FF", color: cur.color || "#4F46E5", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Package size={17} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: cur.color || "var(--ink)", letterSpacing: "-0.02em" }}>
+                    {formatPrice(st.valeurStockVente || 0, cur.code)}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                    Valeur stock vente ({cur.code})
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* VALEUR STOCK COÛT D'ACHAT (FCFA) */}
           <div style={{
             background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
             position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
             boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
           }}>
-            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(34,75,53,0.08)", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(79,70,229,0.08)", pointerEvents: "none" }} />
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(34,75,53,0.12)", color: "var(--forest-dark)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <TrendingUp size={17} />
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#EEF2FF", color: "#4F46E5", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Package size={17} />
               </div>
             </div>
             <div>
               <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-                {formatPrice(comoresData.chiffreAffaires || 0, "KMF")}
+                {formatPrice(data.valeurStockAchat || 0, "FCFA")}
               </div>
               <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-                Chiffre d'affaires Comores (KMF)
+                Valeur stock coût d'achat (FCFA)
               </div>
             </div>
           </div>
-        )}
 
-        {isSenegal && (
+          {/* 6. COMMANDES CONFIRMÉES */}
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(13,148,136,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#CCFBF1", color: "#0D9488", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <CheckCircle2 size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
+                {isAll ? (data.nbCommandes || 0) : (primaryStats.nbCommandes || 0)}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                {isAll ? "Total commandes confirmées" : `Commandes confirmées (${primarySelectedCurrency})`}
+              </div>
+            </div>
+          </div>
+
+          {/* 7. ARTICLES VENDUS */}
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(16,185,129,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#D1FAE5", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ShoppingBag size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
+                {isAll ? (data.totalVentesCount || 0) : (primaryStats.totalVentesCount || 0)}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                {isAll ? "Nombre total d'articles vendus" : `Articles vendus (${primarySelectedCurrency})`}
+              </div>
+            </div>
+          </div>
+
+          {/* 8. TOTAL PRODUITS */}
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(139,92,246,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#F3E8FF", color: "#8B5CF6", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Layers size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
+                {data.totalProduits || 0}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Total produits
+              </div>
+            </div>
+          </div>
+
+          {/* 9. CATÉGORIES ACTIVES */}
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(168,85,247,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FAF5FF", color: "#A855F7", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Layers size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
+                {data.totalCategories || 0}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Catégories actives
+              </div>
+            </div>
+          </div>
+
+          {/* 10. CLIENTS ACTIFS */}
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
+            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+          }}>
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(2,132,199,0.08)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#E0F2FE", color: "#0284C7", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <UserCheck size={17} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
+                {data.totalClients || 0}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
+                Clients actifs
+              </div>
+            </div>
+          </div>
+
+          {/* 11. AVIS CLIENTS */}
           <div style={{
             background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
             position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -384,420 +923,51 @@ export default function Dashboard() {
           }}>
             <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(245,158,11,0.08)", pointerEvents: "none" }} />
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEF3C7", color: "#92400E", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <TrendingUp size={17} />
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEF3C7", color: "#D97706", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Star size={17} />
               </div>
             </div>
             <div>
               <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-                {formatPrice(senegalData.chiffreAffaires || 0, "FCFA")}
+                {data.noteMoyenneGlobale || "4.9"} / 5
               </div>
               <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-                Chiffre d'affaires Sénégal (FCFA)
+                Avis clients ({data.totalReviews || 0})
               </div>
             </div>
           </div>
-        )}
 
-        {isAll && (
-          <>
-            <div style={{
-              background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-              position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-            }}>
-              <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(34,75,53,0.08)", pointerEvents: "none" }} />
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(34,75,53,0.12)", color: "var(--forest-dark)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <TrendingUp size={17} />
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "var(--forest-dark)", letterSpacing: "-0.02em" }}>
-                  {formatPrice(comoresData.chiffreAffaires || 0, "KMF")}
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-                  Chiffre d'affaires Comores (KMF)
-                </div>
-              </div>
-            </div>
-
-            <div style={{
-              background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-              position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-            }}>
-              <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(245,158,11,0.08)", pointerEvents: "none" }} />
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEF3C7", color: "#92400E", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <TrendingUp size={17} />
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#92400E", letterSpacing: "-0.02em" }}>
-                  {formatPrice(senegalData.chiffreAffaires || 0, "FCFA")}
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-                  Chiffre d'affaires Sénégal (FCFA)
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* 2. DÉPENSES D'ACHATS DES VENTES */}
-        {isComores && (
+          {/* 12. ALERTES STOCK */}
           <div style={{
             background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
             position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
             boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
           }}>
-            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(239,68,68,0.08)", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: data.stockFaibleCount > 0 ? "rgba(239,68,68,0.1)" : "rgba(100,116,139,0.06)", pointerEvents: "none" }} />
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEE2E2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <ShoppingBag size={17} />
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: data.stockFaibleCount > 0 ? "#FEE2E2" : "var(--paper)", color: data.stockFaibleCount > 0 ? "#EF4444" : "var(--sage)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <AlertTriangle size={17} />
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#DC2626", letterSpacing: "-0.02em" }}>
-                {formatPrice(comoresData.coutAchats || 0, "FCFA")}
+              <div style={{ fontSize: 20, fontWeight: 900, color: data.stockFaibleCount > 0 ? "#EF4444" : "var(--ink)", letterSpacing: "-0.02em" }}>
+                {data.stockFaibleCount || 0}
               </div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-                Coût d'achat ventes Comores (FCFA)
+              <div style={{ fontSize: 11, fontWeight: 600, color: data.stockFaibleCount > 0 ? "#EF4444" : "var(--muted)", marginTop: 2 }}>
+                Stock faible
               </div>
-            </div>
-          </div>
-        )}
-
-        {isSenegal && (
-          <div style={{
-            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-          }}>
-            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(239,68,68,0.08)", pointerEvents: "none" }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEE2E2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <ShoppingBag size={17} />
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#DC2626", letterSpacing: "-0.02em" }}>
-                {formatPrice(senegalData.coutAchats || 0, "FCFA")}
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-                Coût d'achat ventes Sénégal (FCFA)
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 3. BÉNÉFICE NET DYNAMIQUE */}
-        {isComores && (
-          <div style={{
-            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-          }}>
-            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(5,150,105,0.08)", pointerEvents: "none" }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#ECFDF5", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <DollarSign size={17} />
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#059669", letterSpacing: "-0.02em" }}>
-                {formatPrice(comoresData.beneficeNet || 0, "KMF")}
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-                Bénéfice net Comores (KMF)
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isSenegal && (
-          <div style={{
-            background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-            position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-          }}>
-            <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(5,150,105,0.08)", pointerEvents: "none" }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#ECFDF5", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <DollarSign size={17} />
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#059669", letterSpacing: "-0.02em" }}>
-                {formatPrice(senegalData.beneficeNet || 0, "FCFA")}
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-                Bénéfice net Sénégal (FCFA)
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isAll && (
-          <>
-            <div style={{
-              background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-              position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-            }}>
-              <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(16,185,129,0.08)", pointerEvents: "none" }} />
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: "#EBF7F0", color: "var(--forest-dark)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, letterSpacing: 0.5 }}>
-                  KM
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "var(--forest-dark)", letterSpacing: "-0.02em" }}>
-                  {formatPrice(comoresData.beneficeNet || 0, "KMF")}
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-                  Bénéfice net Comores (KMF)
-                </div>
-              </div>
-            </div>
-
-            <div style={{
-              background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-              position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-            }}>
-              <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(245,158,11,0.08)", pointerEvents: "none" }} />
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEF3C7", color: "#92400E", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, letterSpacing: 0.5 }}>
-                  SN
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#92400E", letterSpacing: "-0.02em" }}>
-                  {formatPrice(senegalData.beneficeNet || 0, "FCFA")}
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-                  Bénéfice net Sénégal (FCFA)
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* 4. DÉPENSES TOTALES D'ACHATS (HISTORIQUE GLOBAL ENREGISTRÉ) */}
-        <div style={{
-          background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-          position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-        }}>
-          <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(239,68,68,0.08)", pointerEvents: "none" }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEE2E2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <ShoppingBag size={17} />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "#DC2626", letterSpacing: "-0.02em" }}>
-              {formatPrice(data.totalDepensesAchats || 0, "FCFA")}
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              Dépenses Totales d'Achats (FCFA)
             </div>
           </div>
         </div>
-
-        {/* 5. VALEUR DU STOCK EN VENTE */}
-        <div style={{
-          background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-          position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-        }}>
-          <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(79,70,229,0.08)", pointerEvents: "none" }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: "#EEF2FF", color: "#4F46E5", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Package size={17} />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {isComores && formatPrice(comoresData.valeurStockVente || 0, "KMF")}
-              {isSenegal && formatPrice(senegalData.valeurStockVente || 0, "FCFA")}
-              {isAll && formatPrice(data.valeurStockAchat || 0, "FCFA")}
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              {isComores && "Valeur stock vente (KMF)"}
-              {isSenegal && "Valeur stock vente (FCFA)"}
-              {isAll && "Valeur stock achat (FCFA)"}
-            </div>
-          </div>
-        </div>
-
-        {/* 6. COMMANDES REÇUES */}
-        <div style={{
-          background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-          position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-        }}>
-          <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(13,148,136,0.08)", pointerEvents: "none" }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: "#CCFBF1", color: "#0D9488", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <CheckCircle2 size={17} />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {isComores ? (comoresData.nbCommandes || 0) : isSenegal ? (senegalData.nbCommandes || 0) : (data.nbCommandes || 0)}
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              {isComores ? "Commandes Comores" : isSenegal ? "Commandes Sénégal" : "Total commandes reçues"}
-            </div>
-          </div>
-        </div>
-
-        {/* 7. NOMBRE TOTAL D'ARTICLES VENDUS */}
-        <div style={{
-          background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-          position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-        }}>
-          <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(16,185,129,0.08)", pointerEvents: "none" }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: "#D1FAE5", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <ShoppingBag size={17} />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {isComores ? (comoresData.totalVentesCount || 0) : isSenegal ? (senegalData.totalVentesCount || 0) : (data.totalVentesCount || 0)}
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              {isComores ? "Articles vendus Comores" : isSenegal ? "Articles vendus Sénégal" : "Nombre total de ventes"}
-            </div>
-          </div>
-        </div>
-
-        {/* 8. TOTAL PRODUITS */}
-        <div style={{
-          background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-          position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-        }}>
-          <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(139,92,246,0.08)", pointerEvents: "none" }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: "#F3E8FF", color: "#8B5CF6", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Layers size={17} />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {data.totalProduits || 0}
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              Total produits
-            </div>
-          </div>
-        </div>
-
-        {/* 9. CATÉGORIES EN CATALOGUE */}
-        <div style={{
-          background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-          position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-        }}>
-          <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(168,85,247,0.08)", pointerEvents: "none" }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FAF5FF", color: "#A855F7", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Layers size={17} />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {data.totalCategories || 0}
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              Catégories actives
-            </div>
-          </div>
-        </div>
-
-        {/* 10. CLIENTS ACTIFS */}
-        <div style={{
-          background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-          position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-        }}>
-          <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(2,132,199,0.08)", pointerEvents: "none" }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: "#E0F2FE", color: "#0284C7", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <UserCheck size={17} />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {data.totalClients || 0}
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              Clients actifs
-            </div>
-          </div>
-        </div>
-
-        {/* 11. AVIS CLIENTS */}
-        <div style={{
-          background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-          position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-        }}>
-          <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: "rgba(245,158,11,0.08)", pointerEvents: "none" }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEF3C7", color: "#D97706", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Star size={17} />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-              {data.noteMoyenneGlobale || "4.9"} / 5
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginTop: 2 }}>
-              Avis clients ({data.totalReviews || 0})
-            </div>
-          </div>
-        </div>
-
-        {/* 12. ALERTES STOCK */}
-        <div style={{
-          background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px 16px",
-          position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-        }}>
-          <div style={{ position: "absolute", right: -12, top: -12, width: 60, height: 60, borderRadius: "50%", background: data.stockFaibleCount > 0 ? "rgba(239,68,68,0.1)" : "rgba(100,116,139,0.06)", pointerEvents: "none" }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: data.stockFaibleCount > 0 ? "#FEE2E2" : "var(--paper)", color: data.stockFaibleCount > 0 ? "#EF4444" : "var(--sage)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <AlertTriangle size={17} />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: data.stockFaibleCount > 0 ? "#EF4444" : "var(--ink)", letterSpacing: "-0.02em" }}>
-              {data.stockFaibleCount || 0}
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: data.stockFaibleCount > 0 ? "#EF4444" : "var(--muted)", marginTop: 2 }}>
-              Stock faible
-            </div>
-          </div>
-        </div>
-
-      </div>
+      )}
 
       {/* ── SECTION GRAPHIQUES VARIÉS & STYLÉS ── */}
       <div className="bs-dashboard-charts-grid">
-        
-        {/* 1. COURBE FLUIDE ET DÉGRADÉE - CHIFFRE D'AFFAIRES */}
         <div className="bs-panel bs-dashboard-chart-card" style={{ padding: "20px 24px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 16, color: "var(--forest-dark)", fontWeight: 700 }}>
-                Evolution du Chiffre d'Affaires {isComores ? "(Comores)" : isSenegal ? "(Sénégal)" : "(Global)"}
+                Evolution du Chiffre d'Affaires ({isAll ? "Global" : primarySelectedCurrency})
               </h3>
               <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Tendance des 7 derniers jours</div>
             </div>
@@ -817,30 +987,29 @@ export default function Dashboard() {
               <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="jour" tick={{ fontSize: 11, fill: chartColors.axisText }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: chartColors.axisText }} axisLine={false} tickLine={false} tickFormatter={(v) => v === 0 ? "0" : (v / 1000) + "k"} />
-              <Tooltip 
-                contentStyle={{ 
-                  background: chartColors.tooltipBg, 
-                  borderRadius: 12, 
-                  border: `1px solid ${chartColors.tooltipBorder}`, 
-                  color: chartColors.tooltipText, 
-                  boxShadow: isDark ? "0 10px 25px rgba(0,0,0,0.5)" : "0 8px 20px rgba(0,0,0,0.08)", 
-                  fontWeight: 600, 
-                  fontSize: 13 
+              <Tooltip
+                contentStyle={{
+                  background: chartColors.tooltipBg,
+                  borderRadius: 12,
+                  border: `1px solid ${chartColors.tooltipBorder}`,
+                  color: chartColors.tooltipText,
+                  boxShadow: isDark ? "0 10px 25px rgba(0,0,0,0.5)" : "0 8px 20px rgba(0,0,0,0.08)",
+                  fontWeight: 600,
+                  fontSize: 13
                 }}
                 itemStyle={{ color: chartColors.tooltipText }}
                 labelStyle={{ color: chartColors.axisText }}
-                formatter={(v) => [formatPrice(v, currentCurrencySymbol), "Revenu"]} 
+                formatter={(v) => [formatPrice(v, currentCurrencySymbol), "Revenu"]}
               />
               <Area type="monotone" dataKey="ca" stroke={chartColors.stroke} strokeWidth={3} fillOpacity={1} fill="url(#colorCa)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
-        {/* 2. DIAGRAMME DONUT / CIRCULAIRE - MODES DE PAIEMENT & COMMANDES */}
         <div className="bs-panel bs-dashboard-chart-card" style={{ padding: "20px 24px" }}>
           <h3 style={{ margin: "0 0 4px", fontSize: 16, color: "var(--forest-dark)", fontWeight: 700 }}>Modes de paiement</h3>
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 14 }}>
-            Répartition des transactions {isComores ? "(Comores)" : isSenegal ? "(Sénégal)" : "(Global)"}
+            Répartition des transactions ({isAll ? "Global" : primarySelectedCurrency})
           </div>
 
           <ResponsiveContainer width="100%" height={210}>
@@ -859,31 +1028,28 @@ export default function Dashboard() {
                 <Cell key="cell-2" fill="#06B6D4" />
                 <Cell key="cell-3" fill="#8B5CF6" />
               </Pie>
-              <Tooltip 
-                contentStyle={{ 
-                  background: chartColors.tooltipBg, 
-                  borderRadius: 12, 
-                  border: `1px solid ${chartColors.tooltipBorder}`, 
-                  color: chartColors.tooltipText, 
-                  boxShadow: isDark ? "0 10px 25px rgba(0,0,0,0.5)" : "0 8px 20px rgba(0,0,0,0.08)", 
-                  fontWeight: 600, 
-                  fontSize: 13 
+              <Tooltip
+                contentStyle={{
+                  background: chartColors.tooltipBg,
+                  borderRadius: 12,
+                  border: `1px solid ${chartColors.tooltipBorder}`,
+                  color: chartColors.tooltipText,
+                  boxShadow: isDark ? "0 10px 25px rgba(0,0,0,0.5)" : "0 8px 20px rgba(0,0,0,0.08)",
+                  fontWeight: 600,
+                  fontSize: 13
                 }}
                 itemStyle={{ color: chartColors.tooltipText }}
                 labelStyle={{ color: chartColors.axisText }}
-                formatter={(v, name) => [`${v} commande(s)`, name]} 
+                formatter={(v, name) => [`${v} commande(s)`, name]}
               />
               <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: 11.5, fontWeight: 600, color: chartColors.axisText }} />
             </PieChart>
           </ResponsiveContainer>
         </div>
-
       </div>
 
       {/* ── SECTION GRAPHIQUES 2 : TOP PRODUITS & TOP CATÉGORIES ── */}
       <div className="bs-dashboard-prods-grid">
-        
-        {/* TOP / FLOP PRODUITS LISTE MODERNE */}
         <div className="bs-panel bs-dashboard-chart-card" style={{ padding: "20px 24px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <div>
@@ -943,7 +1109,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* BARS HORIZONTAUX POUR LES CATÉGORIES (Comme sur la photo 2) */}
         <div className="bs-panel bs-dashboard-chart-card" style={{ padding: "20px 24px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <h3 style={{ margin: 0, fontSize: 16, color: "var(--forest-dark)", fontWeight: 700 }}>Performance des Catégories</h3>
@@ -959,25 +1124,24 @@ export default function Dashboard() {
               <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 10.5, fill: chartColors.axisText }} axisLine={false} tickLine={false} />
               <YAxis dataKey="name" type="category" tick={{ fontSize: 10.5, fill: chartColors.yAxisCategoryText, fontWeight: 600 }} axisLine={false} tickLine={false} width={80} />
-              <Tooltip 
-                contentStyle={{ 
-                  background: chartColors.tooltipBg, 
-                  borderRadius: 12, 
-                  border: `1px solid ${chartColors.tooltipBorder}`, 
-                  color: chartColors.tooltipText, 
-                  boxShadow: isDark ? "0 10px 25px rgba(0,0,0,0.5)" : "0 8px 20px rgba(0,0,0,0.08)", 
-                  fontWeight: 600, 
-                  fontSize: 13 
+              <Tooltip
+                contentStyle={{
+                  background: chartColors.tooltipBg,
+                  borderRadius: 12,
+                  border: `1px solid ${chartColors.tooltipBorder}`,
+                  color: chartColors.tooltipText,
+                  boxShadow: isDark ? "0 10px 25px rgba(0,0,0,0.5)" : "0 8px 20px rgba(0,0,0,0.08)",
+                  fontWeight: 600,
+                  fontSize: 13
                 }}
                 itemStyle={{ color: chartColors.tooltipText }}
                 labelStyle={{ color: chartColors.axisText }}
-                formatter={(v) => [`${v} ventes`, "Nombre de ventes"]} 
+                formatter={(v) => [`${v} ventes`, "Nombre de ventes"]}
               />
               <Bar dataKey="ventes" fill={chartColors.barFill} radius={[0, 8, 8, 0]} barSize={18} />
             </BarChart>
           </ResponsiveContainer>
         </div>
-
       </div>
     </>
   );

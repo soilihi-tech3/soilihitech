@@ -12,6 +12,16 @@ const Boutique = sequelize.define("Boutique", {
   },
   statut: { type: DataTypes.ENUM("active", "suspendue"), defaultValue: "active" },
   devise: { type: DataTypes.STRING(20), defaultValue: "KMF" },
+  devisesDisponibles: {
+    type: DataTypes.JSON,
+    defaultValue: ["KMF", "FCFA"],
+    field: "devises_disponibles"
+  },
+  proprietaireId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: "proprietaire_id"
+  },
   fraisLivraison: { type: DataTypes.STRING(255), defaultValue: "1000" },
   zonesLivraison: { type: DataTypes.STRING(255), defaultValue: "" },
   telephone: { type: DataTypes.STRING(20) },

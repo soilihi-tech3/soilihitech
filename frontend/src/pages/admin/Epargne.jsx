@@ -9,7 +9,7 @@ import api from "../../api";
 import { useAuth } from "../../context/AuthContext.jsx";
 import TablePagination from "../../components/TablePagination";
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
-import { formatPrice as fcfa } from "../../utils/currency.js";
+import { formatPrice as fcfa, getBoutiqueCurrencies } from "../../utils/currency.js";
 import { subscribeRealtime } from "../../utils/realtime.js";
 
 const COMPTES_SUGGESTIONS = [
@@ -23,7 +23,7 @@ const COMPTES_SUGGESTIONS = [
 ];
 
 export default function Epargne() {
-  const { user } = useAuth();
+  const { user, boutique, activeBoutiqueId } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const [savings, setSavings] = useState([]);
@@ -34,9 +34,24 @@ export default function Epargne() {
     totalRetraitsKMF: 0,
     totalDepotsFCFA: 0,
     totalRetraitsFCFA: 0,
-    totalOperations: 0
+    totalOperations: 0,
+    beneficeDisponibleKMF: 0,
+    beneficeDisponibleFCFA: 0,
+    beneficeBrutKMF: 0,
+    beneficeBrutFCFA: 0,
+    depensesKMF: 0,
+    depensesFCFA: 0,
+    devisesDisponibles: null,
+    statsByCurrency: {}
   });
   const [loading, setLoading] = useState(true);
+
+  const boutiqueCurrencies = getBoutiqueCurrencies({
+    devisesDisponibles: kpis.devisesDisponibles || boutique?.devisesDisponibles,
+    devise: boutique?.devise
+  });
+  const isSingleCurrency = boutiqueCurrencies.length === 1;
+  const primaryCurrencyCode = boutiqueCurrencies[0]?.code || boutique?.devise || "KMF";
 
   // Filters
   const [search, setSearch] = useState("");
@@ -112,12 +127,24 @@ export default function Epargne() {
   useEffect(() => {
     const unsub = subscribeRealtime((detail) => {
       const t = detail?.type || detail;
-      if (t === "saving_updated") {
+      if (
+        t === "saving_updated" ||
+        t === "order_created" ||
+        t === "order_updated" ||
+        t === "order_deleted" ||
+        t === "expense_updated" ||
+        t === "achat_updated"
+      ) {
         loadSavings();
       }
     });
-    return () => unsub();
-  }, [filterType, filterCurrency, dateDebut, dateFin, search]);
+    const onBoutiqueSwitch = () => loadSavings();
+    window.addEventListener("boutique_switched", onBoutiqueSwitch);
+    return () => {
+      unsub();
+      window.removeEventListener("boutique_switched", onBoutiqueSwitch);
+    };
+  }, [filterType, filterCurrency, dateDebut, dateFin, search, activeBoutiqueId]);
 
   if (!isAdmin) {
     return (
@@ -136,7 +163,8 @@ export default function Epargne() {
   function openCreateModal(defaultType = "depot") {
     setForm({
       ...initialFormState,
-      type: defaultType
+      type: defaultType,
+      devise: primaryCurrencyCode
     });
     setErreur("");
     setModalType("create");
@@ -147,7 +175,7 @@ export default function Epargne() {
     setForm({
       type: sav.type || "depot",
       montant: sav.montant || "",
-      devise: sav.devise || "KMF",
+      devise: sav.devise || primaryCurrencyCode,
       dateOperation: sav.dateOperation ? new Date(sav.dateOperation).toISOString().split("T")[0] : "",
       compte: sav.compte || "Compte Épargne",
       reference: sav.reference || "",
@@ -157,23 +185,76 @@ export default function Epargne() {
     setModalType("edit");
   }
 
+  // Calcul dynamique des plafonds autorisés selon la devise choisie dans le formulaire
+  const getLimitsForCurrency = (devise, editingItem = null) => {
+    const code = String(devise || primaryCurrencyCode).toUpperCase();
+    const st = kpis.statsByCurrency?.[code] || {};
+    let beneficeDispo = st.beneficeNet !== undefined
+      ? Number(st.beneficeNet)
+      : Number(code === "FCFA" ? (kpis.beneficeDisponibleFCFA ?? 0) : (kpis.beneficeDisponibleKMF ?? 0));
+    let soldeEpargne = st.epargne !== undefined
+      ? Number(st.epargne)
+      : Number(code === "FCFA" ? (kpis.totalEpargneFCFA ?? 0) : (kpis.totalEpargneKMF ?? 0));
+
+    // Si on modifie une opération existante de la même devise, on réintègre son impact précédent
+    if (editingItem && String(editingItem.devise || "").toUpperCase() === code) {
+      const oldAmt = Number(editingItem.montant || 0);
+      if (editingItem.type === "depot") {
+        beneficeDispo += oldAmt;
+        soldeEpargne = Math.max(0, soldeEpargne - oldAmt);
+      } else if (editingItem.type === "retrait") {
+        beneficeDispo = Math.max(0, beneficeDispo - oldAmt);
+        soldeEpargne += oldAmt;
+      }
+    }
+
+    return {
+      maxDepot: Math.max(0, beneficeDispo),
+      maxRetrait: Math.max(0, soldeEpargne)
+    };
+  };
+
   async function handleSave(e) {
     e.preventDefault();
     setErreur("");
 
-    if (!form.montant || Number(form.montant) <= 0) {
+    const montantNum = Number(form.montant);
+    if (!form.montant || isNaN(montantNum) || montantNum <= 0) {
       setErreur("Le montant doit être un chiffre positif supérieur à 0.");
+      return;
+    }
+
+    const devise = String(form.devise || primaryCurrencyCode).toUpperCase();
+    const { maxDepot, maxRetrait } = getLimitsForCurrency(devise, modalType === "edit" ? selectedSaving : null);
+
+    if (form.type === "depot" && montantNum > maxDepot) {
+      setErreur(
+        `Opération refusée : vous ne pouvez pas épargner ${fcfa(montantNum, devise)} car votre bénéfice net disponible en ${devise} est de ${fcfa(maxDepot, devise)}. Le montant d'épargne doit être inférieur ou égal à votre bénéfice.`
+      );
+      return;
+    }
+
+    if (form.type === "retrait" && montantNum > maxRetrait) {
+      setErreur(
+        `Retrait refusé : vous essayez de retirer ${fcfa(montantNum, devise)} alors que votre solde d'épargne disponible en ${devise} est de ${fcfa(maxRetrait, devise)}.`
+      );
       return;
     }
 
     setSaving(true);
     try {
       if (modalType === "create") {
-        await api.post("/admin/savings", form);
-        toast.success(form.type === "depot" ? "Versement d'épargne enregistré !" : "Retrait d'épargne enregistré !");
+        const res = await api.post("/admin/savings", form);
+        toast.success(
+          res.data?.actionMessage ||
+            (form.type === "depot"
+              ? `Épargne de ${fcfa(montantNum, devise)} enregistrée ! Votre bénéfice disponible a diminué.`
+              : `Retrait de ${fcfa(montantNum, devise)} effectué ! Votre solde d'épargne a diminué.`),
+          { duration: 5000 }
+        );
       } else {
-        await api.put(`/admin/savings/${selectedSaving.id}`, form);
-        toast.success("Opération d'épargne mise à jour !");
+        const res = await api.put(`/admin/savings/${selectedSaving.id}`, form);
+        toast.success(res.data?.actionMessage || "Opération d'épargne mise à jour !", { duration: 4500 });
       }
       setModalType(null);
       loadSavings();
@@ -186,8 +267,8 @@ export default function Epargne() {
 
   async function handleDelete(id) {
     try {
-      await api.delete(`/admin/savings/${id}`);
-      toast.success("Opération supprimée avec succès.");
+      const res = await api.delete(`/admin/savings/${id}`);
+      toast.success(res.data?.actionMessage || "Opération supprimée avec succès.", { duration: 4500 });
       setDeleteConfirmId(null);
       loadSavings();
     } catch (err) {
@@ -286,78 +367,71 @@ export default function Epargne() {
         gap: 14,
         marginBottom: 20
       }}>
-        {/* KPI 1 : TOTAL ÉPARGNÉ KMF */}
-        <div style={{
-          background: "linear-gradient(135deg, var(--forest-dark), #173826)",
-          color: "#ffffff",
-          borderRadius: 18,
-          padding: "20px 22px",
-          boxShadow: "0 8px 20px rgba(31, 77, 58, 0.25)",
-          position: "relative",
-          overflow: "hidden"
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.85, textTransform: "uppercase", letterSpacing: 0.8 }}>
-                Solde Net Épargne (KMF)
-              </div>
-              <div style={{ fontSize: 26, fontWeight: 900, marginTop: 4 }}>
-                {fcfa(kpis.totalEpargneKMF, "KMF")}
-              </div>
-            </div>
-            <div style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: "rgba(255, 255, 255, 0.15)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center"
-            }}>
-              <PiggyBank size={24} />
-            </div>
-          </div>
-          <div style={{ marginTop: 12, display: "flex", gap: 14, fontSize: 11.5, opacity: 0.9 }}>
-            <span>Dépôts : +{fcfa(kpis.totalDepotsKMF, "KMF")}</span>
-            <span>Retraits : -{fcfa(kpis.totalRetraitsKMF, "KMF")}</span>
-          </div>
-        </div>
+        {/* KPI PAR DEVISE CONFIGURÉE */}
+        {boutiqueCurrencies.map((cur, idx) => {
+          const code = cur.code;
+          const st = kpis.statsByCurrency?.[code] || {};
+          const solde = st.epargne !== undefined
+            ? Number(st.epargne)
+            : Number(code === "FCFA" ? (kpis.totalEpargneFCFA ?? 0) : (kpis.totalEpargneKMF ?? 0));
+          const depots = st.epargneDepots !== undefined
+            ? Number(st.epargneDepots)
+            : Number(code === "FCFA" ? (kpis.totalDepotsFCFA ?? 0) : (kpis.totalDepotsKMF ?? 0));
+          const retraits = st.epargneRetraits !== undefined
+            ? Number(st.epargneRetraits)
+            : Number(code === "FCFA" ? (kpis.totalRetraitsFCFA ?? 0) : (kpis.totalRetraitsKMF ?? 0));
+          const benDispo = st.beneficeNet !== undefined
+            ? Number(st.beneficeNet)
+            : Number(code === "FCFA" ? (kpis.beneficeDisponibleFCFA ?? 0) : (kpis.beneficeDisponibleKMF ?? 0));
+          const isPrimaryCard = idx === 0;
 
-        {/* KPI 2 : TOTAL ÉPARGNÉ FCFA */}
-        <div style={{
-          background: "var(--paper)",
-          border: "1px solid var(--line)",
-          borderRadius: 18,
-          padding: "20px 22px",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.8 }}>
-                Solde Net Épargne (FCFA)
+          return (
+            <div
+              key={code}
+              style={{
+                background: isPrimaryCard ? "linear-gradient(135deg, var(--forest-dark), #173826)" : "var(--paper)",
+                color: isPrimaryCard ? "#ffffff" : "var(--ink)",
+                border: isPrimaryCard ? "none" : "1px solid var(--line)",
+                borderRadius: 18,
+                padding: "20px 22px",
+                boxShadow: isPrimaryCard ? "0 8px 20px rgba(31, 77, 58, 0.25)" : "0 2px 8px rgba(0,0,0,0.03)",
+                position: "relative",
+                overflow: "hidden"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, opacity: isPrimaryCard ? 0.85 : 1, color: isPrimaryCard ? "#fff" : "var(--muted)", textTransform: "uppercase", letterSpacing: 0.8 }}>
+                    Solde Net Épargne ({cur.label})
+                  </div>
+                  <div style={{ fontSize: 26, fontWeight: 900, marginTop: 4, color: isPrimaryCard ? "#fff" : (cur.color || "#166534") }}>
+                    {fcfa(solde, code)}
+                  </div>
+                </div>
+                <div style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  background: isPrimaryCard ? "rgba(255, 255, 255, 0.15)" : (cur.bg || "#DCFCE7"),
+                  color: isPrimaryCard ? "#fff" : (cur.color || "#166534"),
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}>
+                  {isPrimaryCard ? <PiggyBank size={24} /> : <Landmark size={22} />}
+                </div>
               </div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: "#166534", marginTop: 4 }}>
-                {fcfa(kpis.totalEpargneFCFA, "FCFA")}
+              <div style={{ marginTop: 12, display: "flex", gap: 14, fontSize: 11.5, opacity: isPrimaryCard ? 0.9 : 1, color: isPrimaryCard ? "#fff" : "var(--muted)" }}>
+                <span>Dépôts : +{fcfa(depots, code)}</span>
+                <span>Retraits : -{fcfa(retraits, code)}</span>
+              </div>
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: isPrimaryCard ? "1px solid rgba(255,255,255,0.18)" : "1px solid var(--line)", fontSize: 12, fontWeight: 700, display: "flex", justifyContent: "space-between" }}>
+                <span>Bénéfice dispo pour épargner :</span>
+                <span style={{ color: isPrimaryCard ? "#A7F3D0" : "#166534", fontWeight: 900 }}>{fcfa(benDispo, code)}</span>
               </div>
             </div>
-            <div style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: "#DCFCE7",
-              color: "#166534",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center"
-            }}>
-              <Landmark size={22} />
-            </div>
-          </div>
-          <div style={{ marginTop: 12, display: "flex", gap: 14, fontSize: 11.5, color: "var(--muted)" }}>
-            <span>Dépôts : +{fcfa(kpis.totalDepotsFCFA, "FCFA")}</span>
-            <span>Retraits : -{fcfa(kpis.totalRetraitsFCFA, "FCFA")}</span>
-          </div>
-        </div>
+          );
+        })}
 
         {/* KPI 3 : NOMBRE TOTAL D'OPÉRATIONS */}
         <div style={{
@@ -433,17 +507,20 @@ export default function Epargne() {
           <option value="retrait">Retraits d'épargne</option>
         </select>
 
-        {/* Filter Currency */}
-        <select
-          className="bs-input"
-          value={filterCurrency}
-          onChange={(e) => setFilterCurrency(e.target.value)}
-          style={{ fontSize: 13, height: 38, width: 125 }}
-        >
-          <option value="TOUTES">Toutes devises</option>
-          <option value="KMF">KMF (Comores)</option>
-          <option value="FCFA">FCFA (Sénégal)</option>
-        </select>
+        {/* Filter Currency (affiché uniquement si 2+ devises) */}
+        {!isSingleCurrency && (
+          <select
+            className="bs-input"
+            value={filterCurrency}
+            onChange={(e) => setFilterCurrency(e.target.value)}
+            style={{ fontSize: 13, height: 38, width: 150 }}
+          >
+            <option value="TOUTES">Toutes devises</option>
+            {boutiqueCurrencies.map(cur => (
+              <option key={cur.code} value={cur.code}>{cur.label}</option>
+            ))}
+          </select>
+        )}
 
         {/* Date Debut */}
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -736,6 +813,51 @@ export default function Epargne() {
                 </div>
               </div>
 
+              {/* Bandeau d'information dynamique sur le plafond autorisé */}
+              {(() => {
+                const { maxDepot, maxRetrait } = getLimitsForCurrency(form.devise, modalType === "edit" ? selectedSaving : null);
+                const maxAllowed = form.type === "depot" ? maxDepot : maxRetrait;
+                const montantSaisi = Number(form.montant || 0);
+                const isExceeded = montantSaisi > maxAllowed;
+
+                return (
+                  <div style={{
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    background: isExceeded ? "#FEE2E2" : (form.type === "depot" ? "#ECFDF5" : "#FFFBEB"),
+                    border: `1px solid ${isExceeded ? "#FCA5A5" : (form.type === "depot" ? "#6EE7B7" : "#FCD34D")}`,
+                    fontSize: 12.5,
+                    color: isExceeded ? "#991B1B" : (form.type === "depot" ? "#065F46" : "#92400E")
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 800 }}>
+                      <span>
+                        {form.type === "depot"
+                          ? `Bénéfice net disponible (${form.devise}) :`
+                          : `Solde d'épargne disponible (${form.devise}) :`}
+                      </span>
+                      <span style={{ fontSize: 14 }}>{fcfa(maxAllowed, form.devise)}</span>
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 11.5, opacity: 0.9 }}>
+                      {form.type === "depot"
+                        ? "Règle : L'épargne ne peut pas dépasser votre bénéfice disponible et sera déduite de votre bénéfice."
+                        : "Règle : Le retrait diminue votre solde d'épargne et ne peut pas dépasser le montant épargné."}
+                    </div>
+                    {montantSaisi > 0 && !isExceeded && (
+                      <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed rgba(0,0,0,0.12)", fontWeight: 800, fontSize: 12 }}>
+                        {form.type === "depot"
+                          ? `Après ce dépôt, votre bénéfice disponible passera à : ${fcfa(Math.max(0, maxDepot - montantSaisi), form.devise)}`
+                          : `Après ce retrait, votre solde d'épargne passera à : ${fcfa(Math.max(0, maxRetrait - montantSaisi), form.devise)}`}
+                      </div>
+                    )}
+                    {isExceeded && (
+                      <div style={{ marginTop: 6, fontWeight: 800, color: "#DC2626" }}>
+                        ⚠️ Le montant saisi ({fcfa(montantSaisi, form.devise)}) dépasse le maximum autorisé ({fcfa(maxAllowed, form.devise)}) !
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Montant & Devise */}
               <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
                 <div>
@@ -746,11 +868,19 @@ export default function Epargne() {
                     type="number"
                     required
                     min="1"
+                    max={
+                      form.type === "depot"
+                        ? getLimitsForCurrency(form.devise, modalType === "edit" ? selectedSaving : null).maxDepot
+                        : getLimitsForCurrency(form.devise, modalType === "edit" ? selectedSaving : null).maxRetrait
+                    }
                     step="any"
                     className="bs-input"
                     placeholder="0"
                     value={form.montant}
-                    onChange={(e) => setForm({ ...form, montant: e.target.value })}
+                    onChange={(e) => {
+                      setErreur("");
+                      setForm({ ...form, montant: e.target.value });
+                    }}
                     style={{ width: "100%", fontSize: 14, fontWeight: 800 }}
                   />
                 </div>
@@ -761,12 +891,14 @@ export default function Epargne() {
                   </label>
                   <select
                     className="bs-input"
+                    disabled={isSingleCurrency}
                     value={form.devise}
                     onChange={(e) => setForm({ ...form, devise: e.target.value })}
                     style={{ width: "100%", fontSize: 13 }}
                   >
-                    <option value="KMF">KMF</option>
-                    <option value="FCFA">FCFA</option>
+                    {boutiqueCurrencies.map(cur => (
+                      <option key={cur.code} value={cur.code}>{cur.code}</option>
+                    ))}
                   </select>
                 </div>
               </div>

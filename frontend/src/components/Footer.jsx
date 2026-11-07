@@ -22,7 +22,9 @@ export default function Footer() {
 
   const rawWaNum = boutique?.whatsappNumber || boutique?.telephone || "";
   const cleanWaNum = rawWaNum.replace(/[^0-9]/g, "");
-  const whatsappUrl = cleanWaNum ? `https://wa.me/${cleanWaNum}?text=${encodeURIComponent("Bonjour ! Je souhaite avoir des informations sur vos produits.")}` : null;
+  const storeName = boutique?.nom || "la boutique";
+  const defaultHelpMsg = `Bonjour ${storeName}, je vous contacte pour...`;
+  const whatsappUrl = cleanWaNum ? `https://wa.me/${cleanWaNum}?text=${encodeURIComponent(defaultHelpMsg)}` : null;
   const facebookUrl = boutique?.facebookUrl || "https://facebook.com";
   const instagramUrl = boutique?.instagramUrl || "https://instagram.com";
   const tiktokUrl = boutique?.tiktokUrl || "https://tiktok.com";

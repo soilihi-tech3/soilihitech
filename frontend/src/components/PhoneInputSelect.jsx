@@ -67,7 +67,7 @@ export default function PhoneInputSelect({ value, onChange, defaultCountryCode =
   }
 
   function handleNumberChange(e) {
-    const raw = e.target.value;
+    const raw = e.target.value.replace(/[^0-9]/g, "");
     setPhoneNumber(raw);
     const cleanNum = raw.trim().replace(/^0+/, "");
     const full = cleanNum ? `${selectedCountry.dialCode} ${cleanNum}` : "";
@@ -200,10 +200,16 @@ export default function PhoneInputSelect({ value, onChange, defaultCountryCode =
       <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}>
         <input
           type="tel"
+          inputMode="numeric"
           placeholder={placeholder}
           required
           value={phoneNumber}
           onChange={handleNumberChange}
+          onKeyDown={(e) => {
+            if (!/[0-9]/.test(e.key) && !["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Enter"].includes(e.key) && !e.ctrlKey && !e.metaKey) {
+              e.preventDefault();
+            }
+          }}
           style={{
             width: "100%",
             padding: "12px 14px",

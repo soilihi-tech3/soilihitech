@@ -9,11 +9,11 @@ import api from "../../api";
 import { useAuth } from "../../context/AuthContext.jsx";
 import TablePagination from "../../components/TablePagination";
 import { SkeletonTableRows } from "../../components/Skeleton.jsx";
-import { formatPrice as fcfa, getActiveCurrency } from "../../utils/currency.js";
+import { formatPrice as fcfa, getActiveCurrency, getBoutiqueCurrencies, getCurrencyMeta } from "../../utils/currency.js";
 import { subscribeRealtime } from "../../utils/realtime.js";
 
 export default function Depenses() {
-  const { user } = useAuth();
+  const { user, boutique, activeBoutiqueId } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const userPerms = Array.isArray(user?.permissions) ? user.permissions : [];
 
@@ -27,8 +27,25 @@ export default function Depenses() {
 
   const [expenses, setExpenses] = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [kpis, setKpis] = useState({ totalCount: 0, totalMontantKMF: 0, totalMontantFCFA: 0 });
+  const [kpis, setKpis] = useState({
+    totalCount: 0,
+    totalMontantKMF: 0,
+    totalMontantFCFA: 0,
+    beneficeDisponibleKMF: 0,
+    beneficeDisponibleFCFA: 0,
+    beneficeBrutKMF: 0,
+    beneficeBrutFCFA: 0,
+    devisesDisponibles: null,
+    statsByCurrency: {}
+  });
   const [loading, setLoading] = useState(true);
+
+  const boutiqueCurrencies = getBoutiqueCurrencies({
+    devisesDisponibles: kpis.devisesDisponibles || boutique?.devisesDisponibles,
+    devise: boutique?.devise
+  });
+  const isSingleCurrency = boutiqueCurrencies.length === 1;
+  const primaryCurrencyCode = boutiqueCurrencies[0]?.code || boutique?.devise || "KMF";
 
   // Filters
   const [search, setSearch] = useState("");
@@ -97,17 +114,32 @@ export default function Depenses() {
   useEffect(() => {
     const unsub = subscribeRealtime((detail) => {
       const t = detail?.type || detail;
-      if (t === "expense_updated") {
+      if (
+        t === "expense_updated" ||
+        t === "order_created" ||
+        t === "order_updated" ||
+        t === "order_deleted" ||
+        t === "saving_updated" ||
+        t === "achat_updated"
+      ) {
         loadExpenses();
       }
     });
-    return () => unsub();
-  }, [filterEmployee, filterCurrency, dateDebut, dateFin, search]);
+    const onBoutiqueSwitch = () => loadExpenses();
+    window.addEventListener("boutique_switched", onBoutiqueSwitch);
+    return () => {
+      unsub();
+      window.removeEventListener("boutique_switched", onBoutiqueSwitch);
+    };
+  }, [filterEmployee, filterCurrency, dateDebut, dateFin, search, activeBoutiqueId]);
 
   function openCreateModal() {
+    const defaultCur = isSingleCurrency
+      ? primaryCurrencyCode
+      : (assignedCurrency || (boutiqueCurrencies.some(c => c.code === getActiveCurrency()) ? getActiveCurrency() : primaryCurrencyCode));
     setForm({
       ...initialFormState,
-      devise: assignedCurrency || getActiveCurrency() || "KMF"
+      devise: defaultCur
     });
     setErreur("");
     setModalType("create");
@@ -143,11 +175,15 @@ export default function Depenses() {
     setSaving(true);
     try {
       if (modalType === "create") {
-        await api.post("/admin/expenses", form);
-        toast.success("Dépense enregistrée avec succès !");
+        const res = await api.post("/admin/expenses", form);
+        toast.success(
+          res.data?.actionMessage ||
+            `Dépense de ${fcfa(Number(form.montant), form.devise)} enregistrée et déduite du bénéfice ${form.devise === "FCFA" ? "Sénégal (FCFA)" : "Comores (KMF)"} !`,
+          { duration: 5000 }
+        );
       } else {
-        await api.put(`/admin/expenses/${selectedExpense.id}`, form);
-        toast.success("Dépense modifiée avec succès !");
+        const res = await api.put(`/admin/expenses/${selectedExpense.id}`, form);
+        toast.success(res.data?.actionMessage || "Dépense modifiée avec succès !", { duration: 4500 });
       }
       setModalType(null);
       loadExpenses();
@@ -160,8 +196,8 @@ export default function Depenses() {
 
   async function handleDelete(id) {
     try {
-      await api.delete(`/admin/expenses/${id}`);
-      toast.success("Dépense supprimée avec succès.");
+      const res = await api.delete(`/admin/expenses/${id}`);
+      toast.success(res.data?.actionMessage || "Dépense supprimée avec succès.", { duration: 4500 });
       setDeleteConfirmId(null);
       loadExpenses();
     } catch (err) {
@@ -263,73 +299,62 @@ export default function Depenses() {
           </div>
         </div>
 
-        {/* KPI 2 : MONTANT DÉPENSES KMF */}
-        <div style={{
-          background: "var(--paper)",
-          border: "1px solid var(--line)",
-          borderRadius: 16,
-          padding: "16px 20px",
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-          boxShadow: "0 2px 6px rgba(0,0,0,0.03)"
-        }}>
-          <div style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
-            background: "#FEF2F2",
-            color: "#DC2626",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0
-          }}>
-            <DollarSign size={22} />
-          </div>
-          <div>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>
-              Total Dépenses (KMF)
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 900, color: "#DC2626", marginTop: 2 }}>
-              {fcfa(kpis.totalMontantKMF, "KMF")}
-            </div>
-          </div>
-        </div>
+        {/* KPI PAR DEVISE CONFIGURÉE */}
+        {boutiqueCurrencies.map((cur) => {
+          const code = cur.code;
+          const st = kpis.statsByCurrency?.[code] || {};
+          const totalDep = st.depenses !== undefined
+            ? Number(st.depenses)
+            : (code === "KMF" ? Number(kpis.totalMontantKMF || 0) : code === "FCFA" ? Number(kpis.totalMontantFCFA || 0) : 0);
+          const benDispo = st.beneficeNet !== undefined
+            ? Number(st.beneficeNet)
+            : (code === "KMF" ? Number(kpis.beneficeDisponibleKMF || 0) : code === "FCFA" ? Number(kpis.beneficeDisponibleFCFA || 0) : 0);
 
-        {/* KPI 3 : MONTANT DÉPENSES FCFA */}
-        <div style={{
-          background: "var(--paper)",
-          border: "1px solid var(--line)",
-          borderRadius: 16,
-          padding: "16px 20px",
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-          boxShadow: "0 2px 6px rgba(0,0,0,0.03)"
-        }}>
-          <div style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
-            background: "#FFFBEB",
-            color: "#B45309",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0
-          }}>
-            <ArrowUpRight size={22} />
-          </div>
-          <div>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>
-              Total Dépenses (FCFA)
+          return (
+            <div
+              key={code}
+              style={{
+                background: "var(--paper)",
+                border: "1px solid var(--line)",
+                borderRadius: 16,
+                padding: "16px 20px",
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+                boxShadow: "0 2px 6px rgba(0,0,0,0.03)"
+              }}
+            >
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                background: cur.bg || "#FEF2F2",
+                color: cur.color || "#DC2626",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                fontWeight: 900,
+                fontSize: 13
+              }}>
+                {cur.badge || code}
+              </div>
+              <div>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  Total Dépenses ({cur.label})
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: "#DC2626", marginTop: 2 }}>
+                  - {fcfa(totalDep, code)}
+                </div>
+                {isAdmin && (
+                  <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 600, marginTop: 3 }}>
+                    Bénéfice net ({code}) restant : <strong style={{ color: "#059669" }}>{fcfa(benDispo, code)}</strong>
+                  </div>
+                )}
+              </div>
             </div>
-            <div style={{ fontSize: 22, fontWeight: 900, color: "#B45309", marginTop: 2 }}>
-              {fcfa(kpis.totalMontantFCFA, "FCFA")}
-            </div>
-          </div>
-        </div>
+          );
+        })}
       </div>
 
       {/* FILTER CONTROLS BAR */}
@@ -376,17 +401,18 @@ export default function Depenses() {
           </select>
         </div>
 
-        {/* Filter Currency */}
-        {!assignedCurrency && (
+        {/* Filter Currency (affiché uniquement si 2+ devises) */}
+        {!assignedCurrency && !isSingleCurrency && (
           <select
             className="bs-input"
             value={filterCurrency}
             onChange={(e) => setFilterCurrency(e.target.value)}
-            style={{ fontSize: 13, height: 38, width: 120 }}
+            style={{ fontSize: 13, height: 38, width: 150 }}
           >
             <option value="TOUTES">Toutes devises</option>
-            <option value="KMF">KMF (Comores)</option>
-            <option value="FCFA">FCFA (Sénégal)</option>
+            {boutiqueCurrencies.map(cur => (
+              <option key={cur.code} value={cur.code}>{cur.label}</option>
+            ))}
           </select>
         )}
 
@@ -653,6 +679,25 @@ export default function Depenses() {
                 />
               </div>
 
+              {/* Bandeau d'impact direct sur le bénéfice selon la devise choisie */}
+              {isAdmin && (
+                <div style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  background: getCurrencyMeta(form.devise).bg || "#EFF6FF",
+                  border: `1px solid ${getCurrencyMeta(form.devise).border || "#BFDBFE"}`,
+                  fontSize: 12.5,
+                  color: getCurrencyMeta(form.devise).color || "#1E40AF"
+                }}>
+                  <div style={{ fontWeight: 800 }}>
+                    Impact sur le bénéfice ({getCurrencyMeta(form.devise).label}) :
+                  </div>
+                  <div style={{ marginTop: 2, fontSize: 11.5 }}>
+                    Cette dépense en <strong>{form.devise}</strong> sera automatiquement soustraite de votre bénéfice net ({form.devise}).
+                  </div>
+                </div>
+              )}
+
               {/* Montant & Devise */}
               <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
                 <div>
@@ -678,13 +723,14 @@ export default function Depenses() {
                   </label>
                   <select
                     className="bs-input"
-                    disabled={Boolean(assignedCurrency)}
+                    disabled={Boolean(assignedCurrency) || isSingleCurrency}
                     value={form.devise}
                     onChange={(e) => setForm({ ...form, devise: e.target.value })}
                     style={{ width: "100%", fontSize: 13 }}
                   >
-                    <option value="KMF">KMF</option>
-                    <option value="FCFA">FCFA</option>
+                    {boutiqueCurrencies.map(cur => (
+                      <option key={cur.code} value={cur.code}>{cur.code}</option>
+                    ))}
                   </select>
                 </div>
               </div>

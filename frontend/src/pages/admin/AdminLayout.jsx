@@ -11,7 +11,7 @@ import NotificationMenu from "../../components/NotificationMenu.jsx";
 import ProfileModal from "../../components/ProfileModal.jsx";
 
 
-import { CURRENCIES, getActiveCurrency, setActiveCurrency } from "../../utils/currency.js";
+import { getBoutiqueCurrencies, getActiveCurrency, setActiveCurrency } from "../../utils/currency.js";
 
 const ROUTE_MODULE_MAP = {
   "/admin/vente": { key: "vente", label: "Vente Directe (POS)" },
@@ -36,7 +36,7 @@ const ROUTE_MODULE_MAP = {
 };
 
 export default function AdminLayout() {
-  const { user, boutique, logout, theme, toggleTheme } = useAuth();
+  const { user, boutique, myBoutiques = [], activeBoutiqueId, switchAdminBoutique, logout, theme, toggleTheme } = useAuth();
   const { showToast } = useCart();
   const location = useLocation();
   const navigate = useNavigate();
@@ -48,14 +48,18 @@ export default function AdminLayout() {
     ? user.deviseAutorisee 
     : null;
 
+  const boutiqueCurrencies = getBoutiqueCurrencies(boutique);
   const [currentCurrency, setCurrentCurrency] = useState(() => assignedCurrency || getActiveCurrency());
 
   useEffect(() => {
     if (assignedCurrency && getActiveCurrency() !== assignedCurrency) {
       setActiveCurrency(assignedCurrency);
       setCurrentCurrency(assignedCurrency);
+    } else if (!assignedCurrency && boutiqueCurrencies.length === 1 && currentCurrency !== boutiqueCurrencies[0].code) {
+      setActiveCurrency(boutiqueCurrencies[0].code);
+      setCurrentCurrency(boutiqueCurrencies[0].code);
     }
-  }, [assignedCurrency]);
+  }, [assignedCurrency, boutique?.id, boutiqueCurrencies.length]);
 
   useEffect(() => {
     const handleCurr = (e) => {
@@ -71,8 +75,8 @@ export default function AdminLayout() {
   }, [assignedCurrency]);
 
   const availableCurrencies = assignedCurrency 
-    ? CURRENCIES.filter(c => c.code === assignedCurrency)
-    : CURRENCIES;
+    ? boutiqueCurrencies.filter(c => c.code === assignedCurrency)
+    : boutiqueCurrencies;
 
   const perms = Array.isArray(user?.permissions) ? user.permissions : [];
   const storeName = boutique?.nom || "Boutique";
@@ -316,40 +320,75 @@ export default function AdminLayout() {
               <ArrowLeft size={15} color="var(--forest)" />
               <span>Voir la boutique</span>
             </Link>
+            {/* SÉLECTEUR MULTI-BOUTIQUES (SI L'ADMIN A REÇU L'ACCÈS À PLUSIEURS BOUTIQUES PAR LE SUPER ADMIN) */}
+            {user?.role === "admin" && myBoutiques.length > 1 && (
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EFF6FF", border: "1.5px solid #BFDBFE", borderRadius: 20, padding: "4px 12px" }}>
+                <Store size={14} color="#1D4ED8" />
+                <span style={{ fontSize: 11.5, fontWeight: 800, color: "#1E40AF" }}>Boutique :</span>
+                <select
+                  value={activeBoutiqueId || boutique?.id || ""}
+                  onChange={(e) => {
+                    const nextId = Number(e.target.value);
+                    switchAdminBoutique(nextId);
+                    const found = myBoutiques.find(b => Number(b.id) === nextId);
+                    if (found) showToast(`Basculé sur la boutique « ${found.nom} »`, "success", "Changement de Boutique");
+                  }}
+                  style={{
+                    border: "none", background: "transparent", color: "#1E3A8A",
+                    fontSize: 12.5, fontWeight: 900, outline: "none", cursor: "pointer"
+                  }}
+                >
+                  {myBoutiques.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.nom} ({(b.devisesDisponibles || [b.devise || "KMF"]).join("/")})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {/* SÉLECTEUR DE DEVISE & PAYS : COMORES (KMF) OU SÉNÉGAL (FCFA) */}
-            <div style={{ display: "flex", alignItems: "center", background: "var(--paper)", border: "1.5px solid var(--line)", borderRadius: 20, padding: "2px 3px", gap: 2 }}>
-              {availableCurrencies.map(c => {
-                const isActive = currentCurrency === c.code;
-                return (
-                  <button
-                    key={c.code}
-                    type="button"
-                    onClick={() => !assignedCurrency && setActiveCurrency(c.code)}
-                    style={{
-                      border: "none",
-                      background: isActive ? "var(--forest-dark)" : "transparent",
-                      color: isActive ? "#ffffff" : "var(--ink)",
-                      borderRadius: 16,
-                      padding: "4px 9px",
-                      fontSize: 11.5,
-                      fontWeight: 800,
-                      cursor: assignedCurrency ? "default" : "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      transition: "all 0.15s ease",
-                      boxShadow: isActive ? "0 2px 6px rgba(0,0,0,0.12)" : "none"
-                    }}
-                    title={assignedCurrency ? `Devise attribuée à votre profil : ${assignedCurrency}` : `Basculer les prix et encaissements en ${c.label}`}
-                  >
-                    <span>{c.code}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* SÉLECTEUR DE DEVISE DYNAMIQUE (MASQUÉ SI 1 SEULE DEVISE) */}
+            {availableCurrencies.length > 1 ? (
+              <div style={{ display: "flex", alignItems: "center", background: "var(--paper)", border: "1.5px solid var(--line)", borderRadius: 20, padding: "2px 3px", gap: 2 }}>
+                {availableCurrencies.map(c => {
+                  const isActive = currentCurrency === c.code;
+                  return (
+                    <button
+                      key={c.code}
+                      type="button"
+                      onClick={() => !assignedCurrency && setActiveCurrency(c.code)}
+                      style={{
+                        border: "none",
+                        background: isActive ? "var(--forest-dark)" : "transparent",
+                        color: isActive ? "#ffffff" : "var(--ink)",
+                        borderRadius: 16,
+                        padding: "4px 9px",
+                        fontSize: 11.5,
+                        fontWeight: 800,
+                        cursor: assignedCurrency ? "default" : "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        transition: "all 0.15s ease",
+                        boxShadow: isActive ? "0 2px 6px rgba(0,0,0,0.12)" : "none"
+                      }}
+                      title={assignedCurrency ? `Devise attribuée à votre profil : ${assignedCurrency}` : `Basculer les prix et encaissements en ${c.label}`}
+                    >
+                      <span>{c.code}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : availableCurrencies.length === 1 ? (
+              <span style={{
+                background: "var(--paper)", border: "1.5px solid var(--line)", borderRadius: 16,
+                padding: "4px 10px", fontSize: 11.5, fontWeight: 800, color: "var(--forest-dark)"
+              }}>
+                {availableCurrencies[0].flag} {availableCurrencies[0].code}
+              </span>
+            ) : null}
 
             {/* BOUTON BASCULER DE THÈME (DARK / LIGHT) */}
             <button
