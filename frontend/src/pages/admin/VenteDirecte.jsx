@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { 
   ShoppingCart, Search, Plus, Minus, Trash2, CheckCircle, Printer, X, CreditCard, 
-  DollarSign, Phone, User, Tag, Layers, Eye, Check, ArrowLeft
+  DollarSign, Phone, User, Tag, Layers, Eye, Check, ArrowLeft, ChevronDown, Menu
 } from "lucide-react";
 import api from "../../api";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -117,6 +117,26 @@ export default function VenteDirecte() {
   // Encaissement & Rendu monnaie & Dette
   const [montantRecu, setMontantRecu] = useState("");
   const [dateEcheance, setDateEcheance] = useState("");
+
+  // Menu déroulant de sélection des catégories
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const categoryMenuRef = React.useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (categoryMenuRef.current && !categoryMenuRef.current.contains(event.target)) {
+        setCategoryMenuOpen(false);
+      }
+    }
+    if (categoryMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("touchstart", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, [categoryMenuOpen]);
 
   useEffect(() => {
     let orderToEdit = location.state?.editOrder;
@@ -711,100 +731,233 @@ export default function VenteDirecte() {
       <div className="bs-pos-grid">
         {/* LEFT COLUMN: PRODUCT SELECTION & SEARCH */}
         <div className={`bs-pos-products-col ${mobileTab === "produits" ? "mobile-active" : "mobile-hidden"}`}>
-          {/* SEARCH BAR & FILTRES CATÉGORIES (DÉROULANT + DÉFILANT) */}
-          <div className="bs-panel" style={{ padding: 14, marginBottom: 16 }}>
-            {/* LIGNE 1 : RECHERCHE + SÉLECTEUR DÉROULANT */}
-            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
-              <div style={{ position: "relative", flex: "1 1 200px", minWidth: 0, width: "100%" }}>
-                <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
-                <input
-                  className="bs-input"
-                  placeholder="Rechercher un produit à ajouter au panier..."
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setVisibleLimit(20);
-                  }}
-                  style={{ paddingLeft: 38, borderRadius: 10, fontSize: 13.5, height: 40, width: "100%", boxSizing: "border-box" }}
-                />
-              </div>
-
-              {/* FILTRE DÉROULANT CATÉGORIES */}
-              <select
-                className="bs-select"
-                value={selectedCategory}
+          {/* SEARCH BAR & FILTRES CATÉGORIES (BOUTON DÉROULANT + DÉFILEMENT HORIZONTAL) */}
+          <div className="bs-panel" style={{ padding: "12px 14px", marginBottom: 16 }}>
+            {/* LIGNE 1 : BARRE DE RECHERCHE AVEC BOUTON EFFACER */}
+            <div style={{ position: "relative", width: "100%", marginBottom: 10 }}>
+              <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
+              <input
+                className="bs-input"
+                placeholder="Rechercher un produit à ajouter au panier..."
+                value={search}
                 onChange={(e) => {
-                  setSelectedCategory(e.target.value);
+                  setSearch(e.target.value);
                   setVisibleLimit(20);
                 }}
-                style={{ flex: "1 1 180px", minWidth: 0, height: 40, borderRadius: 10, fontWeight: 700, fontSize: 13, boxSizing: "border-box" }}
-              >
-                <option value="">Toutes les catégories ({products.length})</option>
-                {categoriesList.map(cat => (
-                  <option key={cat.id} value={cat.nom}>
-                    {cat.nom} ({cat.count})
-                  </option>
-                ))}
-              </select>
+                style={{ paddingLeft: 38, paddingRight: search ? 36 : 14, borderRadius: 10, fontSize: 13.5, height: 40, width: "100%", boxSizing: "border-box" }}
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  style={{
+                    position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                    background: "none", border: "none", color: "var(--muted)", cursor: "pointer", padding: 4
+                  }}
+                  title="Effacer la recherche"
+                >
+                  <X size={15} />
+                </button>
+              )}
             </div>
 
-            {/* LIGNE 2 : FILTRE DÉFILANT HORIZONTAL (PILLS / BADGES DÉFILANTS) */}
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              overflowX: "auto",
-              paddingBottom: 2,
-              WebkitOverflowScrolling: "touch",
-              scrollbarWidth: "none"
-            }}>
-              <button
-                type="button"
-                onClick={() => { setSelectedCategory(""); setVisibleLimit(20); }}
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: 20,
-                  fontSize: 12,
-                  fontWeight: !selectedCategory ? 800 : 600,
-                  background: !selectedCategory ? "var(--forest-dark, #064E3B)" : "#F1F5F9",
-                  color: !selectedCategory ? "#FFFFFF" : "var(--ink, #1E293B)",
-                  border: !selectedCategory ? "none" : "1px solid #E2E8F0",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  transition: "all 0.15s ease",
-                  flexShrink: 0
-                }}
-              >
-                Toutes ({products.length})
-              </button>
-              {categoriesList.map(cat => {
-                const isActive = selectedCategory.toLowerCase() === cat.nom.toLowerCase();
-                return (
-                  <button
-                    key={cat.id}
-                    type="button"
+            {/* LIGNE 2 : BOUTON AFFICHER LES CATÉGORIES + DÉFILEMENT HORIZONTAL */}
+            <div ref={categoryMenuRef} style={{ position: "relative" }}>
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                overflowX: "auto",
+                paddingBottom: 4,
+                paddingTop: 2,
+                WebkitOverflowScrolling: "touch",
+                scrollbarWidth: "none"
+              }}>
+                {/* LE BOUTON D'AFFICHER LES CATÉGORIES (DROPDOWN MODAL/POPUP) */}
+                <button
+                  type="button"
+                  onClick={() => setCategoryMenuOpen(prev => !prev)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "7px 14px",
+                    background: selectedCategory ? "var(--forest-dark, #064E3B)" : "#1E293B",
+                    color: "#FFFFFF",
+                    borderRadius: 20,
+                    border: "none",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+                    transition: "all 0.15s ease"
+                  }}
+                  title="Afficher la liste de toutes les catégories"
+                >
+                  <Menu size={14} />
+                  <span>{selectedCategory ? selectedCategory : "Catégories"}</span>
+                  <ChevronDown size={13} style={{ transform: categoryMenuOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                </button>
+
+                {/* SÉPARATEUR VERTICAL */}
+                <div style={{ width: 1, height: 20, background: "var(--line)", flexShrink: 0 }} />
+
+                {/* PILL « TOUTES » */}
+                <button
+                  type="button"
+                  onClick={() => { setSelectedCategory(""); setVisibleLimit(20); }}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: 20,
+                    fontSize: 12,
+                    fontWeight: !selectedCategory ? 800 : 600,
+                    background: !selectedCategory ? "var(--forest-dark, #064E3B)" : "#F1F5F9",
+                    color: !selectedCategory ? "#FFFFFF" : "var(--ink, #1E293B)",
+                    border: !selectedCategory ? "none" : "1px solid #E2E8F0",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    transition: "all 0.15s ease",
+                    flexShrink: 0
+                  }}
+                >
+                  Toutes ({products.length})
+                </button>
+
+                {/* LES PILLS DÉFILANTES DE CATÉGORIES */}
+                {categoriesList.map(cat => {
+                  const isActive = selectedCategory.toLowerCase() === cat.nom.toLowerCase();
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory(isActive ? "" : cat.nom);
+                        setVisibleLimit(20);
+                      }}
+                      style={{
+                        padding: "6px 14px",
+                        borderRadius: 20,
+                        fontSize: 12,
+                        fontWeight: isActive ? 800 : 600,
+                        background: isActive ? "var(--forest-dark, #064E3B)" : "#F1F5F9",
+                        color: isActive ? "#FFFFFF" : "var(--ink, #1E293B)",
+                        border: isActive ? "none" : "1px solid #E2E8F0",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        transition: "all 0.15s ease",
+                        flexShrink: 0
+                      }}
+                    >
+                      {cat.nom} ({cat.count})
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* POPUP DÉROULANT DES CATÉGORIES */}
+              {categoryMenuOpen && (
+                <div style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  left: 0,
+                  width: "min(320px, 92vw)",
+                  maxHeight: "360px",
+                  overflowY: "auto",
+                  background: "#FFFFFF",
+                  borderRadius: 14,
+                  border: "1.5px solid var(--line, #E2E8F0)",
+                  boxShadow: "0 12px 36px rgba(0,0,0,0.22)",
+                  zIndex: 9999,
+                  padding: "6px 0"
+                }}>
+                  <div style={{
+                    padding: "8px 14px",
+                    borderBottom: "1px solid var(--line)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center"
+                  }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      Sélectionner une catégorie ({categoriesList.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCategoryMenuOpen(false)}
+                      style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", padding: 2 }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  {/* TOUTES LES CATÉGORIES */}
+                  <div
                     onClick={() => {
-                      setSelectedCategory(isActive ? "" : cat.nom);
+                      setSelectedCategory("");
                       setVisibleLimit(20);
+                      setCategoryMenuOpen(false);
                     }}
                     style={{
-                      padding: "6px 14px",
-                      borderRadius: 20,
-                      fontSize: 12,
-                      fontWeight: isActive ? 800 : 600,
-                      background: isActive ? "var(--forest-dark, #064E3B)" : "#F1F5F9",
-                      color: isActive ? "#FFFFFF" : "var(--ink, #1E293B)",
-                      border: isActive ? "none" : "1px solid #E2E8F0",
+                      padding: "10px 14px",
+                      fontSize: 13,
+                      fontWeight: !selectedCategory ? 800 : 600,
+                      color: !selectedCategory ? "var(--forest-dark, #064E3B)" : "var(--ink)",
+                      background: !selectedCategory ? "#F0FDF4" : "transparent",
                       cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      transition: "all 0.15s ease",
-                      flexShrink: 0
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      borderBottom: "1px solid var(--line, #F1F5F9)"
                     }}
                   >
-                    {cat.nom} ({cat.count})
-                  </button>
-                );
-              })}
+                    <span>Toutes les catégories</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>({products.length})</span>
+                  </div>
+
+                  {/* CHAQUE CATÉGORIE AVEC NOMBRE */}
+                  {categoriesList.map(cat => {
+                    const isSel = selectedCategory.toLowerCase() === cat.nom.toLowerCase();
+                    return (
+                      <div
+                        key={cat.id}
+                        onClick={() => {
+                          setSelectedCategory(cat.nom);
+                          setVisibleLimit(20);
+                          setCategoryMenuOpen(false);
+                        }}
+                        style={{
+                          padding: "10px 14px",
+                          fontSize: 13,
+                          fontWeight: isSel ? 800 : 600,
+                          color: isSel ? "var(--forest-dark, #064E3B)" : "var(--ink)",
+                          background: isSel ? "#F0FDF4" : "transparent",
+                          cursor: "pointer",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          borderBottom: "1px solid var(--line, #F1F5F9)"
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {isSel && <Check size={14} color="var(--forest-dark, #064E3B)" />}
+                          <span>{cat.nom}</span>
+                        </div>
+                        <span style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: isSel ? "var(--forest-dark, #064E3B)" : "var(--muted)",
+                          background: isSel ? "#DCFCE7" : "#F1F5F9",
+                          padding: "2px 8px",
+                          borderRadius: 10
+                        }}>
+                          {cat.count}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -830,6 +983,7 @@ export default function VenteDirecte() {
                   return (
                     <div
                       key={p.id}
+                      className="bs-pos-product-card"
                       style={{
                         background: "#fff", borderRadius: 14, border: "1px solid var(--line)",
                         padding: 12, opacity: inStock ? 1 : 0.6, display: "flex", flexDirection: "column",
@@ -841,6 +995,7 @@ export default function VenteDirecte() {
                         <img
                           src={p.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=150&q=80"}
                           alt={p.nom}
+                          className="bs-pos-card-img"
                           style={{ width: "100%", height: 110, objectFit: "cover", borderRadius: 10, marginBottom: 8 }}
                         />
                         {hasVariants && (
