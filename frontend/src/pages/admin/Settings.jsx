@@ -99,9 +99,12 @@ export default function AdminSettings({ defaultTab = "general" }) {
   function addSlide() {
     const newSlide = {
       id: Date.now(),
-      title: "Nouvelle Collection",
-      subtitle: "Soins d'exception & cosmétiques",
-      imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1600&q=80",
+      tag: "NOUVELLE COLLECTION",
+      titleLine1: "Titre Principal",
+      titleLine2: "Édition Spéciale",
+      title: "Titre Principal & Édition Spéciale",
+      subtitle: "Découvrez notre sélection exclusive et profitez des meilleurs prix.",
+      imageUrl: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1200&q=80",
       buttonText: "Découvrir la collection",
       categoryId: categories[0]?.id || ""
     };
@@ -516,14 +519,76 @@ export default function AdminSettings({ defaultTab = "general" }) {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 12 }}>
                 <div className="bs-field">
-                  <label>Titre principal</label>
-                  <input className="bs-input" value={slide.title || ""} onChange={(e) => updateSlide(idx, "title", e.target.value)} />
+                  <label>Badge / Surtitre (Tag au-dessus du titre)</label>
+                  <input
+                    className="bs-input"
+                    placeholder="Ex: NOUVELLE COLLECTION, LATEST TECH, EXCLUSIVITÉ..."
+                    value={slide.tag || ""}
+                    onChange={(e) => updateSlide(idx, "tag", e.target.value)}
+                  />
                 </div>
 
                 <div className="bs-field">
-                  <label>Sous-titre / Accroche</label>
-                  <input className="bs-input" value={slide.subtitle || ""} onChange={(e) => updateSlide(idx, "subtitle", e.target.value)} />
+                  <label>Texte du bouton (CTA)</label>
+                  <input
+                    className="bs-input"
+                    placeholder="Ex: DÉCOUVRIR LA COLLECTION, SHOP NOW..."
+                    value={slide.buttonText || ""}
+                    onChange={(e) => updateSlide(idx, "buttonText", e.target.value)}
+                  />
                 </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 12 }}>
+                <div className="bs-field">
+                  <label>Titre — Ligne 1 (Texte foncé principal)</label>
+                  <input
+                    className="bs-input"
+                    placeholder="Ex: Montres de Luxe ou Powerful Tech."
+                    value={slide.titleLine1 !== undefined ? slide.titleLine1 : (slide.title || "")}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const updated = [...slidesList];
+                      const curL2 = updated[idx].titleLine2 || "";
+                      updated[idx] = {
+                        ...updated[idx],
+                        titleLine1: val,
+                        title: curL2 ? `${val} & ${curL2}` : val
+                      };
+                      set("bannerSlides", updated);
+                    }}
+                  />
+                </div>
+
+                <div className="bs-field">
+                  <label>Titre — Ligne 2 (Texte bleu accentué)</label>
+                  <input
+                    className="bs-input"
+                    placeholder="Ex: Anne Klein & Bijoux ou Smarter Living."
+                    value={slide.titleLine2 || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const updated = [...slidesList];
+                      const curL1 = updated[idx].titleLine1 !== undefined ? updated[idx].titleLine1 : (updated[idx].title || "");
+                      updated[idx] = {
+                        ...updated[idx],
+                        titleLine2: val,
+                        title: val ? `${curL1} & ${val}` : curL1
+                      };
+                      set("bannerSlides", updated);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="bs-field" style={{ marginBottom: 14 }}>
+                <label>Sous-titre / Description (affiché sous le titre)</label>
+                <input
+                  className="bs-input"
+                  placeholder="Ex: Soins d'exception & cosmétiques ou Les meilleurs accessoires pour votre quotidien."
+                  value={slide.subtitle || ""}
+                  onChange={(e) => updateSlide(idx, "subtitle", e.target.value)}
+                />
               </div>
 
               <div style={{ marginBottom: 14 }}>
@@ -534,25 +599,18 @@ export default function AdminSettings({ defaultTab = "general" }) {
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                <div className="bs-field">
-                  <label>Texte du bouton</label>
-                  <input className="bs-input" value={slide.buttonText || ""} onChange={(e) => updateSlide(idx, "buttonText", e.target.value)} />
-                </div>
-
-                <div className="bs-field">
-                  <label>Associer à une Catégorie (Redirection au clic)</label>
-                  <select
-                    className="bs-select"
-                    value={slide.categoryId || ""}
-                    onChange={(e) => updateSlide(idx, "categoryId", e.target.value)}
-                  >
-                    <option value="">-- Toutes les catégories --</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>{c.nom}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="bs-field" style={{ marginBottom: 4 }}>
+                <label>Associer à une Catégorie (Redirection au clic sur le bouton)</label>
+                <select
+                  className="bs-select"
+                  value={slide.categoryId || ""}
+                  onChange={(e) => updateSlide(idx, "categoryId", e.target.value)}
+                >
+                  <option value="">-- Toutes les catégories (Catalogue général) --</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nom}</option>
+                  ))}
+                </select>
               </div>
             </div>
           ))}

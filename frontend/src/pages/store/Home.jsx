@@ -46,7 +46,7 @@ const DEFAULT_SLIDES = [
 ];
 
 
-const parseSlides = (bannerSlides) => {
+const parseSlides = (bannerSlides, boutiqueNom = "") => {
   if (!bannerSlides) return DEFAULT_SLIDES;
   let parsed = bannerSlides;
   if (typeof bannerSlides === "string") {
@@ -60,10 +60,60 @@ const parseSlides = (bannerSlides) => {
     return parsed.map((s, idx) => {
       const fallback = DEFAULT_SLIDES[idx % DEFAULT_SLIDES.length];
       const img = s.imageUrl || fallback.imageUrl;
+
+      const rawTitle = (s.title || s.nom || s.titre || "").trim();
+      let l1 = s.titleLine1 ? String(s.titleLine1).trim() : "";
+      let l2 = s.titleLine2 ? String(s.titleLine2).trim() : "";
+
+      if (!l1 && !l2 && rawTitle) {
+        if (rawTitle.includes("\n")) {
+          const lines = rawTitle.split("\n");
+          l1 = lines[0].trim();
+          l2 = lines.slice(1).join(" ").trim();
+        } else if (rawTitle.includes("&")) {
+          const parts = rawTitle.split("&");
+          l1 = parts[0].trim();
+          l2 = "& " + parts.slice(1).join("&").trim();
+        } else if (rawTitle.includes(" - ")) {
+          const parts = rawTitle.split(" - ");
+          l1 = parts[0].trim();
+          l2 = parts.slice(1).join(" - ").trim();
+        } else if (rawTitle.includes(". ")) {
+          const parts = rawTitle.split(". ");
+          l1 = parts[0].trim() + ".";
+          l2 = parts.slice(1).join(". ").trim();
+        } else {
+          const words = rawTitle.split(" ");
+          if (words.length >= 3) {
+            const mid = Math.ceil(words.length / 2);
+            l1 = words.slice(0, mid).join(" ");
+            l2 = words.slice(mid).join(" ");
+          } else if (words.length === 2) {
+            l1 = words[0];
+            l2 = words[1];
+          } else {
+            l1 = rawTitle;
+            l2 = "";
+          }
+        }
+      }
+
+      const defaultTag = boutiqueNom ? `${boutiqueNom.toUpperCase()} • SÉLECTION OFFICIELLE` : "NOUVELLE SÉLECTION";
+
       return {
-        ...fallback,
-        ...s,
-        imageUrl: img
+        id: s.id || idx + 1,
+        tag: (s.tag && s.tag.trim()) ? s.tag.trim() : (s.surtitre && s.surtitre.trim() ? s.surtitre.trim() : defaultTag),
+        titleLine1: l1 || rawTitle || (boutiqueNom ? `Bienvenue chez ${boutiqueNom}` : fallback.titleLine1),
+        titleLine2: l2 !== undefined && l2 !== null ? l2 : (s.title ? "" : fallback.titleLine2),
+        subtitle: (s.subtitle !== undefined && s.subtitle !== null && String(s.subtitle).trim() !== "")
+          ? String(s.subtitle).trim()
+          : (s.title ? "Découvrez notre sélection exclusive et profitez des meilleurs prix garantis." : fallback.subtitle),
+        buttonText: (s.buttonText && s.buttonText.trim()) ? s.buttonText.trim() : (s.title ? "DÉCOUVRIR LA COLLECTION" : fallback.buttonText),
+        imageUrl: img,
+        categoryId: s.categoryId || "",
+        linkUrl: s.linkUrl || (s.categoryId ? `/catalogue?categoryId=${s.categoryId}` : "/catalogue"),
+        editorial: s.editorial || boutiqueNom || fallback.editorial,
+        objectPosition: s.objectPosition || "center center"
       };
     });
   }
@@ -274,7 +324,7 @@ export default function Home() {
     return unsub;
   }, []);
 
-  const slides = parseSlides(boutique?.bannerSlides);
+  const slides = parseSlides(boutique?.bannerSlides, boutique?.nom);
   const sideBanners = parseBanners(boutique?.sideBanners);
 
   useEffect(() => {
@@ -346,63 +396,18 @@ export default function Home() {
     }
   }
 
-  // Système de texte dynamique Soilihitech Accessoires High-Tech
-  // Système de texte et slides dynamiques style TECHHAVEN
+  // Système de texte et slides dynamiques configurés par l'admin
   const currentSlideDisplay = (() => {
     const slide = slides[activeSlide] || slides[0] || {};
-    const defaultMeta = [
-      {
-        tag: "LATEST TECH. PREMIUM QUALITY.",
-        titleLine1: "Powerful Tech.",
-        titleLine2: "Smarter Living.",
-        subtitle: "Découvrez nos smartphones, gadgets et accessoires dernière génération pour rester connecté, productif et performant au quotidien.",
-        buttonText: "SHOP NOW",
-        editorial: "TechHaven Essentials"
-      },
-      {
-        tag: "CHARGE ULTRA RAPIDE GaN",
-        titleLine1: "Ultra Fast Power.",
-        titleLine2: "Zero Compromise.",
-        subtitle: "Chargeurs 20W à 65W, stations magnétiques et câbles renforcés certifiés anti-surchauffe pour tous vos appareils.",
-        buttonText: "SHOP NOW",
-        editorial: "Performance GaN"
-      },
-      {
-        tag: "AUDIO SANS FIL & ÉNERGIE",
-        titleLine1: "Pure Sound.",
-        titleLine2: "Infinite Battery.",
-        subtitle: "AirPods, casques réducteurs de bruit et batteries 20 000mAh pour une liberté sonore et énergétique totale.",
-        buttonText: "SHOP NOW",
-        editorial: "Son & Mobilité"
-      }
-    ];
-
-    const idx = activeSlide % defaultMeta.length;
-    const meta = defaultMeta[idx];
-
-    // Splitting or fallback for title lines
-    let l1 = slide.titleLine1 || meta.titleLine1;
-    let l2 = slide.titleLine2 || meta.titleLine2;
-    if (!slide.titleLine1 && slide.title) {
-      const parts = slide.title.split("&");
-      if (parts.length > 1) {
-        l1 = parts[0].trim();
-        l2 = parts[1].trim();
-      } else {
-        l1 = slide.title;
-        l2 = meta.titleLine2;
-      }
-    }
-
     return {
-      tag: slide.tag || meta.tag,
-      titleLine1: l1,
-      titleLine2: l2,
-      subtitle: slide.subtitle || meta.subtitle,
-      buttonText: slide.buttonText || meta.buttonText,
-      imageUrl: slide.imageUrl || meta.imageUrl,
+      tag: slide.tag,
+      titleLine1: slide.titleLine1 || slide.title || (boutique?.nom ? `Bienvenue chez ${boutique.nom}` : "Nouvelle Collection"),
+      titleLine2: slide.titleLine2 || "",
+      subtitle: slide.subtitle,
+      buttonText: slide.buttonText || "DÉCOUVRIR LA COLLECTION",
+      imageUrl: slide.imageUrl,
       linkUrl: slide.linkUrl,
-      editorial: slide.editorial || meta.editorial
+      editorial: slide.editorial
     };
   })();
 
@@ -414,19 +419,25 @@ export default function Home() {
           {/* Colonne Gauche (44%) : Titre, Tagline & Bouton CTA */}
           <div className="bs-hero-text-col">
             <div key={activeSlide} className="bs-hero-text-animated">
-              <div className="bs-hero-collection-tag">
-                <span className="bs-hero-tag-dot"></span>
-                {currentSlideDisplay.tag}
-              </div>
+              {currentSlideDisplay.tag && (
+                <div className="bs-hero-collection-tag">
+                  <span className="bs-hero-tag-dot"></span>
+                  {currentSlideDisplay.tag}
+                </div>
+              )}
 
               <h1 className="bs-hero-title">
                 <span className="bs-hero-title-dark">{currentSlideDisplay.titleLine1}</span>
-                <span className="bs-hero-title-blue">{currentSlideDisplay.titleLine2}</span>
+                {currentSlideDisplay.titleLine2 ? (
+                  <span className="bs-hero-title-blue"> {currentSlideDisplay.titleLine2}</span>
+                ) : null}
               </h1>
 
-              <p className="bs-hero-subtitle">
-                {currentSlideDisplay.subtitle}
-              </p>
+              {currentSlideDisplay.subtitle && (
+                <p className="bs-hero-subtitle">
+                  {currentSlideDisplay.subtitle}
+                </p>
+              )}
 
               <div className="bs-hero-cta-wrap">
                 <button 

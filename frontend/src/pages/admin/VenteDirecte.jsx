@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { 
   ShoppingCart, Search, Plus, Minus, Trash2, CheckCircle, Printer, X, CreditCard, 
-  DollarSign, Phone, User, Tag, Layers, Eye, Check
+  DollarSign, Phone, User, Tag, Layers, Eye, Check, ArrowLeft
 } from "lucide-react";
 import api from "../../api";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -715,7 +715,7 @@ export default function VenteDirecte() {
           <div className="bs-panel" style={{ padding: 14, marginBottom: 16 }}>
             {/* LIGNE 1 : RECHERCHE + SÉLECTEUR DÉROULANT */}
             <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
-              <div style={{ position: "relative", flex: "1 1 240px" }}>
+              <div style={{ position: "relative", flex: "1 1 200px", minWidth: 0, width: "100%" }}>
                 <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
                 <input
                   className="bs-input"
@@ -725,7 +725,7 @@ export default function VenteDirecte() {
                     setSearch(e.target.value);
                     setVisibleLimit(20);
                   }}
-                  style={{ paddingLeft: 38, borderRadius: 10, fontSize: 13.5, height: 40 }}
+                  style={{ paddingLeft: 38, borderRadius: 10, fontSize: 13.5, height: 40, width: "100%", boxSizing: "border-box" }}
                 />
               </div>
 
@@ -737,7 +737,7 @@ export default function VenteDirecte() {
                   setSelectedCategory(e.target.value);
                   setVisibleLimit(20);
                 }}
-                style={{ flex: "0 0 200px", height: 40, borderRadius: 10, fontWeight: 700, fontSize: 13 }}
+                style={{ flex: "1 1 180px", minWidth: 0, height: 40, borderRadius: 10, fontWeight: 700, fontSize: 13, boxSizing: "border-box" }}
               >
                 <option value="">Toutes les catégories ({products.length})</option>
                 {categoriesList.map(cat => (
@@ -871,7 +871,7 @@ export default function VenteDirecte() {
 
                       {/* BOUTONS D'AJOUT : DIRECT OU VARIANTES */}
                       {hasVariants ? (
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 6, marginTop: 10 }}>
+                        <div className="bs-pos-card-btns" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 10 }}>
                           <button
                             type="button"
                             disabled={!inStock}
@@ -880,8 +880,8 @@ export default function VenteDirecte() {
                             style={{
                               background: inStock ? "#F1F5F9" : "#F3F4F6",
                               color: inStock ? "#334155" : "var(--muted)", border: "1px solid #CBD5E1",
-                              padding: "7px 4px", borderRadius: 8, fontWeight: 700, fontSize: 11.5,
-                              cursor: inStock ? "pointer" : "not-allowed", textAlign: "center"
+                              padding: "7px 4px", borderRadius: 8, fontWeight: 700, fontSize: 11,
+                              cursor: inStock ? "pointer" : "not-allowed", textAlign: "center", whiteSpace: "nowrap"
                             }}
                           >
                             + Direct
@@ -894,12 +894,13 @@ export default function VenteDirecte() {
                             style={{
                               background: inStock ? "#2563EB" : "#F3F4F6",
                               color: inStock ? "#fff" : "var(--muted)", border: "none",
-                              padding: "7px 6px", borderRadius: 8, fontWeight: 800, fontSize: 11.5,
-                              display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-                              cursor: inStock ? "pointer" : "not-allowed", boxShadow: inStock ? "0 2px 6px rgba(37,99,235,0.25)" : "none"
+                              padding: "7px 4px", borderRadius: 8, fontWeight: 800, fontSize: 11,
+                              display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
+                              cursor: inStock ? "pointer" : "not-allowed", boxShadow: inStock ? "0 2px 6px rgba(37,99,235,0.25)" : "none",
+                              whiteSpace: "nowrap"
                             }}
                           >
-                            <Layers size={13} /> Variantes
+                            <Layers size={12} /> Variantes
                           </button>
                         </div>
                       ) : (
@@ -910,8 +911,8 @@ export default function VenteDirecte() {
                           style={{
                             marginTop: 10, width: "100%", background: inStock ? "var(--forest-light)" : "#F3F4F6",
                             color: inStock ? "var(--forest)" : "var(--muted)", border: "none",
-                            padding: "7px", borderRadius: 8, fontWeight: 700, fontSize: 12,
-                            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                            padding: "7px", borderRadius: 8, fontWeight: 700, fontSize: 11.5,
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
                             cursor: inStock ? "pointer" : "not-allowed"
                           }}
                         >
@@ -955,6 +956,16 @@ export default function VenteDirecte() {
         {/* RIGHT COLUMN: CASHIER CART & TICKET SUMMARY */}
         <div className={`bs-pos-cart-col bs-pos-cart-sticky ${mobileTab === "panier" ? "mobile-active" : "mobile-hidden"}`}>
           <div className="bs-panel" style={{ padding: 20 }}>
+            {/* MOBILE ONLY: RETURN TO PRODUCTS BUTTON */}
+            <button
+              type="button"
+              onClick={() => setMobileTab("produits")}
+              className="bs-pos-back-btn"
+            >
+              <ArrowLeft size={16} />
+              <span>← Continuer les ajouts (Catalogue)</span>
+            </button>
+
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, borderBottom: "1px solid var(--line)", paddingBottom: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <ShoppingCart size={20} color="var(--forest)" />
@@ -1070,7 +1081,7 @@ export default function VenteDirecte() {
                 <span>Informations Vente & Client {isDette ? "(Obligatoire pour dette)" : "(Optionnel)"}</span>
                 {isDette && <span style={{ color: "#DC2626", fontWeight: 800, fontSize: 11 }}>* Requis pour relance</span>}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 12 }}>
                 <input
                   className="bs-input"
                   placeholder="Nom du client"
