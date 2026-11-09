@@ -363,7 +363,7 @@ export default function Catalogue() {
       )}
 
       {/* ── BANDEAU CATÉGORIES ── */}
-      <div className="bs-cats">
+      <div className="bs-cats" style={{ marginTop: 24 }}>
         <div
           className={"bs-cat-card" + (!categoryId && !famille && !onlyFavoris ? " on" : "")}
           onClick={() => setParams({})}
