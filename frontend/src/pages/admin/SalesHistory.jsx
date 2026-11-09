@@ -251,9 +251,11 @@ export default function SalesHistory() {
     }
 
     // Statut Paiement (Dettes / Impayés / Partiel / Payé)
-    const restant = Number(o.montantRestant || 0);
-    const paye = Number(o.montantPaye !== undefined && o.montantPaye !== null ? o.montantPaye : (restant === 0 ? Number(o.total || 0) : 0));
-    const hasDebt = restant > 0 && o.statutPaiement !== "paye";
+    const rawRestant = Number(o.montantRestant || 0);
+    const totalNum = Number(o.total || 0);
+    const restant = rawRestant > 0 ? rawRestant : (o.statutPaiement === "non_paye" ? totalNum : 0);
+    const paye = Number(o.montantPaye !== undefined && o.montantPaye !== null ? o.montantPaye : (restant === 0 ? totalNum : 0));
+    const hasDebt = (restant > 0 || o.statutPaiement === "non_paye" || o.statutPaiement === "partiel") && o.statutPaiement !== "paye";
     const orderStatutPaiement = hasDebt ? (paye > 0 ? "partiel" : "non_paye") : "paye";
 
     if (filterStatutPaiement !== "tous") {
@@ -308,6 +310,21 @@ export default function SalesHistory() {
   const totalVentesCount = filteredOrders.length;
   const salesTotalsByCurrency = {};
   const cashTotalsByCurrency = {};
+  const resteTotalsByCurrency = {};
+
+  function calculateOrderDebt(o) {
+    if (o.statut === "annulee" || o.statutPaiement === "paye") return 0;
+    const totalNum = Number(o.total || 0);
+    const rawRestant = Number(o.montantRestant || 0);
+    if (rawRestant > 0) return rawRestant;
+    if (o.statutPaiement === "non_paye") return totalNum;
+    if (o.statutPaiement === "partiel") {
+      const paye = Number(o.montantPaye || 0);
+      return Math.max(0, totalNum - paye);
+    }
+    return 0;
+  }
+
   boutiqueCurrencies.forEach((cur) => {
     const code = cur.code;
     salesTotalsByCurrency[code] = filteredOrders
@@ -316,7 +333,12 @@ export default function SalesHistory() {
     cashTotalsByCurrency[code] = filteredOrders
       .filter(o => normalizeSaleCurrency(o) === code && (o.moyenPaiement === "cash" || o.moyenPaiement === "especes"))
       .reduce((sum, o) => sum + Number(o.total || 0), 0);
+    resteTotalsByCurrency[code] = filteredOrders
+      .filter(o => normalizeSaleCurrency(o) === code)
+      .reduce((sum, o) => sum + calculateOrderDebt(o), 0);
   });
+
+  const totalDettesCount = filteredOrders.filter(o => calculateOrderDebt(o) > 0).length;
 
   // Reset page
   useEffect(() => { setCurrentPage(1); }, [search, filterPays, filterType, filterPaiement, filterStatutPaiement, filterEmploye, filterAnnee, filterMois, isTodayOnly]);
@@ -602,6 +624,80 @@ export default function SalesHistory() {
             </div>
           )}
         </div>
+
+        {/* RESTE À PERCEVOIR / DETTES CLIENTS */}
+        <div
+          className="bs-panel"
+          onClick={() => setFilterStatutPaiement(filterStatutPaiement === "dettes" ? "tous" : "dettes")}
+          title="Cliquez pour filtrer les ventes avec reste à percevoir"
+          style={{
+            padding: 16,
+            background: filterStatutPaiement === "dettes" ? "#FEF2F2" : "#FFFBEB",
+            border: filterStatutPaiement === "dettes" ? "2px solid #DC2626" : "1.5px solid #FCD34D",
+            borderRadius: 14,
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+            boxShadow: filterStatutPaiement === "dettes" ? "0 4px 14px rgba(220, 38, 38, 0.15)" : undefined
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#B45309", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
+              <Clock size={15} color="#D97706" /> RESTE À PERCEVOIR
+            </div>
+            {totalDettesCount > 0 ? (
+              <span style={{
+                background: "#FEF3C7",
+                color: "#92400E",
+                border: "1px solid #FDE68A",
+                padding: "1px 7px",
+                borderRadius: 10,
+                fontSize: 10.5,
+                fontWeight: 800,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3
+              }}>
+                <AlertCircle size={10} color="#D97706" />
+                {totalDettesCount} impayé{totalDettesCount > 1 ? "s" : ""}
+              </span>
+            ) : (
+              <span style={{
+                background: "#DCFCE7",
+                color: "#166534",
+                border: "1px solid #86EFAC",
+                padding: "1px 7px",
+                borderRadius: 10,
+                fontSize: 10.5,
+                fontWeight: 800
+              }}>
+                À jour
+              </span>
+            )}
+          </div>
+          {isSingleCurrency ? (
+            <div style={{ fontSize: 24, fontWeight: 900, color: (resteTotalsByCurrency[primaryCurrencyCode] || 0) > 0 ? "#DC2626" : "#166534", marginTop: 6 }}>
+              {formatPrice(resteTotalsByCurrency[primaryCurrencyCode] || 0, primaryCurrencyCode)}
+            </div>
+          ) : filterPays !== "tous" && resteTotalsByCurrency[filterPays] !== undefined ? (
+            <div style={{ fontSize: 24, fontWeight: 900, color: (resteTotalsByCurrency[filterPays] || 0) > 0 ? "#DC2626" : "#166534", marginTop: 6 }}>
+              {formatPrice(resteTotalsByCurrency[filterPays] || 0, filterPays)}
+            </div>
+          ) : (
+            <div style={{ fontSize: 18, fontWeight: 900, marginTop: 6 }}>
+              {boutiqueCurrencies.map((cur, idx) => {
+                const val = resteTotalsByCurrency[cur.code] || 0;
+                return (
+                  <React.Fragment key={cur.code}>
+                    {idx > 0 && <span style={{ color: "var(--muted)", fontWeight: 600 }}> / </span>}
+                    <span style={{ color: val > 0 ? "#DC2626" : "#166534" }}>
+                      {formatPrice(val, cur.code)}
+                    </span>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* SALES HISTORY DATA TABLE */}
@@ -652,9 +748,10 @@ export default function SalesHistory() {
               const isWero = o.moyenPaiement === "wero" || o.moyenPaiement === "holam";
 
               const totalNum = Number(o.total || 0);
-              const restant = Number(o.montantRestant !== undefined && o.montantRestant !== null ? o.montantRestant : 0);
+              const rawRestant = Number(o.montantRestant !== undefined && o.montantRestant !== null ? o.montantRestant : 0);
+              const restant = rawRestant > 0 ? rawRestant : (o.statutPaiement === "non_paye" ? totalNum : 0);
               const paye = Number(o.montantPaye !== undefined && o.montantPaye !== null ? o.montantPaye : (restant === 0 ? totalNum : 0));
-              const hasDebt = restant > 0 && o.statutPaiement !== "paye";
+              const hasDebt = (restant > 0 || o.statutPaiement === "non_paye" || o.statutPaiement === "partiel") && o.statutPaiement !== "paye";
               const orderStatutP = hasDebt ? (paye > 0 ? "partiel" : "non_paye") : "paye";
 
               return (
