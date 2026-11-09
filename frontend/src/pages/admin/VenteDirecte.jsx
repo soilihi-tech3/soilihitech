@@ -90,8 +90,11 @@ export function getProductVariants(p) {
 export default function VenteDirecte() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { boutique } = useAuth();
+  const { boutique, user } = useAuth();
   const { isOnline, pendingCount } = useOffline();
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin" || user?.role === "super_admin";
+  const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+  const canEditSale = isAdmin || perms.includes("modifier_vente") || perms.includes("gerer_commandes");
   const storeName = boutique?.nom || "Marché Vert";
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -139,6 +142,12 @@ export default function VenteDirecte() {
     }
 
     if (orderToEdit && orderToEdit.id) {
+      if (!canEditSale) {
+        toast.error("Vous n'avez pas l'autorisation de modifier une vente.");
+        try { sessionStorage.removeItem("pos_edit_order"); } catch (e) {}
+        setEditingOrder(null);
+        return;
+      }
       setEditingOrder(orderToEdit);
       if (orderToEdit.clientNom || orderToEdit.client?.nom) {
         setClientNom(orderToEdit.clientNom || orderToEdit.client?.nom || "");

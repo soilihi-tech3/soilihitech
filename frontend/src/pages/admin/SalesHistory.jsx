@@ -69,7 +69,10 @@ export default function SalesHistory() {
   const [reglerMoyen, setReglerMoyen] = useState("cash");
   const [submitting, setSubmitting] = useState(false);
 
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin" || user?.role === "super_admin";
+  const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+  const canEditSale = isAdmin || perms.includes("modifier_vente") || perms.includes("gerer_commandes");
+  const canDeleteSale = isAdmin || perms.includes("supprimer_vente");
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -833,25 +836,25 @@ export default function SalesHistory() {
                           </button>
                         </>
                       )}
-                      {isAdmin && (
-                        <>
-                          <button
-                            className="bs-icon-btn"
-                            title="Modifier le panier de cette vente"
-                            onClick={() => handleEditOrderCart(o)}
-                            style={{ color: "var(--forest-dark)" }}
-                          >
-                            <Pencil size={15} />
-                          </button>
-                          <button
-                            className="bs-icon-btn"
-                            title="Supprimer cette vente (Admin)"
-                            onClick={() => setOrderToDelete(o)}
-                            style={{ color: "#B4483A" }}
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </>
+                      {canEditSale && (
+                        <button
+                          className="bs-icon-btn"
+                          title="Modifier le panier de cette vente"
+                          onClick={() => handleEditOrderCart(o)}
+                          style={{ color: "var(--forest-dark)" }}
+                        >
+                          <Pencil size={15} />
+                        </button>
+                      )}
+                      {canDeleteSale && (
+                        <button
+                          className="bs-icon-btn"
+                          title="Supprimer cette vente"
+                          onClick={() => setOrderToDelete(o)}
+                          style={{ color: "#B4483A" }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
                       )}
                     </div>
                   </td>

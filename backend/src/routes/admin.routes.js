@@ -1147,6 +1147,25 @@ router.post("/products", async (req, res, next) => {
 
 router.put("/products/:id", async (req, res, next) => {
   try {
+    if (req.user.role === "employe") {
+      const perms = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+      const hasHide = perms.includes("cacher_produit");
+      const hasFullEdit = perms.includes("ajouter_modifier_produit") || perms.includes("gerer_produits");
+
+      const bodyKeys = Object.keys(req.body);
+      const isOnlyVisibility = bodyKeys.length === 1 && bodyKeys[0] === "masquerSurSite";
+
+      if (isOnlyVisibility) {
+        if (!hasHide && !hasFullEdit) {
+          return res.status(403).json({ message: "Vous n'avez pas l'autorisation de masquer ou rendre visible les produits." });
+        }
+      } else {
+        if (!hasFullEdit) {
+          return res.status(403).json({ message: "Vous n'avez pas l'autorisation de modifier ce produit." });
+        }
+      }
+    }
+
     const allowedIds = req.managedBoutiqueIds || [req.boutiqueId];
     const whereClause = (req.user.role === "admin" && allowedIds.length > 1)
       ? { id: req.params.id, boutiqueId: { [Op.in]: allowedIds } }
@@ -1391,6 +1410,14 @@ router.patch("/orders/:id/assign", async (req, res, next) => {
 router.put("/orders/:id", requireRole("admin", "employe"), async (req, res, next) => {
   const t = await sequelize.transaction();
   try {
+    if (req.user.role === "employe") {
+      const perms = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+      if (!perms.includes("modifier_vente") && !perms.includes("gerer_commandes")) {
+        await t.rollback();
+        return res.status(403).json({ message: "Vous n'avez pas l'autorisation de modifier les ventes." });
+      }
+    }
+
     const order = await Order.findOne({
       where: { id: req.params.id, boutiqueId: req.boutiqueId },
       include: [{ model: OrderItem, as: "items" }],
@@ -1512,6 +1539,14 @@ router.put("/orders/:id", requireRole("admin", "employe"), async (req, res, next
 router.delete("/orders/:id", requireRole("admin", "employe"), async (req, res, next) => {
   const t = await sequelize.transaction();
   try {
+    if (req.user.role === "employe") {
+      const perms = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+      if (!perms.includes("supprimer_vente")) {
+        await t.rollback();
+        return res.status(403).json({ message: "Vous n'avez pas l'autorisation de supprimer les ventes." });
+      }
+    }
+
     const order = await Order.findOne({
       where: { id: req.params.id, boutiqueId: req.boutiqueId },
       include: [{ model: OrderItem, as: "items" }],
@@ -2400,6 +2435,13 @@ router.get("/achats", async (req, res, next) => {
 
 router.post("/achats", requireRole("admin", "employe"), async (req, res, next) => {
   try {
+    if (req.user.role === "employe") {
+      const perms = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+      if (!perms.includes("approvisionner_produit") && !perms.includes("achats_stocks")) {
+        return res.status(403).json({ message: "Vous n'avez pas l'autorisation d'approvisionner les stocks." });
+      }
+    }
+
     const { productId, fournisseurId, quantite, prixAchatUnitaire, notes } = req.body;
     const prod = await Product.findOne({ where: { id: productId, boutiqueId: req.boutiqueId } });
     if (!prod) return res.status(404).json({ message: "Produit introuvable." });

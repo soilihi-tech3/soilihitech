@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Download, X, Share, Smartphone, Monitor } from "lucide-react";
+import { Download, X, Share, Smartphone, ShoppingBag } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export default function PWAInstallPrompt() {
@@ -11,12 +11,12 @@ export default function PWAInstallPrompt() {
   const [showIOSGuide, setShowIOSGuide] = useState(false);
 
   const storeName = boutique?.nom || "Boutique";
-  const storeLogo = boutique?.logoUrl || "https://images.unsplash.com/photo-1543083477-4f785aeafaa9?auto=format&fit=crop&w=192&h=192&q=80";
+  const storeLogo = boutique?.logoUrl || "";
 
   // Inject Dynamic Manifest and Page Title / Icons based on Settings
   useEffect(() => {
     const currentName = boutique?.nom || storeName;
-    const currentLogo = boutique?.logoUrl || storeLogo;
+    const currentLogo = boutique?.logoUrl || storeLogo || "/icon.svg";
 
     if (currentName) {
       document.title = currentName;
@@ -40,14 +40,15 @@ export default function PWAInstallPrompt() {
       appNameMeta.content = currentName;
     }
 
-    // Connect to dynamic backend manifest route
+    // Connect to dynamic backend manifest route with boutique parameters
     let linkTag = document.querySelector('link[rel="manifest"]');
     if (!linkTag) {
       linkTag = document.createElement("link");
       linkTag.rel = "manifest";
       document.head.appendChild(linkTag);
     }
-    linkTag.href = `/manifest.json?t=${Date.now()}`;
+    const slugQuery = boutique?.slug ? `?slug=${encodeURIComponent(boutique.slug)}` : (boutique?.id ? `?boutiqueId=${boutique.id}` : "");
+    linkTag.href = `/api/manifest.json${slugQuery}`;
 
     let appleIcon = document.querySelector('link[rel="apple-touch-icon"]');
     if (!appleIcon) {
@@ -56,6 +57,11 @@ export default function PWAInstallPrompt() {
       document.head.appendChild(appleIcon);
     }
     appleIcon.href = currentLogo;
+
+    let favicon = document.querySelector('link[rel="icon"]');
+    if (favicon && currentLogo) {
+      favicon.href = currentLogo;
+    }
   }, [boutique, storeName, storeLogo]);
 
   useEffect(() => {

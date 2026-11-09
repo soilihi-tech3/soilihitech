@@ -13,10 +13,12 @@ import { formatPrice, formatPrice as fcfa, getBoutiqueCurrencies, getBoutiqueCur
 export default function AdminProduits() {
   const { boutique, user, myBoutiques = [], activeBoutiqueId } = useAuth();
   const perms = Array.isArray(user?.permissions) ? user.permissions : [];
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin" || user?.role === "superadmin";
   const isMultiBoutiqueAdmin = user?.role === "admin" && myBoutiques.length > 1;
   const canAddEdit = isAdmin || perms.includes("ajouter_modifier_produit") || perms.includes("gerer_produits");
   const canDelete = isAdmin || perms.includes("supprimer_produit") || perms.includes("gerer_produits");
+  const canRestock = isAdmin || perms.includes("approvisionner_produit") || perms.includes("achats_stocks");
+  const canHideProduct = isAdmin || perms.includes("cacher_produit") || perms.includes("ajouter_modifier_produit") || perms.includes("gerer_produits");
   const [filterBoutiqueId, setFilterBoutiqueId] = useState("");
   const [employees, setEmployees] = useState([]);
 
@@ -704,6 +706,10 @@ export default function AdminProduits() {
   }
 
   async function toggleVisibility(product) {
+    if (!canHideProduct) {
+      showToast("Vous n'avez pas l'autorisation de modifier la visibilité des produits.", "error");
+      return;
+    }
     const newStatus = !product.masquerSurSite;
     try {
       await api.put(`/admin/products/${product.id}`, { masquerSurSite: newStatus });
@@ -722,6 +728,10 @@ export default function AdminProduits() {
   }
 
   function openRestockModal(product) {
+    if (!canRestock) {
+      showToast("Vous n'avez pas l'autorisation d'approvisionner les stocks.", "error");
+      return;
+    }
     setRestockProduct(product);
     setRestockForm({
       fournisseurId: product.fournisseurId || "",
@@ -1363,7 +1373,7 @@ export default function AdminProduits() {
                       <button
                         type="button"
                         onClick={() => toggleVisibility(p)}
-                        title={p.masquerSurSite ? "Produit masqué sur le site. Cliquez pour l'afficher sur la boutique." : "Produit visible sur le site. Cliquez pour le masquer."}
+                        title={!canHideProduct ? "Autorisation requise pour modifier la visibilité" : (p.masquerSurSite ? "Produit masqué sur le site. Cliquez pour l'afficher sur la boutique." : "Produit visible sur le site. Cliquez pour le masquer.")}
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
@@ -1375,7 +1385,8 @@ export default function AdminProduits() {
                           border: p.masquerSurSite ? "1px solid #F59E0B" : "1px solid #10B981",
                           background: p.masquerSurSite ? "#FEF3C7" : "#ECFDF5",
                           color: p.masquerSurSite ? "#92400E" : "#065F46",
-                          cursor: "pointer",
+                          cursor: canHideProduct ? "pointer" : "not-allowed",
+                          opacity: canHideProduct ? 1 : 0.7,
                           whiteSpace: "nowrap"
                         }}
                       >
@@ -1394,14 +1405,16 @@ export default function AdminProduits() {
                     </td>
 
                     <td>
-                      <button
-                        className="bs-icon-btn"
-                        title="Approvisionner (Réappro stock)"
-                        style={{ color: "var(--forest)", marginRight: 4 }}
-                        onClick={() => openRestockModal(p)}
-                      >
-                        <Package size={15} />
-                      </button>
+                      {canRestock && (
+                        <button
+                          className="bs-icon-btn"
+                          title="Approvisionner (Réappro stock)"
+                          style={{ color: "var(--forest)", marginRight: 4 }}
+                          onClick={() => openRestockModal(p)}
+                        >
+                          <Package size={15} />
+                        </button>
+                      )}
                       {canAddEdit && (
                         <button className="bs-icon-btn" title="Modifier" onClick={() => startEdit(p)}><Pencil size={15} /></button>
                       )}
@@ -1451,14 +1464,24 @@ export default function AdminProduits() {
                   type="checkbox"
                   id="masquerSurSite"
                   checked={Boolean(form.masquerSurSite)}
-                  onChange={(e) => set("masquerSurSite", e.target.checked)}
-                  style={{ width: 20, height: 20, accentColor: "#D97706", cursor: "pointer", marginTop: 2, flexShrink: 0 }}
+                  disabled={!canHideProduct}
+                  onChange={(e) => {
+                    if (!canHideProduct) {
+                      showToast("Vous n'avez pas l'autorisation de modifier la visibilité des produits.", "error");
+                      return;
+                    }
+                    set("masquerSurSite", e.target.checked);
+                  }}
+                  style={{ width: 20, height: 20, accentColor: "#D97706", cursor: canHideProduct ? "pointer" : "not-allowed", marginTop: 2, flexShrink: 0 }}
                 />
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <label htmlFor="masquerSurSite" style={{ fontWeight: 800, fontSize: 14.5, color: form.masquerSurSite ? "#92400E" : "#1E293B", cursor: "pointer", margin: 0 }}>
+                    <label htmlFor="masquerSurSite" style={{ fontWeight: 800, fontSize: 14.5, color: form.masquerSurSite ? "#92400E" : "#1E293B", cursor: canHideProduct ? "pointer" : "not-allowed", margin: 0 }}>
                       Ne pas afficher sur le site (Gérer le stock en attente)
                     </label>
+                    {!canHideProduct && (
+                      <span style={{ fontSize: 11, color: "#B4483A", fontWeight: 700 }}>(Autorisation requise)</span>
+                    )}
                     <span style={{
                       fontSize: 11,
                       fontWeight: 800,

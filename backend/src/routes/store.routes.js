@@ -51,19 +51,34 @@ router.get("/:slug/realtime/events", (req, res) => {
 // GET /api/store/:slug/manifest.json -> Dynamic PWA Manifest with custom store name and logo
 router.get("/:slug/manifest.json", loadBoutique, (req, res) => {
   const b = req.boutique;
-  const name = b.nom || "Marché Vert";
-  const logo = b.logoUrl || "https://images.unsplash.com/photo-1543083477-4f785aeafaa9?auto=format&fit=crop&w=512&h=512&q=80";
+  const name = b.nom || "Boutique";
+  const themeColor = b.couleurPrincipale || "#163424";
 
+  let logo = b.logoUrl || "";
+  if (logo && logo.startsWith("/")) {
+    const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+    const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost";
+    logo = `${proto}://${host}${logo}`;
+  }
+
+  if (!logo) {
+    const initial = (name[0] || "B").toUpperCase();
+    const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><rect width="512" height="512" rx="120" fill="${themeColor}"/><text x="50%" y="54%" font-size="240" font-family="system-ui, -apple-system, sans-serif" font-weight="900" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">${initial}</text></svg>`;
+    logo = `data:image/svg+xml;utf8,${encodeURIComponent(svgIcon)}`;
+  }
+
+  res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.json({
     short_name: name,
     name: `${name} - Boutique & Vente Directe`,
     icons: [
-      { src: logo, sizes: "192x192", type: "image/png", purpose: "any maskable" },
-      { src: logo, sizes: "512x512", type: "image/png", purpose: "any maskable" }
+      { src: logo, sizes: "192x192", type: logo.startsWith("data:image/svg") ? "image/svg+xml" : "image/png", purpose: "any maskable" },
+      { src: logo, sizes: "512x512", type: logo.startsWith("data:image/svg") ? "image/svg+xml" : "image/png", purpose: "any maskable" }
     ],
     start_url: "/",
-    background_color: "#163424",
-    theme_color: "#163424",
+    background_color: themeColor,
+    theme_color: themeColor,
     display: "standalone",
     orientation: "portrait-primary",
     description: `Application e-commerce et caisse POS pour ${name}.`
