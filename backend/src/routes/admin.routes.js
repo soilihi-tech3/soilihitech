@@ -1478,8 +1478,13 @@ router.put("/orders/:id", requireRole("admin", "employe"), async (req, res, next
         newSousTotal += prixEffectif * it.quantite;
       }
 
-      updates.sousTotal = newSousTotal;
-      updates.total = newSousTotal + (order.fraisLivraison || 0);
+      const fraisNum = isNaN(Number(order.fraisLivraison)) ? 0 : Number(order.fraisLivraison);
+      updates.sousTotal = Number(newSousTotal);
+      updates.total = Number(newSousTotal) + fraisNum;
+      if (updates.statutPaiement === "paye") {
+        updates.montantPaye = updates.total;
+        updates.montantRestant = 0;
+      }
     }
 
     await order.update(updates, { transaction: t });

@@ -2361,7 +2361,12 @@ div[style*="overflowX: auto"]::-webkit-scrollbar-thumb:hover {
 
   /* POS Vente Directe Responsive Grid */
   .bs-pos-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .bs-pos-products-col {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
   }
   .bs-pos-cart-sticky {
     position: static !important;
@@ -2549,9 +2554,48 @@ div[style*="overflowX: auto"]::-webkit-scrollbar-thumb:hover {
 }
 
 .bs-pos-products-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.bs-pos-product-card {
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.bs-pos-card-img-wrap {
+  width: 100% !important;
+  aspect-ratio: 1 / 1 !important;
+  max-height: 140px !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  margin-bottom: 8px !important;
+  background: #f8fafc !important;
+  position: relative !important;
+}
+
+.bs-pos-card-img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  display: block !important;
+}
+
+@media (min-width: 993px) {
+  .bs-pos-products-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+  }
+}
+
+@media (min-width: 1250px) {
+  .bs-pos-products-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+  }
 }
 
 @media (max-width: 1140px) {
@@ -2613,8 +2657,19 @@ div[style*="overflowX: auto"]::-webkit-scrollbar-thumb:hover {
 /* TABLET & MOBILE BREAKPOINT (< 992px) */
 @media (max-width: 992px) {
   .bs-pos-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 16px;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .bs-pos-products-col {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
   }
 
   .bs-pos-back-btn {
@@ -2861,10 +2916,22 @@ div[style*="overflowX: auto"]::-webkit-scrollbar-thumb:hover {
     border-radius: 12px !important;
   }
 
-  .bs-pos-card-img {
-    height: 105px !important;
-    border-radius: 8px !important;
+  .bs-pos-card-img-wrap {
+    width: 100% !important;
+    aspect-ratio: 1 / 1 !important;
+    max-height: 130px !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
     margin-bottom: 6px !important;
+    background: #f8fafc !important;
+    position: relative !important;
+  }
+
+  .bs-pos-card-img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    display: block !important;
   }
 
   .bs-desktop-nav,

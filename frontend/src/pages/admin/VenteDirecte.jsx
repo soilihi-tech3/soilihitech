@@ -118,25 +118,14 @@ export default function VenteDirecte() {
   const [montantRecu, setMontantRecu] = useState("");
   const [dateEcheance, setDateEcheance] = useState("");
 
-  // Menu déroulant de sélection des catégories
-  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
-  const categoryMenuRef = React.useRef(null);
+  // Détection responsive pour forcer 2 colonnes strictes sur mobile/tablette
+  const [isMobileScreen, setIsMobileScreen] = useState(() => typeof window !== "undefined" && window.innerWidth <= 992);
 
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (categoryMenuRef.current && !categoryMenuRef.current.contains(event.target)) {
-        setCategoryMenuOpen(false);
-      }
-    }
-    if (categoryMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      document.addEventListener("touchstart", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("touchstart", handleClickOutside);
-    };
-  }, [categoryMenuOpen]);
+    const checkMobile = () => setIsMobileScreen(window.innerWidth <= 992);
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   useEffect(() => {
     let orderToEdit = location.state?.editOrder;
@@ -166,8 +155,10 @@ export default function VenteDirecte() {
       if (orderToEdit.dateEcheance) {
         setDateEcheance(orderToEdit.dateEcheance.substring(0, 10));
       }
-      if (orderToEdit.montantPaye !== undefined && orderToEdit.montantPaye !== null) {
-        setMontantRecu(String(orderToEdit.montantPaye));
+      if (orderToEdit.statutPaiement === "partiel" || orderToEdit.statutPaiement === "non_paye") {
+        setMontantRecu(String(Number(orderToEdit.montantPaye || 0)));
+      } else {
+        setMontantRecu("");
       }
 
       const items = orderToEdit.items || [];
@@ -176,7 +167,7 @@ export default function VenteDirecte() {
           const p = it.product || {
             id: it.productId,
             nom: it.nom || "Article",
-            prix: it.prixUnitaire
+            prix: Number(it.prixUnitaire || 0)
           };
           const variantLabel = [it.modele, it.couleur].filter(Boolean).join(" · ") || null;
           return {
@@ -187,7 +178,7 @@ export default function VenteDirecte() {
             selectedCouleur: it.couleur || null,
             selectedSenteur: null,
             selectedImageUrl: it.imageUrl || p.imageUrl,
-            prixVendu: (it.prixUnitaire !== undefined && it.prixUnitaire !== null) ? String(it.prixUnitaire) : "",
+            prixVendu: (it.prixUnitaire !== undefined && it.prixUnitaire !== null) ? String(Number(it.prixUnitaire)) : "",
             variantLabel,
             stockMax: 9999
           };
@@ -728,11 +719,14 @@ export default function VenteDirecte() {
         </button>
       </div>
 
-      <div className="bs-pos-grid">
+      <div className="bs-pos-grid" style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}>
         {/* LEFT COLUMN: PRODUCT SELECTION & SEARCH */}
-        <div className={`bs-pos-products-col ${mobileTab === "produits" ? "mobile-active" : "mobile-hidden"}`}>
+        <div
+          className={`bs-pos-products-col ${mobileTab === "produits" ? "mobile-active" : "mobile-hidden"}`}
+          style={{ width: "100%", maxWidth: "100%", minWidth: 0, overflowX: "hidden", boxSizing: "border-box" }}
+        >
           {/* SEARCH BAR & FILTRES CATÉGORIES (BOUTON DÉROULANT + DÉFILEMENT HORIZONTAL) */}
-          <div className="bs-panel" style={{ padding: "12px 14px", marginBottom: 16 }}>
+          <div className="bs-panel" style={{ padding: "12px 14px", marginBottom: 16, width: "100%", maxWidth: "100%", minWidth: 0, overflow: "hidden", boxSizing: "border-box" }}>
             {/* LIGNE 1 : BARRE DE RECHERCHE AVEC BOUTON EFFACER */}
             <div style={{ position: "relative", width: "100%", marginBottom: 10 }}>
               <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
@@ -761,55 +755,76 @@ export default function VenteDirecte() {
               )}
             </div>
 
-            {/* LIGNE 2 : BOUTON AFFICHER LES CATÉGORIES + DÉFILEMENT HORIZONTAL */}
-            <div ref={categoryMenuRef} style={{ position: "relative" }}>
+            {/* LIGNE 2 : LISTE DÉROULANTE (SELECT) + DÉFILEMENT HORIZONTAL DES CATÉGORIES */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              width: "100%",
+              maxWidth: "100%",
+              minWidth: 0,
+              overflow: "hidden",
+              boxSizing: "border-box"
+            }}>
+              {/* LISTE DÉROULANTE NATIVE ET PROPRE DE TOUTES LES CATÉGORIES */}
+              <select
+                className="bs-select"
+                value={selectedCategory}
+                onChange={(e) => {
+                  setSelectedCategory(e.target.value);
+                  setVisibleLimit(20);
+                }}
+                style={{
+                  height: 38,
+                  padding: "0 10px",
+                  borderRadius: 18,
+                  fontSize: 12.5,
+                  fontWeight: 800,
+                  background: selectedCategory ? "var(--forest-dark, #064E3B)" : "#F1F5F9",
+                  color: selectedCategory ? "#FFFFFF" : "var(--ink, #1E293B)",
+                  border: selectedCategory ? "none" : "1.5px solid var(--line, #CBD5E1)",
+                  cursor: "pointer",
+                  outline: "none",
+                  flex: "0 0 auto",
+                  maxWidth: isMobileScreen ? 130 : 200,
+                  textOverflow: "ellipsis",
+                  boxSizing: "border-box"
+                }}
+                title="Choisir une catégorie dans la liste déroulante"
+              >
+                <option value="" style={{ color: "#000", background: "#fff" }}>
+                  Catégories ({products.length})
+                </option>
+                {categoriesList.map(cat => (
+                  <option key={cat.id} value={cat.nom} style={{ color: "#000", background: "#fff" }}>
+                    {cat.nom} ({cat.count})
+                  </option>
+                ))}
+              </select>
+
+              {/* SÉPARATEUR */}
+              <div style={{ width: 1, height: 22, background: "var(--line)", flexShrink: 0 }} />
+
+              {/* DÉFILEMENT HORIZONTAL DES CATÉGORIES (PILLS) */}
               <div style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
+                gap: 6,
                 overflowX: "auto",
-                paddingBottom: 4,
-                paddingTop: 2,
                 WebkitOverflowScrolling: "touch",
-                scrollbarWidth: "none"
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+                flex: "1 1 0%",
+                width: 0,
+                minWidth: 0,
+                maxWidth: "100%",
+                paddingBottom: 2
               }}>
-                {/* LE BOUTON D'AFFICHER LES CATÉGORIES (DROPDOWN MODAL/POPUP) */}
-                <button
-                  type="button"
-                  onClick={() => setCategoryMenuOpen(prev => !prev)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "7px 14px",
-                    background: selectedCategory ? "var(--forest-dark, #064E3B)" : "#1E293B",
-                    color: "#FFFFFF",
-                    borderRadius: 20,
-                    border: "none",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    flexShrink: 0,
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
-                    transition: "all 0.15s ease"
-                  }}
-                  title="Afficher la liste de toutes les catégories"
-                >
-                  <Menu size={14} />
-                  <span>{selectedCategory ? selectedCategory : "Catégories"}</span>
-                  <ChevronDown size={13} style={{ transform: categoryMenuOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-                </button>
-
-                {/* SÉPARATEUR VERTICAL */}
-                <div style={{ width: 1, height: 20, background: "var(--line)", flexShrink: 0 }} />
-
-                {/* PILL « TOUTES » */}
                 <button
                   type="button"
                   onClick={() => { setSelectedCategory(""); setVisibleLimit(20); }}
                   style={{
-                    padding: "6px 14px",
+                    padding: "6px 12px",
                     borderRadius: 20,
                     fontSize: 12,
                     fontWeight: !selectedCategory ? 800 : 600,
@@ -818,14 +833,12 @@ export default function VenteDirecte() {
                     border: !selectedCategory ? "none" : "1px solid #E2E8F0",
                     cursor: "pointer",
                     whiteSpace: "nowrap",
-                    transition: "all 0.15s ease",
                     flexShrink: 0
                   }}
                 >
                   Toutes ({products.length})
                 </button>
 
-                {/* LES PILLS DÉFILANTES DE CATÉGORIES */}
                 {categoriesList.map(cat => {
                   const isActive = selectedCategory.toLowerCase() === cat.nom.toLowerCase();
                   return (
@@ -837,7 +850,7 @@ export default function VenteDirecte() {
                         setVisibleLimit(20);
                       }}
                       style={{
-                        padding: "6px 14px",
+                        padding: "6px 12px",
                         borderRadius: 20,
                         fontSize: 12,
                         fontWeight: isActive ? 800 : 600,
@@ -846,7 +859,6 @@ export default function VenteDirecte() {
                         border: isActive ? "none" : "1px solid #E2E8F0",
                         cursor: "pointer",
                         whiteSpace: "nowrap",
-                        transition: "all 0.15s ease",
                         flexShrink: 0
                       }}
                     >
@@ -855,109 +867,6 @@ export default function VenteDirecte() {
                   );
                 })}
               </div>
-
-              {/* POPUP DÉROULANT DES CATÉGORIES */}
-              {categoryMenuOpen && (
-                <div style={{
-                  position: "absolute",
-                  top: "calc(100% + 6px)",
-                  left: 0,
-                  width: "min(320px, 92vw)",
-                  maxHeight: "360px",
-                  overflowY: "auto",
-                  background: "#FFFFFF",
-                  borderRadius: 14,
-                  border: "1.5px solid var(--line, #E2E8F0)",
-                  boxShadow: "0 12px 36px rgba(0,0,0,0.22)",
-                  zIndex: 9999,
-                  padding: "6px 0"
-                }}>
-                  <div style={{
-                    padding: "8px 14px",
-                    borderBottom: "1px solid var(--line)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center"
-                  }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                      Sélectionner une catégorie ({categoriesList.length})
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setCategoryMenuOpen(false)}
-                      style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", padding: 2 }}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-
-                  {/* TOUTES LES CATÉGORIES */}
-                  <div
-                    onClick={() => {
-                      setSelectedCategory("");
-                      setVisibleLimit(20);
-                      setCategoryMenuOpen(false);
-                    }}
-                    style={{
-                      padding: "10px 14px",
-                      fontSize: 13,
-                      fontWeight: !selectedCategory ? 800 : 600,
-                      color: !selectedCategory ? "var(--forest-dark, #064E3B)" : "var(--ink)",
-                      background: !selectedCategory ? "#F0FDF4" : "transparent",
-                      cursor: "pointer",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      borderBottom: "1px solid var(--line, #F1F5F9)"
-                    }}
-                  >
-                    <span>Toutes les catégories</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>({products.length})</span>
-                  </div>
-
-                  {/* CHAQUE CATÉGORIE AVEC NOMBRE */}
-                  {categoriesList.map(cat => {
-                    const isSel = selectedCategory.toLowerCase() === cat.nom.toLowerCase();
-                    return (
-                      <div
-                        key={cat.id}
-                        onClick={() => {
-                          setSelectedCategory(cat.nom);
-                          setVisibleLimit(20);
-                          setCategoryMenuOpen(false);
-                        }}
-                        style={{
-                          padding: "10px 14px",
-                          fontSize: 13,
-                          fontWeight: isSel ? 800 : 600,
-                          color: isSel ? "var(--forest-dark, #064E3B)" : "var(--ink)",
-                          background: isSel ? "#F0FDF4" : "transparent",
-                          cursor: "pointer",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          borderBottom: "1px solid var(--line, #F1F5F9)"
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          {isSel && <Check size={14} color="var(--forest-dark, #064E3B)" />}
-                          <span>{cat.nom}</span>
-                        </div>
-                        <span style={{
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: isSel ? "var(--forest-dark, #064E3B)" : "var(--muted)",
-                          background: isSel ? "#DCFCE7" : "#F1F5F9",
-                          padding: "2px 8px",
-                          borderRadius: 10
-                        }}>
-                          {cat.count}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           </div>
 
@@ -973,7 +882,64 @@ export default function VenteDirecte() {
             </div>
           ) : (
             <>
-              <div className="bs-pos-products-grid">
+              <style>{`
+                .bs-pos-grid {
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  min-width: 0 !important;
+                  box-sizing: border-box !important;
+                }
+                @media (max-width: 992px) {
+                  .bs-pos-grid {
+                    grid-template-columns: minmax(0, 1fr) !important;
+                  }
+                }
+                .bs-pos-products-col {
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  min-width: 0 !important;
+                  overflow-x: hidden !important;
+                  box-sizing: border-box !important;
+                }
+                .bs-pos-products-grid {
+                  display: grid !important;
+                  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                  gap: 8px !important;
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  min-width: 0 !important;
+                  box-sizing: border-box !important;
+                }
+                .bs-pos-product-card {
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  min-width: 0 !important;
+                  box-sizing: border-box !important;
+                  overflow: hidden !important;
+                }
+                @media (min-width: 993px) {
+                  .bs-pos-products-grid {
+                    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+                    gap: 12px !important;
+                  }
+                }
+                @media (min-width: 1250px) {
+                  .bs-pos-products-grid {
+                    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+                    gap: 12px !important;
+                  }
+                }
+              `}</style>
+              <div
+                className="bs-pos-products-grid"
+                style={{
+                  display: "grid",
+                  width: "100%",
+                  maxWidth: "100%",
+                  minWidth: 0,
+                  boxSizing: "border-box"
+                }}
+              >
                 {displayedProducts.map(p => {
                   const inStock = p.stock > 0;
                   const prixEff = getEffectivePrice(p, activeCurrency);
@@ -985,40 +951,97 @@ export default function VenteDirecte() {
                       key={p.id}
                       className="bs-pos-product-card"
                       style={{
-                        background: "#fff", borderRadius: 14, border: "1px solid var(--line)",
-                        padding: 12, opacity: inStock ? 1 : 0.6, display: "flex", flexDirection: "column",
-                        justifyContent: "space-between", position: "relative", transition: "transform 0.15s",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
+                        background: "#fff",
+                        borderRadius: 14,
+                        border: "1px solid var(--line)",
+                        padding: isMobileScreen ? 10 : 12,
+                        opacity: inStock ? 1 : 0.65,
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        position: "relative",
+                        transition: "transform 0.15s",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+                        boxSizing: "border-box",
+                        minWidth: 0,
+                        overflow: "hidden"
                       }}
                     >
                       <div style={{ position: "relative" }}>
-                        <img
-                          src={p.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=150&q=80"}
-                          alt={p.nom}
-                          className="bs-pos-card-img"
-                          style={{ width: "100%", height: 110, objectFit: "cover", borderRadius: 10, marginBottom: 8 }}
-                        />
-                        {hasVariants && (
-                          <span style={{
-                            position: "absolute", top: 6, right: 6, background: "rgba(15, 23, 42, 0.8)",
-                            color: "#fff", padding: "2px 8px", borderRadius: 8, fontSize: 10.5, fontWeight: 800,
-                            backdropFilter: "blur(4px)", display: "flex", alignItems: "center", gap: 4
-                          }}>
-                            <Layers size={11} /> {variants.length} variante{variants.length > 1 ? "s" : ""}
-                          </span>
-                        )}
-                      </div>
+                        <div className="bs-pos-card-img-wrap" style={{
+                          width: "100%",
+                          aspectRatio: "1 / 1",
+                          maxHeight: isMobileScreen ? 140 : 160,
+                          borderRadius: 10,
+                          overflow: "hidden",
+                          marginBottom: 8,
+                          background: "#f8fafc",
+                          position: "relative"
+                        }}>
+                          <img
+                            src={p.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=300&q=80"}
+                            alt={p.nom}
+                            className="bs-pos-card-img"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                              display: "block"
+                            }}
+                          />
+                          {hasVariants && (
+                            <span style={{
+                              position: "absolute", top: 6, right: 6, background: "rgba(15, 23, 42, 0.85)",
+                              color: "#fff", padding: "2px 7px", borderRadius: 6, fontSize: 10, fontWeight: 800,
+                              backdropFilter: "blur(4px)", display: "flex", alignItems: "center", gap: 3
+                            }}>
+                              <Layers size={11} /> {variants.length} var.
+                            </span>
+                          )}
+                        </div>
 
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)", minHeight: 38, maxHeight: 42, overflow: "hidden", lineHeight: 1.35 }} title={p.nom}>
+                        {/* CATÉGORIE DU PRODUIT EN PETIT MAJUSCULE BLEU */}
+                        {p.categorie && (
+                          <div style={{
+                            fontSize: 10,
+                            fontWeight: 800,
+                            color: "#2563EB",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
+                            marginBottom: 2,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis"
+                          }}>
+                            {p.categorie}
+                          </div>
+                        )}
+
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: isMobileScreen ? 13 : 13.5,
+                            color: "var(--ink)",
+                            minHeight: isMobileScreen ? 34 : 38,
+                            maxHeight: isMobileScreen ? 36 : 42,
+                            overflow: "hidden",
+                            lineHeight: 1.3,
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            wordBreak: "break-word",
+                            marginBottom: 6
+                          }}
+                          title={p.nom}
+                        >
                           {p.nom}
                         </div>
                         
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                          <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--forest-dark)" }}>
-                            {fcfa(prixEff, activeCurrency)} {p.unite ? <span style={{ fontSize: 11, fontWeight: 500, color: "var(--muted)" }}>/ {p.unite}</span> : ""}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, flexWrap: "wrap", gap: 4 }}>
+                          <div style={{ fontWeight: 800, fontSize: isMobileScreen ? 13.5 : 14.5, color: "var(--forest-dark)", whiteSpace: "nowrap" }}>
+                            {fcfa(prixEff, activeCurrency)} {p.unite ? <span style={{ fontSize: 10.5, fontWeight: 500, color: "var(--muted)" }}>/ {p.unite}</span> : ""}
                           </div>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: inStock ? "#1F4D3A" : "#B4483A" }}>
+                          <span style={{ fontSize: 10.5, fontWeight: 700, color: inStock ? "#1F4D3A" : "#B4483A", whiteSpace: "nowrap" }}>
                             {inStock ? `Stock: ${p.stock}` : "Épuisé"}
                           </span>
                         </div>
@@ -1026,16 +1049,16 @@ export default function VenteDirecte() {
 
                       {/* BOUTONS D'AJOUT : DIRECT OU VARIANTES */}
                       {hasVariants ? (
-                        <div className="bs-pos-card-btns" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 10 }}>
                           <button
                             type="button"
                             disabled={!inStock}
                             onClick={() => inStock && addToCartDirect(p)}
-                            title="Ajouter le produit standard avec la photo principale"
+                            title="Ajouter direct avec photo principale"
                             style={{
                               background: inStock ? "#F1F5F9" : "#F3F4F6",
                               color: inStock ? "#334155" : "var(--muted)", border: "1px solid #CBD5E1",
-                              padding: "7px 4px", borderRadius: 8, fontWeight: 700, fontSize: 11,
+                              padding: "7px 4px", borderRadius: 8, fontWeight: 700, fontSize: isMobileScreen ? 11 : 11.5,
                               cursor: inStock ? "pointer" : "not-allowed", textAlign: "center", whiteSpace: "nowrap"
                             }}
                           >
@@ -1049,8 +1072,8 @@ export default function VenteDirecte() {
                             style={{
                               background: inStock ? "#2563EB" : "#F3F4F6",
                               color: inStock ? "#fff" : "var(--muted)", border: "none",
-                              padding: "7px 4px", borderRadius: 8, fontWeight: 800, fontSize: 11,
-                              display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
+                              padding: "7px 4px", borderRadius: 8, fontWeight: 800, fontSize: isMobileScreen ? 11 : 11.5,
+                              display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
                               cursor: inStock ? "pointer" : "not-allowed", boxShadow: inStock ? "0 2px 6px rgba(37,99,235,0.25)" : "none",
                               whiteSpace: "nowrap"
                             }}
@@ -1064,11 +1087,13 @@ export default function VenteDirecte() {
                           disabled={!inStock}
                           onClick={() => inStock && addToCartDirect(p)}
                           style={{
-                            marginTop: 10, width: "100%", background: inStock ? "var(--forest-light)" : "#F3F4F6",
-                            color: inStock ? "var(--forest)" : "var(--muted)", border: "none",
-                            padding: "7px", borderRadius: 8, fontWeight: 700, fontSize: 11.5,
+                            marginTop: 10, width: "100%",
+                            background: inStock ? "#EFF6FF" : "#F3F4F6",
+                            color: inStock ? "#2563EB" : "var(--muted)",
+                            border: inStock ? "1px solid #BFDBFE" : "1px solid #E2E8F0",
+                            padding: "8px 6px", borderRadius: 9, fontWeight: 700, fontSize: isMobileScreen ? 12 : 12.5,
                             display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                            cursor: inStock ? "pointer" : "not-allowed"
+                            cursor: inStock ? "pointer" : "not-allowed", whiteSpace: "nowrap"
                           }}
                         >
                           <Plus size={14} /> Ajouter au panier
@@ -1419,7 +1444,7 @@ export default function VenteDirecte() {
                   </div>
                   <div style={{ borderTop: "1px dashed #FCA5A5", paddingTop: 8 }}>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#991B1B", marginBottom: 5 }}>
-                      📅 Date d'échéance promise * :
+                      Date d'échéance promise * :
                     </label>
                     <input
                       type="date"

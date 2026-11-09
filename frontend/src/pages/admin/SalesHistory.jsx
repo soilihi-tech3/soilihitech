@@ -994,7 +994,7 @@ export default function SalesHistory() {
                   </div>
                   <div>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#991B1B", marginBottom: 4 }}>
-                      📅 Date d'échéance :
+                      Date d'échéance :
                     </label>
                     <input
                       type="date"

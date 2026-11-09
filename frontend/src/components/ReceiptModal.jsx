@@ -207,10 +207,27 @@ export default function ReceiptModal({
     MOYEN_LABELS[order.moyenPaiement] ||
     (order.moyenPaiement ? order.moyenPaiement.toUpperCase() : "PAIEMENT SÉCURISÉ");
 
+  // Analyse précise des montants réglés et restant à payer
+  const rawPaye = order.montantPaye !== undefined && order.montantPaye !== null
+    ? Number(order.montantPaye)
+    : (order.statutPaiement === "non_paye" ? 0 : totalAmount);
+
+  const rawRestant = order.montantRestant !== undefined && order.montantRestant !== null
+    ? Number(order.montantRestant)
+    : (order.statutPaiement === "non_paye" ? totalAmount : Math.max(0, totalAmount - rawPaye));
+
+  const isFullyPaid = order.statutPaiement === "paye" || (rawRestant <= 0 && order.statutPaiement !== "non_paye");
+  const isPartial = order.statutPaiement === "partiel" || (rawRestant > 0 && rawPaye > 0);
+  const isUnpaid = order.statutPaiement === "non_paye" || (rawPaye <= 0 && rawRestant > 0);
+
+  const montantPaye = isFullyPaid ? totalAmount : rawPaye;
+  const montantRestant = isFullyPaid ? 0 : rawRestant;
+  const isCash = order.moyenPaiement === "cash" || order.moyenPaiement === "especes";
+  const hasChange = isCash && Boolean(order.montantRecu);
+  const hasDebtInfo = isPartial || isUnpaid;
+
   const buildPdfBlob = () => {
     const items = order.items || [];
-      const isCash = order.moyenPaiement === "cash" || order.moyenPaiement === "especes";
-      const hasChange = isCash && Boolean(order.montantRecu);
 
       let estimatedItemsH = 0;
       items.forEach((it) => {
@@ -221,7 +238,7 @@ export default function ReceiptModal({
         estimatedItemsH += (extraLines * 3.5) + (varLines * 3.2) + 9;
       });
 
-      const dynamicHeight = Math.max(170, 130 + estimatedItemsH + (hasChange ? 15 : 0));
+      const dynamicHeight = Math.max(175, 135 + estimatedItemsH + (hasChange ? 15 : 0) + (hasDebtInfo ? 18 : 0));
 
       const doc = new jsPDF({
         orientation: "portrait",
@@ -401,32 +418,89 @@ export default function ReceiptModal({
         y += 4;
       }
 
-      // TOTAL REGLE HIGHLIGHT BOX
+      // TOTAL BOX
       doc.setFillColor(241, 245, 249);
       doc.roundedRect(leftX, y, rightX - leftX, 7.5, 1, 1, "F");
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
-      doc.text("TOTAL REGLE :", leftX + 2.5, y + 5);
+      const totalBoxLabel = isFullyPaid ? "TOTAL REGLE :" : isPartial ? "TOTAL COMMANDE :" : "TOTAL A REGLER :";
+      doc.text(totalBoxLabel, leftX + 2.5, y + 5);
       doc.text(pdfPrice(totalAmount, activeDevise), rightX - 2.5, y + 5, { align: "right" });
       y += 11;
 
-      if (hasChange) {
+      // STATUT & DETAIL DES REGLEMENTS
+      if (isFullyPaid) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(22, 163, 74);
+        doc.text("STATUT : PAYE (REGLE)", leftX + 1, y);
+        y += 4;
+
+        if (hasChange) {
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7.5);
+          doc.setTextColor(71, 85, 105);
+          doc.text("Montant recu :", leftX + 1, y);
+          doc.text(pdfPrice(order.montantRecu, activeDevise), rightX - 1, y, { align: "right" });
+          y += 3.8;
+
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(22, 163, 74);
+          doc.text("Monnaie rendue :", leftX + 1, y);
+          doc.text(pdfPrice(order.monnaieRendue || 0, activeDevise), rightX - 1, y, {
+            align: "right"
+          });
+          y += 5;
+        }
+      } else if (isPartial) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(217, 119, 6);
+        doc.text("STATUT : PAIEMENT PARTIEL", leftX + 1, y);
+        y += 4;
+
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7.5);
         doc.setTextColor(71, 85, 105);
-        doc.text("Montant recu :", leftX + 1, y);
-        doc.text(pdfPrice(order.montantRecu, activeDevise), rightX - 1, y, { align: "right" });
+        doc.text("Montant verse :", leftX + 1, y);
+        doc.text(pdfPrice(montantPaye, activeDevise), rightX - 1, y, { align: "right" });
         y += 3.8;
 
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(22, 163, 74);
-        doc.text("Monnaie rendue :", leftX + 1, y);
-        doc.text(pdfPrice(order.monnaieRendue || 0, activeDevise), rightX - 1, y, {
-          align: "right"
-        });
-        y += 5;
+        doc.setTextColor(220, 38, 38);
+        doc.text("RESTE A PAYER :", leftX + 1, y);
+        doc.text(pdfPrice(montantRestant, activeDevise), rightX - 1, y, { align: "right" });
+        y += 4.5;
+
+        if (order.dateEcheance) {
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          doc.setTextColor(153, 27, 27);
+          doc.text(`Echeance prevue : ${cleanPdfText(order.dateEcheance)}`, leftX + 1, y);
+          y += 4;
+        }
+      } else {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(220, 38, 38);
+        doc.text("STATUT : NON PAYE (A REGLER)", leftX + 1, y);
+        y += 4;
+
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(220, 38, 38);
+        doc.text("RESTE A PAYER :", leftX + 1, y);
+        doc.text(pdfPrice(montantRestant, activeDevise), rightX - 1, y, { align: "right" });
+        y += 4.5;
+
+        if (order.dateEcheance) {
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          doc.setTextColor(153, 27, 27);
+          doc.text(`Echeance prevue : ${cleanPdfText(order.dateEcheance)}`, leftX + 1, y);
+          y += 4;
+        }
       }
 
       // 11. Dashed Line
@@ -691,17 +765,17 @@ export default function ReceiptModal({
                       letterSpacing: 0.5
                     }}
                   >
-                    Total
+                    {isFullyPaid ? "Total Réglé" : isPartial ? "Reste à Payer" : "Total à Régler"}
                   </div>
                   <div
                     style={{
                       fontSize: 18,
                       fontWeight: 900,
-                      color: "#4ADE80",
+                      color: isFullyPaid ? "#4ADE80" : "#F87171",
                       letterSpacing: -0.2
                     }}
                   >
-                    {fcfa(totalAmount, activeDevise)}
+                    {fcfa(isPartial || isUnpaid ? montantRestant : totalAmount, activeDevise)}
                   </div>
                 </div>
               </div>
@@ -950,11 +1024,102 @@ export default function ReceiptModal({
                     borderTop: "1px solid #E2E8F0"
                   }}
                 >
-                  <span>TOTAL RÉGLÉ :</span>
+                  <span>TOTAL :</span>
                   <span>{fcfa(totalAmount, activeDevise)}</span>
                 </div>
 
-                {order.montantRecu && (
+                {/* STATUT PAIEMENT & DÉCOMPTE DU RESTE À PAYER */}
+                {isFullyPaid && (
+                  <div
+                    style={{
+                      marginTop: 6,
+                      padding: "6px 10px",
+                      background: "#DCFCE7",
+                      borderRadius: 8,
+                      border: "1px solid #86EFAC",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}
+                  >
+                    <span style={{ fontSize: 11, fontWeight: 900, color: "#166534" }}>
+                      STATUT PAIEMENT :
+                    </span>
+                    <span style={{ fontSize: 11.5, fontWeight: 900, color: "#15803D" }}>
+                      PAYÉ (RÉGLÉ)
+                    </span>
+                  </div>
+                )}
+
+                {isPartial && (
+                  <div
+                    style={{
+                      marginTop: 6,
+                      padding: "8px 10px",
+                      background: "#FEF3C7",
+                      borderRadius: 8,
+                      border: "1px solid #FCD34D"
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: "#92400E" }}>
+                        Montant versé :
+                      </span>
+                      <span style={{ fontSize: 11.5, fontWeight: 800, color: "#B45309" }}>
+                        {fcfa(montantPaye, activeDevise)}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 4, borderTop: "1px dashed #F59E0B" }}>
+                      <span style={{ fontSize: 12, fontWeight: 900, color: "#DC2626" }}>
+                        RESTE À PAYER :
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 900, color: "#DC2626" }}>
+                        {fcfa(montantRestant, activeDevise)}
+                      </span>
+                    </div>
+                    {order.dateEcheance && (
+                      <div style={{ fontSize: 10, color: "#B45309", marginTop: 4, fontWeight: 700 }}>
+                        Échéance promise : {order.dateEcheance}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {isUnpaid && (
+                  <div
+                    style={{
+                      marginTop: 6,
+                      padding: "8px 10px",
+                      background: "#FEF2F2",
+                      borderRadius: 8,
+                      border: "1px solid #FECACA"
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: "#991B1B" }}>
+                        STATUT PAIEMENT :
+                      </span>
+                      <span style={{ fontSize: 11.5, fontWeight: 900, color: "#DC2626" }}>
+                        NON PAYÉ (À RÉGLER)
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, paddingTop: 4, borderTop: "1px dashed #FCA5A5" }}>
+                      <span style={{ fontSize: 12, fontWeight: 900, color: "#991B1B" }}>
+                        RESTE À PAYER :
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 900, color: "#DC2626" }}>
+                        {fcfa(montantRestant, activeDevise)}
+                      </span>
+                    </div>
+                    {order.dateEcheance && (
+                      <div style={{ fontSize: 10, color: "#991B1B", marginTop: 4, fontWeight: 700 }}>
+                        Échéance promise : {order.dateEcheance}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {hasChange && isFullyPaid && (
                   <>
                     <div
                       style={{
@@ -962,7 +1127,7 @@ export default function ReceiptModal({
                         justifyContent: "space-between",
                         fontSize: 10.5,
                         color: "#475569",
-                        marginTop: 3
+                        marginTop: 4
                       }}
                     >
                       <span>Montant reçu :</span>
