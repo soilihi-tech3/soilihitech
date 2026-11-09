@@ -309,7 +309,9 @@ export default function SalesHistory() {
   // Calculate totals for KPI cards dynamically per configured currency
   const totalVentesCount = filteredOrders.length;
   const salesTotalsByCurrency = {};
-  const cashTotalsByCurrency = {};
+  const totalEncaisseByCurrency = {};
+  const cashEncaisseByCurrency = {};
+  const digitalEncaisseByCurrency = {};
   const resteTotalsByCurrency = {};
 
   function calculateOrderDebt(o) {
@@ -325,17 +327,30 @@ export default function SalesHistory() {
     return 0;
   }
 
+  function calculateOrderEncaisse(o) {
+    if (o.statut === "annulee") return 0;
+    const totalNum = Number(o.total || 0);
+    const dette = calculateOrderDebt(o);
+    return Math.max(0, totalNum - dette);
+  }
+
   boutiqueCurrencies.forEach((cur) => {
     const code = cur.code;
-    salesTotalsByCurrency[code] = filteredOrders
-      .filter(o => normalizeSaleCurrency(o) === code)
-      .reduce((sum, o) => sum + Number(o.total || 0), 0);
-    cashTotalsByCurrency[code] = filteredOrders
-      .filter(o => normalizeSaleCurrency(o) === code && (o.moyenPaiement === "cash" || o.moyenPaiement === "especes"))
-      .reduce((sum, o) => sum + Number(o.total || 0), 0);
-    resteTotalsByCurrency[code] = filteredOrders
-      .filter(o => normalizeSaleCurrency(o) === code)
-      .reduce((sum, o) => sum + calculateOrderDebt(o), 0);
+    const ordersInCur = filteredOrders.filter(o => normalizeSaleCurrency(o) === code);
+    
+    salesTotalsByCurrency[code] = ordersInCur.reduce((sum, o) => sum + Number(o.total || 0), 0);
+    
+    totalEncaisseByCurrency[code] = ordersInCur.reduce((sum, o) => sum + calculateOrderEncaisse(o), 0);
+    
+    cashEncaisseByCurrency[code] = ordersInCur
+      .filter(o => o.moyenPaiement === "cash" || o.moyenPaiement === "especes")
+      .reduce((sum, o) => sum + calculateOrderEncaisse(o), 0);
+
+    digitalEncaisseByCurrency[code] = ordersInCur
+      .filter(o => o.moyenPaiement !== "cash" && o.moyenPaiement !== "especes")
+      .reduce((sum, o) => sum + calculateOrderEncaisse(o), 0);
+
+    resteTotalsByCurrency[code] = ordersInCur.reduce((sum, o) => sum + calculateOrderDebt(o), 0);
   });
 
   const totalDettesCount = filteredOrders.filter(o => calculateOrderDebt(o) > 0).length;
@@ -600,27 +615,43 @@ export default function SalesHistory() {
           </div>
         ))}
 
-        {/* TOTAL CASH PAR DEVISE */}
+        {/* TOTAL RÉELLEMENT ENCAISSÉ PAR DEVISE */}
         <div className="bs-panel" style={{ padding: 16, background: "#F0FDF4", border: "1.5px solid #BBF7D0", borderRadius: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#166534", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
-            <DollarSign size={15} /> TOTAL CASH ENCAISSÉ
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#166534", fontSize: 11.5, fontWeight: 800, textTransform: "uppercase" }}>
+              <DollarSign size={15} /> {filterPaiement === "cash" ? "TOTAL CASH ENCAISSÉ" : "TOTAL RÉELLEMENT ENCAISSÉ"}
+            </div>
           </div>
           {isSingleCurrency ? (
             <div style={{ fontSize: 24, fontWeight: 900, color: "#15803D", marginTop: 6 }}>
-              {formatPrice(cashTotalsByCurrency[primaryCurrencyCode] || 0, primaryCurrencyCode)}
+              {formatPrice(totalEncaisseByCurrency[primaryCurrencyCode] || 0, primaryCurrencyCode)}
             </div>
-          ) : filterPays !== "tous" && cashTotalsByCurrency[filterPays] !== undefined ? (
+          ) : filterPays !== "tous" && totalEncaisseByCurrency[filterPays] !== undefined ? (
             <div style={{ fontSize: 24, fontWeight: 900, color: "#15803D", marginTop: 6 }}>
-              {formatPrice(cashTotalsByCurrency[filterPays] || 0, filterPays)}
+              {formatPrice(totalEncaisseByCurrency[filterPays] || 0, filterPays)}
             </div>
           ) : (
             <div style={{ fontSize: 18, fontWeight: 900, color: "#15803D", marginTop: 6 }}>
               {boutiqueCurrencies.map((cur, idx) => (
                 <React.Fragment key={cur.code}>
                   {idx > 0 && <span style={{ color: "var(--muted)", fontWeight: 600 }}> / </span>}
-                  {formatPrice(cashTotalsByCurrency[cur.code] || 0, cur.code)}
+                  {formatPrice(totalEncaisseByCurrency[cur.code] || 0, cur.code)}
                 </React.Fragment>
               ))}
+            </div>
+          )}
+          {filterPaiement === "tous" && (
+            <div style={{ fontSize: 11, color: "#166534", marginTop: 4, fontWeight: 600 }}>
+              {boutiqueCurrencies.map((cur) => {
+                const cash = cashEncaisseByCurrency[cur.code] || 0;
+                const dig = digitalEncaisseByCurrency[cur.code] || 0;
+                if (cash === 0 && dig === 0) return null;
+                return (
+                  <span key={cur.code} style={{ display: "block" }}>
+                    {cur.code} : Cash {formatPrice(cash, cur.code)}{dig > 0 ? ` · Mobile/Autre ${formatPrice(dig, cur.code)}` : ""}
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>
