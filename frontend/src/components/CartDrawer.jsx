@@ -81,18 +81,40 @@ export default function CartDrawer({ onClose }) {
               </div>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            style={{
-              background: "var(--line)", border: "none", borderRadius: "50%",
-              width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", color: "var(--ink)", transition: "all 0.2s"
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = "var(--forest-light)"}
-            onMouseLeave={e => e.currentTarget.style.background = "var(--line)"}
-          >
-            <X size={16} />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {cart.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  clearCart();
+                  showToast("Panier vidé avec succès", "info");
+                }}
+                title="Vider tout le panier"
+                style={{
+                  background: "#FEE2E2", border: "1px solid #FECACA", borderRadius: 8,
+                  padding: "5px 10px", display: "flex", alignItems: "center", gap: 5,
+                  cursor: "pointer", color: "#B91C1C", fontSize: 12, fontWeight: 700,
+                  transition: "all 0.2s"
+                }}
+              >
+                <Trash2 size={13} />
+                <span>Vider</span>
+              </button>
+            )}
+            <button 
+              type="button"
+              onClick={onClose}
+              style={{
+                background: "var(--line)", border: "none", borderRadius: "50%",
+                width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", color: "var(--ink)", transition: "all 0.2s"
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = "var(--forest-light)"}
+              onMouseLeave={e => e.currentTarget.style.background = "var(--line)"}
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         {/* ─── ITEMS ─── */}
@@ -122,7 +144,7 @@ export default function CartDrawer({ onClose }) {
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {cart.map((l) => {
+              {cart.map((l, index) => {
                 const itemKey = l.cartKey || (l.product ? `${l.product.id}_${l.selectedModele || ''}_${l.selectedCouleur || ''}` : String(l.id));
                 const isSenegal = activeCurrency === "FCFA";
                 
@@ -210,7 +232,11 @@ export default function CartDrawer({ onClose }) {
                           background: "#fff"
                         }}>
                           <button 
-                            onClick={() => updateQuantite(itemKey, -1, index)}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateQuantite(itemKey, -1, index);
+                            }}
                             style={{
                               width: 28, height: 28, background: "none", border: "none",
                               cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
@@ -232,7 +258,11 @@ export default function CartDrawer({ onClose }) {
                             }}
                           />
                           <button 
-                            onClick={() => updateQuantite(itemKey, 1, index)}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateQuantite(itemKey, 1, index);
+                            }}
                             style={{
                               width: 28, height: 28, background: "none", border: "none",
                               cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
@@ -248,7 +278,12 @@ export default function CartDrawer({ onClose }) {
                             {fcfa(lineTotal, activeCurrency)}
                           </span>
                           <button 
-                            onClick={() => removeFromCart(itemKey, index)}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFromCart(itemKey, index);
+                              showToast(`"${l.product?.nom || 'Article'}" retiré du panier`, "info");
+                            }}
                             title="Retirer du panier"
                             style={{
                               width: 28, height: 28, borderRadius: "50%", border: "none",
