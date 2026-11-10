@@ -223,15 +223,16 @@ export default function SalesHistory() {
 
   // Filter logic (Seules les ventes confirmées/effectuées comptent dans l'historique des ventes et le CA)
   const filteredOrders = orders.filter((o) => {
-    if (["annulee", "en_attente", "en_attente_paiement"].includes(o.statut)) return false;
+    // Exclure les commandes annulées et les paiements abandonnés non finalisés
+    if (["annulee", "en_attente_paiement"].includes(o.statut)) return false;
 
-    // Type detection
+    // Exclure les recharges de crédit mobile (demandé explicitement)
     const isRecharge = o.typeVente === "recharge_mobile" || o.notes?.includes("recharge_mobile") || o.items?.some(it => it.product?.nom?.toLowerCase().includes("recharge"));
-    const isPOS = !isRecharge && (o.typeVente === "vente_directe" || o.adresseLivraison?.includes("Achat direct") || o.modeLivraison === "retrait");
-    
-    let saleType = "commande_enligne";
-    if (isRecharge) saleType = "recharge_mobile";
-    else if (isPOS) saleType = "vente_directe";
+    if (isRecharge) return false;
+
+    // Type detection: vente directe (POS) vs commande en ligne
+    const isPOS = o.typeVente === "vente_directe" || o.adresseLivraison?.includes("Achat direct");
+    const saleType = isPOS ? "vente_directe" : "commande_enligne";
 
     if (filterType !== "tous" && saleType !== filterType) return false;
 
@@ -300,7 +301,12 @@ export default function SalesHistory() {
     // Search query
     if (search.trim()) {
       const q = search.toLowerCase().trim();
-      const matchClient = o.client?.nom?.toLowerCase().includes(q) || o.client?.telephone?.includes(q);
+      const matchClient = o.client?.nom?.toLowerCase().includes(q) ||
+        o.clientNom?.toLowerCase().includes(q) ||
+        o.nomClient?.toLowerCase().includes(q) ||
+        o.client?.telephone?.includes(q) ||
+        o.clientTelephone?.includes(q) ||
+        o.telephone?.includes(q);
       const matchId = `com-b${String(o.id).padStart(3, "0")}`.includes(q) || String(o.id).includes(q);
       const matchItems = o.items?.some(it => it.product?.nom?.toLowerCase().includes(q));
       if (!matchClient && !matchId && !matchItems) return false;
@@ -371,20 +377,21 @@ export default function SalesHistory() {
   function handleExportExcel() {
     const headers = ["ID Vente", "Date", "Client", "Téléphone", "Type", "Employé", "Mode Paiement", "Total (€)"];
     const rows = filteredOrders.map(o => {
-      const isRecharge = o.typeVente === "recharge_mobile" || o.notes?.includes("recharge_mobile") || o.items?.some(it => it.product?.nom?.toLowerCase().includes("recharge"));
-      const isPOS = !isRecharge && (o.typeVente === "vente_directe" || o.adresseLivraison?.includes("Achat direct"));
+      const isPOS = o.typeVente === "vente_directe" || o.adresseLivraison?.includes("Achat direct");
       const dateStr = new Date(o.createdAt).toLocaleString("fr-FR");
-      const typeStr = isRecharge ? "Recharge Crédit Mobile" : isPOS ? "Vente Directe (POS)" : "Commande en Ligne";
+      const typeStr = isPOS ? "Vente Directe (POS)" : "Commande en Ligne";
       const empStr = o.employeAssigne?.nom || "Admin / Système";
       const payStr = (o.moyenPaiement === "cash" || o.moyenPaiement === "especes") ? "Cash / Espèces"
         : o.moyenPaiement === "mvola" ? "MVola"
+        : o.moyenPaiement === "wave" ? "Wave"
+        : (o.moyenPaiement === "orange_money" || o.moyenPaiement === "orange" || o.moyenPaiement === "om") ? "Orange Money"
         : (o.moyenPaiement === "wero" || o.moyenPaiement === "holam") ? "Wero"
         : "Carte Bancaire";
       return [
         `#COM-B${String(o.id).padStart(3, "0")}`,
         `"${dateStr}"`,
-        `"${o.client?.nom || "Client comptoir"}"`,
-        `"${o.client?.telephone || "-"}"`,
+        `"${o.client?.nom || o.clientNom || o.nomClient || "Client"}"`,
+        `"${o.client?.telephone || o.clientTelephone || o.telephone || "-"}"`,
         `"${typeStr}"`,
         `"${empStr}"`,
         `"${payStr}"`,
@@ -413,7 +420,7 @@ export default function SalesHistory() {
         <div>
           <h1 style={{ fontSize: 26, margin: 0, color: "var(--forest-dark)" }}>Historique des Ventes</h1>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 14 }}>
-            Consultez, filtrez et analysez toutes les ventes directes, recharges mobile et commandes en ligne.
+            Consultez, filtrez et analysez toutes les ventes directes et commandes en ligne.
           </p>
         </div>
 
@@ -475,7 +482,6 @@ export default function SalesHistory() {
             <option value="tous">Tout type de vente</option>
             <option value="vente_directe">Vente Directe (POS)</option>
             <option value="commande_enligne">Commande en Ligne</option>
-            <option value="recharge_mobile">Recharge Crédit Mobile</option>
           </select>
 
           {/* FILTER: PAIEMENT */}
@@ -764,8 +770,7 @@ export default function SalesHistory() {
               </tr>
             )}
             {!loading && paginatedOrders.map((o) => {
-              const isRecharge = o.typeVente === "recharge_mobile" || o.notes?.includes("recharge_mobile") || o.items?.some(it => it.product?.nom?.toLowerCase().includes("recharge"));
-              const isPOS = !isRecharge && (o.typeVente === "vente_directe" || o.adresseLivraison?.includes("Achat direct") || o.modeLivraison === "retrait");
+              const isPOS = o.typeVente === "vente_directe" || o.adresseLivraison?.includes("Achat direct");
               const dateFormatted = new Date(o.createdAt).toLocaleDateString("fr-FR", {
                 day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
               });
@@ -795,9 +800,9 @@ export default function SalesHistory() {
                     <div style={{ fontSize: 11, color: "var(--muted)" }}>#COM-B{String(o.id).padStart(3, "0")}</div>
                   </td>
                   <td>
-                    <div style={{ fontWeight: 700, color: "var(--ink)" }}>{o.client?.nom || "Client comptoir"}</div>
-                    {o.client?.telephone && o.client.telephone !== "non_renseigne" && (
-                      <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Tél: {o.client.telephone}</div>
+                    <div style={{ fontWeight: 700, color: "var(--ink)" }}>{o.client?.nom || o.clientNom || o.nomClient || "Client comptoir"}</div>
+                    {(o.client?.telephone || o.clientTelephone || o.telephone) && (o.client?.telephone !== "non_renseigne") && (
+                      <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Tél: {o.client?.telephone || o.clientTelephone || o.telephone}</div>
                     )}
                   </td>
                   <td>
@@ -816,11 +821,7 @@ export default function SalesHistory() {
                     </div>
                   </td>
                   <td>
-                    {isRecharge ? (
-                      <span style={{ background: "#E0F2FE", color: "#0284C7", padding: "4px 10px", borderRadius: 20, fontSize: 11.5, fontWeight: 800, whiteSpace: "nowrap" }}>
-                        Recharge Mobile
-                      </span>
-                    ) : isPOS ? (
+                    {isPOS ? (
                       <span style={{ background: "#DCFCE7", color: "#166534", padding: "4px 10px", borderRadius: 20, fontSize: 11.5, fontWeight: 800, whiteSpace: "nowrap" }}>
                         Vente Directe (POS)
                       </span>
