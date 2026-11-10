@@ -747,20 +747,6 @@ router.patch("/:slug/orders/:id/switch-to-cash", loadBoutique, authenticate, asy
     clearCachePattern("/api/store").catch(() => {});
     broadcast("order_created", { orderId: order.id, clientId: order.clientId, boutiqueId: order.boutiqueId });
     broadcast("order_updated", { orderId: order.id, clientId: order.clientId, boutiqueId: order.boutiqueId });
-    }).catch(() => {});
-
-    Notification.create({
-      userId: null, boutiqueId: order.boutiqueId, orderId: order.id,
-      title: "Nouvelle commande",
-      message: `La commande #${cmdNum} est passée en paiement à la livraison et attend votre confirmation.`,
-      type: "order"
-    }).catch(() => {});
-
-    clearCachePattern("/api/store").catch(() => {});
-    broadcast("order_updated", { orderId: order.id, statut: "en_attente", clientId: order.clientId, boutiqueId: order.boutiqueId });
-    
-    // Si on veut envoyer l'e-mail à l'admin, on pourrait le faire ici, 
-    // car il n'avait peut-être pas été averti du succès du paiement.
 
     res.json(order);
   } catch (err) {
