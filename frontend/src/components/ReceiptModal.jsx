@@ -111,8 +111,8 @@ const MOYEN_LABELS = {
   wero: "WERO",
   holam: "WERO",
   carte: "CARTE BANCAIRE",
-  wave: "WAVE (UNITECHPAY)",
-  orange: "ORANGE MONEY (UNITECHPAY)",
+  wave: "WAVE MONEY",
+  orange: "ORANGE MONEY",
   unitechpay: "MOBILE MONEY",
   whatsapp: "COMMANDE WHATSAPP"
 };
@@ -415,6 +415,13 @@ export default function ReceiptModal({
             ? "Gratuite"
             : pdfPrice(order.fraisLivraison, activeDevise);
         doc.text(feeText, rightX, y, { align: "right" });
+        y += 4;
+      }
+
+      if (Number(order.fraisPaiement) > 0) {
+        doc.setFont("helvetica", "normal");
+        doc.text("Frais transaction :", leftX, y);
+        doc.text(pdfPrice(order.fraisPaiement, activeDevise), rightX, y, { align: "right" });
         y += 4;
       }
 
@@ -1009,6 +1016,13 @@ export default function ReceiptModal({
                         ? "Gratuite"
                         : fcfa(order.fraisLivraison, activeDevise)}
                     </span>
+                  </div>
+                )}
+
+                {Number(order.fraisPaiement) > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#64748B" }}>Frais transaction :</span>
+                    <span style={{ fontWeight: 600 }}>{fcfa(order.fraisPaiement, activeDevise)}</span>
                   </div>
                 )}
 

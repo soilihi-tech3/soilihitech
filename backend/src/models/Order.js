@@ -21,6 +21,7 @@ const Order = sequelize.define("Order", {
   receiptUrl: { type: DataTypes.STRING(500), allowNull: true, field: "receipt_url" },
   sousTotal: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   fraisLivraison: { type: DataTypes.STRING(255), defaultValue: "0" },
+  fraisPaiement: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0, field: "frais_paiement" },
   total: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   devise: { type: DataTypes.STRING(10), defaultValue: "KMF" },
   captureUrl: { type: DataTypes.TEXT("long"), allowNull: true, field: "capture_url" },

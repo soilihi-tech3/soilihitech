@@ -12,6 +12,9 @@ import ReceiptModal from "../../components/ReceiptModal.jsx";
 import { formatPrice as fcfa, getBoutiqueCurrencies } from "../../utils/currency.js";
 const formatOrderNum = (id) => `COM-B${String(id).padStart(3, "0")}`;
 
+const WAVE_LOGO = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ2HroqloJ8NxLB2bTo1KCfBFIqqlRUfjS7lor42fv8dw&s=10";
+const ORANGE_MONEY_LOGO = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSkuwenMWEMEqLrjTBw59HU3cAqXn5JcznidoH8agbSKg&s=10";
+
 const STATUTS_FILTER = [
   { value: "tous", label: "Tous les statuts" },
   { value: "en_attente", label: "En attente" },
@@ -284,7 +287,7 @@ export default function AdminOrders() {
     const matchYear = yearFilter === "tous" || orderDate.getFullYear() === Number(yearFilter);
 
     // Payment status filter (paye en ligne vs a l'encaissement)
-    const isOnlinePaid = o.statutPaiement === "paye" || ["carte", "mvola", "wero", "holam"].includes(o.moyenPaiement);
+    const isOnlinePaid = o.statutPaiement === "paye" || ["carte", "mvola", "wero", "holam", "wave", "orange", "orange_money", "unitechpay"].includes(o.moyenPaiement);
     const matchPaymentStatus = paymentStatusFilter === "tous" ||
       (paymentStatusFilter === "paye_en_ligne" && isOnlinePaid) ||
       (paymentStatusFilter === "a_encaissement" && !isOnlinePaid);
@@ -666,8 +669,14 @@ export default function AdminOrders() {
                           {o.devise === "FCFA" ? "Sénégal (FCFA)" : "Comores (KMF)"}
                         </span>
                       </div>
-                      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 4 }}>
-                        {MOYEN_LABEL[o.moyenPaiement] || o.moyenPaiement || "Paiement à la livraison"}
+                      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 4, display: "flex", alignItems: "center", gap: 5 }}>
+                        {o.moyenPaiement === "wave" && (
+                          <img src={WAVE_LOGO} alt="Wave" style={{ width: 16, height: 16, borderRadius: "50%", objectFit: "contain" }} />
+                        )}
+                        {(o.moyenPaiement === "orange" || o.moyenPaiement === "orange_money") && (
+                          <img src={ORANGE_MONEY_LOGO} alt="OM" style={{ width: 16, height: 16, borderRadius: "50%", objectFit: "contain" }} />
+                        )}
+                        <span>{MOYEN_LABEL[o.moyenPaiement] || o.moyenPaiement || "Paiement à la livraison"}</span>
                       </div>
                       {o.statutPaiement === 'paye' ? (
                         <span style={{ background: "#D1FAE5", color: "#064E3B", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 12, display: "inline-block" }}>Payé en ligne</span>

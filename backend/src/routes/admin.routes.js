@@ -1287,9 +1287,12 @@ router.get("/orders", async (req, res, next) => {
     };
     if (req.query.statut) where.statut = req.query.statut;
 
-    // Un employé ne doit voir que ses propres ventes
+    // Un employé ne doit voir que ses propres ventes ou les commandes en ligne payées non assignées
     if (req.user && req.user.role === "employe") {
-      where.employeAssigneId = req.user.id;
+      where[Op.or] = [
+        { employeAssigneId: req.user.id },
+        { employeAssigneId: null }
+      ];
     }
 
     const orders = await Order.findAll({
@@ -1945,7 +1948,7 @@ router.put("/boutique", requireRole("admin"), async (req, res, next) => {
       tiktokUrl, whatsappNumber, modesPaiement, modulesActifs,
       customDomain, stripePublishableKey, stripeSecretKey, stripeAccountId,
       paydunyaMasterKey, paydunyaPrivateKey, paydunyaToken,
-      unitechApiKey, reloadlyClientId, reloadlyClientSecret, reloadlySandbox, dingApiKey
+      unitechApiKey, fraisUnitechPourcentage, reloadlyClientId, reloadlyClientSecret, reloadlySandbox, dingApiKey
     } = req.body;
 
     let targetCustomDomain = boutique.customDomain;
@@ -1996,6 +1999,7 @@ router.put("/boutique", requireRole("admin"), async (req, res, next) => {
       ...(paydunyaPrivateKey !== undefined && { paydunyaPrivateKey }),
       ...(paydunyaToken !== undefined && { paydunyaToken }),
       ...(unitechApiKey !== undefined && { unitechApiKey }),
+      ...(fraisUnitechPourcentage !== undefined && { fraisUnitechPourcentage: Number(fraisUnitechPourcentage) || 2.0 }),
       ...(reloadlyClientId !== undefined && { reloadlyClientId }),
       ...(reloadlyClientSecret !== undefined && { reloadlyClientSecret }),
       ...(reloadlySandbox !== undefined && { reloadlySandbox }),

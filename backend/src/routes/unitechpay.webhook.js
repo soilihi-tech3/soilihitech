@@ -72,7 +72,20 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // Fallback: si pas trouvé par stripeSessionId, rechercher si la référence ou description contient l'ID
+    // Fallback 1: par numéro de commande dans la référence (ex: TXN-45-..., CMD-45)
+    if (!order && reference) {
+      const numMatch = reference.match(/(?:TXN|CMD)[-_](\d+)/i) || reference.match(/^(\d+)$/);
+      if (numMatch && numMatch[1]) {
+        order = await Order.findByPk(numMatch[1], {
+          include: [
+            { model: User, as: "client", attributes: ["id", "nom", "email", "telephone"] },
+            { model: OrderItem, as: "items", include: [{ model: Product, as: "product" }] }
+          ]
+        });
+      }
+    }
+
+    // Fallback 2: si pas trouvé par stripeSessionId, rechercher si la référence ou description contient l'ID
     if (!order && body.description) {
       const match = String(body.description).match(/Commande\s*#?(\d+)/i);
       if (match && match[1]) {
@@ -120,6 +133,8 @@ router.post("/", async (req, res) => {
     await order.update({
       statut: nextStatut,
       statutPaiement: "paye",
+      montantPaye: order.total,
+      montantRestant: 0,
       moyenPaiement: effectiveMethod,
       stripeSessionId: reference || order.stripeSessionId
     });
@@ -181,6 +196,12 @@ router.post("/", async (req, res) => {
     }
 
     clearCachePattern("/api/store").catch(() => {});
+    broadcast("order_created", {
+      orderId: order.id,
+      statut: nextStatut,
+      clientId: order.clientId,
+      boutiqueId: order.boutiqueId
+    });
     broadcast("order_updated", {
       orderId: order.id,
       statut: nextStatut,

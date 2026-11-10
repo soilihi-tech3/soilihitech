@@ -7,22 +7,20 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { MessageCircle } from "lucide-react";
 import { WeroLogo, OnlinePaymentBadges } from "../../components/PaymentLogos";
 
-// Logos Wave et Orange Money inline (SVG/images)
+// Logos Wave et Orange Money officiels
 const WaveLogo = () => (
   <img
-    src="https://paytech.sn/assets/srcs/img/wave-logo.png"
+    src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ2HroqloJ8NxLB2bTo1KCfBFIqqlRUfjS7lor42fv8dw&s=10"
     alt="Wave"
-    style={{ height: 28, objectFit: "contain" }}
-    onError={(e) => { e.target.style.display = "none"; }}
+    style={{ height: 28, width: 28, objectFit: "contain", borderRadius: "50%", background: "#fff" }}
   />
 );
 
 const OrangeMoneyLogo = () => (
   <img
-    src="https://paytech.sn/assets/srcs/img/orange-money-logo.png"
+    src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSkuwenMWEMEqLrjTBw59HU3cAqXn5JcznidoH8agbSKg&s=10"
     alt="Orange Money"
-    style={{ height: 28, objectFit: "contain" }}
-    onError={(e) => { e.target.style.display = "none"; }}
+    style={{ height: 28, width: 28, objectFit: "contain", borderRadius: "50%", background: "#fff" }}
   />
 );
 

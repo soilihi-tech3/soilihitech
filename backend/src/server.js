@@ -294,6 +294,7 @@ async function ensureColumns() {
       { name: "paytech_api_key",        type: "VARCHAR(255) NULL" },
       { name: "paytech_api_secret",     type: "VARCHAR(255) NULL" },
       { name: "unitech_api_key",        type: "VARCHAR(255) NULL" },
+      { name: "frais_unitech_pourcentage", type: "DECIMAL(5, 2) DEFAULT 2.0" },
       // Reloadly (Airtime direct Comores)
       { name: "reloadly_client_id",     type: "VARCHAR(255) NULL" },
       { name: "reloadly_client_secret", type: "VARCHAR(255) NULL" },
@@ -357,6 +358,11 @@ async function ensureColumns() {
     } else if (!tableOrders["statut_paiement"]) {
       console.log("[MIGRATION] Ajout colonne statut_paiement");
       await sequelize.query(`ALTER TABLE orders ADD COLUMN statut_paiement VARCHAR(50) DEFAULT 'non_paye';`);
+    }
+
+    if (!tableOrders["frais_paiement"]) {
+      console.log("[MIGRATION] Ajout colonne frais_paiement sur orders");
+      await sequelize.query(`ALTER TABLE orders ADD COLUMN frais_paiement DECIMAL(10, 2) DEFAULT 0;`);
     }
 
     if (!tableOrders["notes"]) {

@@ -11,6 +11,9 @@ import { formatWhatsAppOrderMessage } from "../../utils/whatsappOrder.js";
 
 import { formatPrice as fcfa } from "../../utils/currency.js";
 
+const WAVE_LOGO = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ2HroqloJ8NxLB2bTo1KCfBFIqqlRUfjS7lor42fv8dw&s=10";
+const ORANGE_MONEY_LOGO = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSkuwenMWEMEqLrjTBw59HU3cAqXn5JcznidoH8agbSKg&s=10";
+
 const STATUT_CONFIG = {
   en_attente_paiement: { label: "Paiement en attente", color: "#B45309", bg: "#FEF3C7", Icon: Clock, step: 0 },
   en_attente:   { label: "En attente",        color: "#B7791F", bg: "#FFFBEA", Icon: Clock,       step: 0 },
@@ -138,6 +141,23 @@ export default function MyOrders() {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Erreur lors de l'initialisation du paiement.");
+    }
+  };
+
+  const checkPaymentStatus = async (orderId) => {
+    try {
+      const res = await api.post(`/store/${SLUG}/orders/${orderId}/verify-payment`);
+      if (res.data?.verified) {
+        toast.success("Paiement validé avec succès ! Votre commande est confirmée.");
+        await loadOrders();
+        if (selected && selected.id === orderId) {
+          setSelected((prev) => ({ ...prev, statut: "en_attente", statutPaiement: "paye" }));
+        }
+      } else {
+        toast.info("Paiement non encore détecté. Si vous avez déjà validé sur Wave ou Orange Money, patientez quelques instants puis réessayez.");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erreur lors de la vérification.");
     }
   };
 
@@ -777,8 +797,41 @@ export default function MyOrders() {
               </a>
             )}
 
+            {selected.statutPaiement === "paye" && (selected.moyenPaiement === "wave" || selected.moyenPaiement === "orange") && (
+              <div style={{ marginTop: 16, background: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+                <img
+                  src={selected.moyenPaiement === "orange" ? ORANGE_MONEY_LOGO : WAVE_LOGO}
+                  alt={selected.moyenPaiement}
+                  style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "contain", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }}
+                />
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 13.5, color: "#166534" }}>
+                    Paiement validé par {selected.moyenPaiement === "orange" ? "Orange Money" : "Wave"}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#15803D" }}>
+                    Règlement sécurisé de {fcfa(selected.total, selected.devise)} reçu avec succès.
+                  </div>
+                </div>
+              </div>
+            )}
+
             {selected.statut === "en_attente_paiement" && (
               <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+                {(selected.moyenPaiement === "wave" || selected.moyenPaiement === "orange" || selected.moyenPaiement === "carte") && (
+                  <button
+                    type="button"
+                    onClick={() => checkPaymentStatus(selected.id)}
+                    style={{
+                      width: "100%", background: "linear-gradient(135deg, #0284C7, #0369A1)", border: "none",
+                      borderRadius: 12, padding: "13px 18px", color: "#fff", fontWeight: 800, fontSize: 13.5,
+                      cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8,
+                      boxShadow: "0 4px 12px rgba(2, 132, 199, 0.25)"
+                    }}
+                  >
+                    <CheckCircle size={18} /> J'ai déjà validé mon paiement (Vérifier)
+                  </button>
+                )}
+
                 <button onClick={() => payNow(selected.id)} style={{ width: "100%", background: "var(--forest)", border: "none", borderRadius: 12, padding: "12px", color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
                   <CreditCard size={18} /> Reprendre le paiement
                 </button>

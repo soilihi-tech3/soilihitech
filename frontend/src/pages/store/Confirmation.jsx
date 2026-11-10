@@ -8,6 +8,9 @@ import ReceiptModal from "../../components/ReceiptModal.jsx";
 
 import { formatPrice as fcfa } from "../../utils/currency.js";
 
+const WAVE_LOGO = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ2HroqloJ8NxLB2bTo1KCfBFIqqlRUfjS7lor42fv8dw&s=10";
+const ORANGE_MONEY_LOGO = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSkuwenMWEMEqLrjTBw59HU3cAqXn5JcznidoH8agbSKg&s=10";
+
 export default function Confirmation() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -18,24 +21,23 @@ export default function Confirmation() {
   useEffect(() => {
     window.scrollTo(0, 0);
     
-    // Vérifier les paramètres d'URL (Retour de Stripe)
     const params = new URLSearchParams(window.location.search);
-    if (params.get("success") === "true") {
-      api.post(`/store/${SLUG}/orders/${id}/verify-payment`).then(() => {
-        // Optionnel : Re-fetch the order to get the updated status
-        api.get(`/store/${SLUG}/orders/mine`).then(res => {
-          const found = res.data.find(o => String(o.id) === String(id));
-          setOrder(found || null);
-        }).catch(() => {});
-      }).catch(() => {});
-    } else if (params.get("canceled") === "true") {
-      toast.error("Le paiement a été annulé. Vous pourrez réessayer depuis la section 'Mes Commandes'.");
-    }
+    const isSuccessParam = params.get("success") === "true";
 
-    api.get(`/store/${SLUG}/orders/mine`).then(res => {
-      const found = res.data.find(o => String(o.id) === String(id));
-      setOrder(found || null);
-    }).catch(() => {});
+    // Vérifier et valider le paiement
+    const runVerification = async () => {
+      try {
+        await api.post(`/store/${SLUG}/orders/${id}/verify-payment`);
+      } catch (e) {}
+
+      try {
+        const res = await api.get(`/store/${SLUG}/orders/mine`);
+        const found = res.data.find(o => String(o.id) === String(id));
+        setOrder(found || null);
+      } catch (e) {}
+    };
+
+    runVerification();
   }, [id]);
 
   return (
@@ -55,6 +57,24 @@ export default function Confirmation() {
       <h1 style={{ fontFamily: "var(--font-heading)", fontSize: 32, color: "var(--forest-dark)", margin: "0 0 10px" }}>
         Commande confirmée !
       </h1>
+
+      {order && (order.moyenPaiement === "wave" || order.moyenPaiement === "orange") && (
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 10,
+          background: "#F0FDF4", border: "1.5px solid #86EFAC",
+          padding: "8px 18px", borderRadius: 30, marginBottom: 18,
+          boxShadow: "0 2px 8px rgba(34,197,94,0.12)"
+        }}>
+          <img
+            src={order.moyenPaiement === "orange" ? ORANGE_MONEY_LOGO : WAVE_LOGO}
+            alt={order.moyenPaiement}
+            style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "contain", background: "#fff" }}
+          />
+          <span style={{ fontSize: 13.5, fontWeight: 800, color: "#15803D" }}>
+            Paiement reçu avec succès par {order.moyenPaiement === "orange" ? "Orange Money" : "Wave"}
+          </span>
+        </div>
+      )}
 
       {order && (
         <div style={{ marginBottom: 22 }}>
@@ -156,6 +176,12 @@ export default function Confirmation() {
                 {order.fraisLivraison === 0 ? "Gratuite" : fcfa(order.fraisLivraison)}
               </span>
             </div>
+            {Number(order.fraisPaiement) > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 13 }}>
+                <span style={{ color: "var(--muted)" }}>Frais de transaction ({order.moyenPaiement === "wave" ? "Wave" : "Orange Money"})</span>
+                <span style={{ fontWeight: 600, color: "#1D4ED8" }}>+{fcfa(order.fraisPaiement, order.devise)}</span>
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-between", background: "var(--forest-light)", borderRadius: 10, padding: "12px 14px" }}>
               <span style={{ fontWeight: 700, color: "var(--forest-dark)" }}>Total</span>
               <span style={{ fontWeight: 900, fontSize: 18, color: "var(--forest-dark)" }}>{fcfa(order.total)}</span>

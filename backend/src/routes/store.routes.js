@@ -428,11 +428,17 @@ router.post("/:slug/orders", loadBoutique, authenticate, requireRole("client"), 
 
     const fraisLivraison = modeLivraison === "domicile" ? Number(req.boutique.fraisLivraison) : 0;
     
-    // Si paiement en ligne (carte Stripe, Wave/Orange PayTech), mettre en attente de paiement
-    // pour que create-checkout-session puisse retrouver la commande via statut: "en_attente_paiement"
-    const statutInit = (moyenPaiement === "carte" || moyenPaiement === "wave" || moyenPaiement === "orange" || moyenPaiement === "paytech")
+    // Si paiement en ligne (carte Stripe, Wave/Orange UnitechPay), mettre en attente de paiement
+    // pour que l'admin ne voie la commande que lorsque le paiement est réellement reçu
+    const statutInit = (moyenPaiement === "carte" || moyenPaiement === "wave" || moyenPaiement === "orange" || moyenPaiement === "paytech" || moyenPaiement === "unitechpay")
       ? "en_attente_paiement"
       : "en_attente";
+
+    // Les frais de transaction & retrait UnitechPay (Wave / Orange Money) sont pris en charge par le client
+    const isOnlineMobile = (moyenPaiement === "wave" || moyenPaiement === "orange" || moyenPaiement === "unitechpay");
+    const unitechFeeRate = Number(req.boutique.fraisUnitechPourcentage || 2.0) / 100;
+    const fraisPaiement = isOnlineMobile ? Math.round((sousTotal + fraisLivraison) * unitechFeeRate) : 0;
+    const totalOrder = sousTotal + fraisLivraison + fraisPaiement;
 
     // Vérifier si le mode de paiement sélectionné est activé par la boutique
     const boutiqueModes = req.boutique.modesPaiement || {};
@@ -472,7 +478,8 @@ router.post("/:slug/orders", loadBoutique, authenticate, requireRole("client"), 
     const order = await Order.create({
       boutiqueId: req.boutique.id, clientId: req.user.id, statut: statutInit,
       modeLivraison, adresseLivraison, moyenPaiement, sousTotal, fraisLivraison,
-      total: sousTotal + fraisLivraison,
+      fraisPaiement,
+      total: totalOrder,
       devise: devise || "KMF",
       captureUrl: captureUrl || null,
     }, { transaction: t });
@@ -617,6 +624,8 @@ router.post("/:slug/orders/:id/verify-payment", loadBoutique, authenticate, asyn
       await order.update({ 
         statut: nextStatut, 
         statutPaiement: "paye",
+        montantPaye: order.total,
+        montantRestant: 0,
         receiptUrl: receiptUrl
       });
 
@@ -682,6 +691,7 @@ router.post("/:slug/orders/:id/verify-payment", loadBoutique, authenticate, asyn
       }
 
       clearCachePattern("/api/store").catch(() => {});
+      broadcast("order_created", { orderId: order.id, statut: nextStatut, clientId: order.clientId, boutiqueId: order.boutiqueId });
       broadcast("order_updated", { orderId: order.id, statut: nextStatut, clientId: order.clientId, boutiqueId: order.boutiqueId });
     }
 
@@ -704,9 +714,18 @@ router.patch("/:slug/orders/:id/switch-to-cash", loadBoutique, authenticate, asy
       return res.status(400).json({ message: "Le paiement de cette commande ne peut plus être modifié." });
     }
 
+    const sousTotalNum = Number(order.sousTotal || 0);
+    const fraisLivNum = isNaN(Number(order.fraisLivraison)) ? 0 : Number(order.fraisLivraison);
+    const nouveauTotal = sousTotalNum + fraisLivNum;
+
     await order.update({
       moyenPaiement: "cash",
-      statut: "en_attente" // Repasse en attente classique
+      statut: "en_attente",
+      statutPaiement: "non_paye",
+      fraisPaiement: 0,
+      total: nouveauTotal,
+      montantPaye: 0,
+      montantRestant: nouveauTotal
     });
 
     const cmdNum = "COM-B" + String(order.id).padStart(3, "0");
@@ -714,8 +733,20 @@ router.patch("/:slug/orders/:id/switch-to-cash", loadBoutique, authenticate, asy
     Notification.create({
       userId: order.clientId, boutiqueId: order.boutiqueId, orderId: order.id,
       title: "Mode de paiement modifié",
-      message: `Votre commande #${cmdNum} a été modifiée en paiement à la livraison.`,
+      message: `Votre commande #${cmdNum} a été modifiée en paiement à la livraison (${nouveauTotal} ${order.devise}).`,
       type: "order"
+    }).catch(() => {});
+
+    Notification.create({
+      userId: null, boutiqueId: order.boutiqueId, orderId: order.id,
+      title: "Nouvelle commande à la livraison",
+      message: `La commande #${cmdNum} est passée en paiement à la livraison (${nouveauTotal} ${order.devise}).`,
+      type: "order"
+    }).catch(() => {});
+
+    clearCachePattern("/api/store").catch(() => {});
+    broadcast("order_created", { orderId: order.id, clientId: order.clientId, boutiqueId: order.boutiqueId });
+    broadcast("order_updated", { orderId: order.id, clientId: order.clientId, boutiqueId: order.boutiqueId });
     }).catch(() => {});
 
     Notification.create({

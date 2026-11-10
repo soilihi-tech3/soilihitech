@@ -782,7 +782,7 @@ export default function AdminSettings({ defaultTab = "general" }) {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <div className="bs-field">
                   <label style={{ color: "var(--ink)", fontWeight: 600 }}>Clé API UnitechPay</label>
                   <input
@@ -792,6 +792,23 @@ export default function AdminSettings({ defaultTab = "general" }) {
                     onChange={(e) => set("unitechApiKey", e.target.value)}
                     placeholder="Ex: eb347b5f5b68382b58d3f0babd3687e0186026209ef..."
                   />
+                </div>
+                <div className="bs-field">
+                  <label style={{ color: "var(--ink)", fontWeight: 600 }}>Frais UnitechPay / Retrait facturés au client (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="10"
+                    className="bs-input"
+                    style={{ fontSize: 13.5, background: "#f8fafc" }}
+                    value={boutique.fraisUnitechPourcentage !== undefined ? boutique.fraisUnitechPourcentage : 2.0}
+                    onChange={(e) => set("fraisUnitechPourcentage", e.target.value)}
+                    placeholder="2.0"
+                  />
+                  <span style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, display: "block" }}>
+                    Ce pourcentage est ajouté au montant du panier pour Wave et Orange Money : le client paie les frais, et vous recevez 100% net du prix de vos produits.
+                  </span>
                 </div>
               </div>
 
@@ -803,7 +820,7 @@ export default function AdminSettings({ defaultTab = "general" }) {
                 <div style={{ color: "#92400E", lineHeight: 1.6 }}>
                   Saisissez l'URL de Webhook suivante :<br />
                   <code style={{ background: "#FEF3C7", padding: "4px 8px", borderRadius: 6, display: "inline-block", marginTop: 6, fontWeight: 700, color: "#92400E", fontSize: 12 }}>
-                    https://electro-backend.onrender.com/api/webhooks/unitechpay
+                    {typeof window !== "undefined" ? window.location.origin : "https://economestore.com"}/api/webhooks/unitechpay
                   </code><br />
                   <span>Cochez les événements : <strong>Paiement réussi</strong>, <strong>Paiement échoué</strong>, <strong>Paiement expiré</strong>.</span>
                 </div>

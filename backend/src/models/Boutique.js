@@ -79,6 +79,7 @@ const Boutique = sequelize.define("Boutique", {
   paytechApiSecret: { type: DataTypes.STRING(255), allowNull: true, field: "paytech_api_secret" },
   // UnitechPay — Wave & Orange Money (nouveau)
   unitechApiKey:        { type: DataTypes.STRING(255), allowNull: true, field: "unitech_api_key" },
+  fraisUnitechPourcentage: { type: DataTypes.DECIMAL(5, 2), defaultValue: 2.0, field: "frais_unitech_pourcentage" },
   // Reloadly — Envoi direct automatique crédit télécom
   reloadlyClientId:     { type: DataTypes.STRING(255), allowNull: true, field: "reloadly_client_id" },
   reloadlyClientSecret: { type: DataTypes.STRING(255), allowNull: true, field: "reloadly_client_secret" },

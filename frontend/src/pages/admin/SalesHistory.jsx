@@ -15,6 +15,9 @@ import ReceiptModal from "../../components/ReceiptModal.jsx";
 import { formatPrice, formatPrice as fcfa, getBoutiqueCurrencies } from "../../utils/currency.js";
 import { getOfflineSales, saveCache, getCache } from "../../utils/offlineStorage.js";
 
+const WAVE_LOGO = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ2HroqloJ8NxLB2bTo1KCfBFIqqlRUfjS7lor42fv8dw&s=10";
+const ORANGE_MONEY_LOGO = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSkuwenMWEMEqLrjTBw59HU3cAqXn5JcznidoH8agbSKg&s=10";
+
 const MONTHS = [
   { value: "01", label: "Janvier" },
   { value: "02", label: "Février" },
@@ -900,8 +903,11 @@ export default function SalesHistory() {
                     <span style={{
                       padding: "4px 10px", borderRadius: 12, fontSize: 11.5, fontWeight: 800,
                       background: isCash ? "#FEF3C7" : isMvola ? "#DCFCE7" : isWave ? "#E0F2FE" : isOrange ? "#FFEDD5" : isWero ? "#FEF9C3" : "#F3E8FF",
-                      color: isCash ? "#92400E" : isMvola ? "#15803D" : isWave ? "#0284C7" : isOrange ? "#C2410C" : isWero ? "#854D0E" : "#6B21A8"
+                      color: isCash ? "#92400E" : isMvola ? "#15803D" : isWave ? "#0284C7" : isOrange ? "#C2410C" : isWero ? "#854D0E" : "#6B21A8",
+                      display: "inline-flex", alignItems: "center", gap: 5
                     }}>
+                      {isWave && <img src={WAVE_LOGO} alt="Wave" style={{ width: 15, height: 15, borderRadius: "50%", objectFit: "contain" }} />}
+                      {isOrange && <img src={ORANGE_MONEY_LOGO} alt="OM" style={{ width: 15, height: 15, borderRadius: "50%", objectFit: "contain" }} />}
                       {isCash ? "Cash / Espèces" : isMvola ? "MVola" : isWave ? "Wave" : isOrange ? "Orange Money" : isWero ? "Wero" : "Carte"}
                     </span>
                   </td>

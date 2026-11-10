@@ -11,6 +11,9 @@ import ReceiptModal from "../../components/ReceiptModal.jsx";
 
 import { formatPrice as fcfa, getActiveCurrency, getProductPrice } from "../../utils/currency.js";
 
+const WAVE_LOGO = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ2HroqloJ8NxLB2bTo1KCfBFIqqlRUfjS7lor42fv8dw&s=10";
+const ORANGE_MONEY_LOGO = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSkuwenMWEMEqLrjTBw59HU3cAqXn5JcznidoH8agbSKg&s=10";
+
 export default function Checkout() {
   const { cart, subtotal, updateQuantite, removeFromCart, clearCart, showToast } = useCart();
   const { boutique, user } = useAuth();
@@ -121,25 +124,25 @@ export default function Checkout() {
       id: "mvola", key: "mvola", label: "MVola", sub: "Paiement mobile sécurisé", Icon: Smartphone, available: !!modesPaiement.mvola,
       renderLogo: () => <MvolaLogo height={32} />
     },
-    // Wave — UnitechPay
+    // Wave — Paiement Mobile
     {
-      id: "wave", key: "wave", label: "Wave", sub: "Paiement mobile instantané (UnitechPay)", Icon: Smartphone, available: !!modesPaiement.wave,
+      id: "wave", key: "wave", label: "Wave", sub: "Paiement mobile instantané Wave", Icon: Smartphone, available: !!modesPaiement.wave,
       badgeColor: "#0EA5E9",
       renderLogo: () => (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 800, color: "#1E40AF", background: "#E0F2FE", padding: "2px 8px", borderRadius: 6 }}>WAVE</span>
-          <span style={{ fontSize: 9, background: "#0284C7", color: "#fff", padding: "2px 6px", borderRadius: 6, fontWeight: 700 }}>UnitechPay</span>
+          <img src={WAVE_LOGO} alt="Wave" style={{ height: 30, width: 30, objectFit: "contain", borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }} />
+          <span style={{ fontSize: 13, fontWeight: 800, color: "#0284C7" }}>Wave</span>
         </div>
       )
     },
-    // Orange Money — UnitechPay
+    // Orange Money — Paiement Mobile
     {
-      id: "orange", key: "orange", label: "Orange Money", sub: "Paiement mobile Orange (UnitechPay)", Icon: Smartphone, available: !!modesPaiement.orange,
+      id: "orange", key: "orange", label: "Orange Money", sub: "Paiement mobile sécurisé Orange Money", Icon: Smartphone, available: !!modesPaiement.orange,
       badgeColor: "#F97316",
       renderLogo: () => (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 800, color: "#EA580C", background: "#FFEDD5", padding: "2px 8px", borderRadius: 6 }}>ORANGE</span>
-          <span style={{ fontSize: 9, background: "#EA580C", color: "#fff", padding: "2px 6px", borderRadius: 6, fontWeight: 700 }}>UnitechPay</span>
+          <img src={ORANGE_MONEY_LOGO} alt="Orange Money" style={{ height: 30, width: 30, objectFit: "contain", borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }} />
+          <span style={{ fontSize: 13, fontWeight: 800, color: "#EA580C" }}>Orange Money</span>
         </div>
       )
     },
@@ -167,7 +170,13 @@ export default function Checkout() {
   const tarifLivraisonConfig = boutique?.fraisLivraison || "0";
   const fraisLivraison = form.modeLivraison === "domicile" ? tarifLivraisonConfig : 0;
   const numericFrais = isNaN(Number(fraisLivraison)) ? 0 : Number(fraisLivraison);
-  const total = subtotal + numericFrais;
+
+  // Frais de paiement & retrait UnitechPay (Wave / Orange Money) supportés par le client
+  const isOnlineMobile = form.moyenPaiement === "wave" || form.moyenPaiement === "orange";
+  const unitechFeeRate = Number(boutique?.fraisUnitechPourcentage || 2.0) / 100;
+  const fraisPaiement = isOnlineMobile ? Math.round((subtotal + numericFrais) * unitechFeeRate) : 0;
+
+  const total = subtotal + numericFrais + fraisPaiement;
   const totalItems = cart.reduce((s, l) => s + l.quantite, 0);
 
   function handleSelectPayment(m) {
@@ -226,7 +235,7 @@ export default function Checkout() {
         marqueTelephone: l.selectedBrand || null,
         imageUrl: l.selectedImageUrl || l.product?.imageUrl || null
       }));
-      const res = await api.post(`/store/${SLUG}/orders`, { items, devise: activeCurrency, ...form });
+      const res = await api.post(`/store/${SLUG}/orders`, { items, devise: activeCurrency, fraisPaiement, ...form });
       
       if (form.moyenPaiement === "wero" || form.moyenPaiement === "holam" || form.moyenPaiement === "mvola") {
         setPaymentModalData({
@@ -681,6 +690,18 @@ export default function Checkout() {
                 {fraisLivraison === 0 || fraisLivraison === "0" ? "Gratuite" : (isNaN(Number(fraisLivraison)) ? fraisLivraison : fcfa(Number(fraisLivraison), activeCurrency))}
               </span>
             </div>
+
+            {isOnlineMobile && fraisPaiement > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, fontSize: 13, background: "#EFF6FF", padding: "10px 14px", borderRadius: 10, border: "1px dashed #93C5FD" }}>
+                <span style={{ color: "#1E40AF", display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
+                  <img src={form.moyenPaiement === "wave" ? WAVE_LOGO : ORANGE_MONEY_LOGO} alt="" style={{ height: 20, width: 20, objectFit: "contain", borderRadius: "50%", background: "#fff" }} />
+                  Frais de transaction ({form.moyenPaiement === "wave" ? "Wave" : "Orange Money"})
+                </span>
+                <span style={{ fontWeight: 800, color: "#1E40AF" }}>
+                  +{fcfa(fraisPaiement, activeCurrency)}
+                </span>
+              </div>
+            )}
 
             <div style={{ background: "var(--forest-dark)", borderRadius: 14, padding: "18px 20px", marginBottom: 24 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
