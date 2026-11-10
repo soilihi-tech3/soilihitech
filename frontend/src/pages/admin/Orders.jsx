@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   Search, Filter, ShoppingBag, DollarSign, Clock, CheckCircle2,
-  Truck, UserCheck, Eye, X, Phone, MapPin, CreditCard, Calendar, Smartphone, Printer
+  Truck, UserCheck, Eye, X, Phone, MapPin, CreditCard, Calendar, Smartphone, Printer, MessageCircle
 } from "lucide-react";
 import api from "../../api";
 import TablePagination from "../../components/TablePagination";
@@ -238,6 +238,43 @@ export default function AdminOrders() {
     } catch (err) {
       load(); // Revert to server state on error
     }
+  }
+
+  function sendWhatsAppOrderReady(o) {
+    const rawPhone = o?.clientTelephone || o?.telephone || o?.user?.telephone || "";
+    let cleanPhone = rawPhone.replace(/[^0-9]/g, "");
+    if (!cleanPhone) {
+      if (showToast) showToast("Numéro de téléphone du client manquant pour l'envoi WhatsApp.", "error", "Numéro manquant");
+      else alert("Numéro de téléphone du client manquant pour l'envoi WhatsApp.");
+      return;
+    }
+
+    if (cleanPhone.startsWith("00")) cleanPhone = cleanPhone.slice(2);
+    if (cleanPhone.length === 7) {
+      cleanPhone = "269" + cleanPhone;
+    } else if (cleanPhone.length === 9 && (cleanPhone.startsWith("7") || cleanPhone.startsWith("3"))) {
+      if (boutique?.pays === "SN" || boutique?.deviseDefaut === "FCFA" || boutique?.pays === "Senegal") {
+        cleanPhone = "221" + cleanPhone;
+      }
+    }
+
+    const boutiqueNom = boutique?.nom || "Notre Boutique";
+    const clientName = (o?.clientNom || o?.nomClient || o?.user?.nom) ? ` ${(o?.clientNom || o?.nomClient || o?.user?.nom).trim()}` : "";
+    const isPaid = o?.statutPaiement === "paye";
+    const amountDue = isPaid ? 0 : Number(o?.resteAPayer != null ? o.resteAPayer : o?.total || 0);
+
+    let text = `Bonjour${clientName},\n\nBonne nouvelle ! 🎉 Votre commande #${formatOrderNum(o.id)} est prête.\nVeuillez passer à la boutique pour la récupérer.\n\n`;
+    if (amountDue > 0) {
+      text += `💰 Montant à régler : ${fcfa(amountDue)}\n(Merci de bien vouloir préparer la somme exacte lors de votre passage)\n\n`;
+    } else if (isPaid) {
+      text += `✅ Votre commande est déjà entièrement réglée.\n\n`;
+    } else {
+      text += `💰 En passant, merci de bien vouloir amener la somme exacte pour le règlement.\n\n`;
+    }
+    text += `Merci de la part de ${boutiqueNom} pour votre confiance !`;
+
+    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
+    window.open(waUrl, "_blank");
   }
 
   // Calculate available years dynamically (starting from current year e.g. 2026 onwards)
@@ -847,6 +884,18 @@ export default function AdminOrders() {
                         >
                           <Printer size={13} /> Ticket
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => sendWhatsAppOrderReady(o)}
+                          title="Notifier le client sur WhatsApp (Commande prête)"
+                          style={{
+                            background: "#25D366", border: "none", color: "#fff",
+                            borderRadius: 8, padding: "6px 8px", cursor: "pointer",
+                            display: "inline-flex", alignItems: "center"
+                          }}
+                        >
+                          <MessageCircle size={14} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1073,6 +1122,31 @@ export default function AdminOrders() {
                 }}
               >
                 <Printer size={15} /> Imprimer / Télécharger le Ticket de caisse
+              </button>
+
+              {/* Notifier le client sur WhatsApp */}
+              <button
+                type="button"
+                onClick={() => sendWhatsAppOrderReady(selectedOrder)}
+                style={{
+                  width: "100%",
+                  marginTop: 8,
+                  padding: "11px 16px",
+                  borderRadius: 10,
+                  background: "#25D366",
+                  color: "#fff",
+                  border: "none",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  boxShadow: "0 2px 8px rgba(37, 211, 102, 0.3)"
+                }}
+              >
+                <MessageCircle size={15} /> Notifier le client sur WhatsApp (Prête)
               </button>
             </div>
 

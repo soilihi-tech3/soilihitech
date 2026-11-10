@@ -17,7 +17,7 @@ import { useOffline } from "../../context/OfflineContext.jsx";
 import { subscribeRealtime } from "../../utils/realtime.js";
 
 export default function DemandesSpeciales() {
-  const { user } = useAuth();
+  const { user, boutique } = useAuth();
   const perms = Array.isArray(user?.permissions) ? user.permissions : [];
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const canCreate = isAdmin || perms.includes("creer_demande") || perms.includes("gerer_demandes") || perms.includes("demandes_devis");
@@ -324,16 +324,50 @@ export default function DemandesSpeciales() {
   }
 
   function sendWhatsAppQuote(req) {
-    const cleanPhone = (req.telephoneClient || "").replace(/[^0-9]/g, "");
+    const rawPhone = req.telephoneClient || "";
+    let cleanPhone = rawPhone.replace(/[^0-9]/g, "");
+    if (!cleanPhone) {
+      toast.error("Numéro de téléphone du client manquant pour l'envoi WhatsApp.");
+      return;
+    }
+
+    // Normalisation automatique de l'indicatif (Comores 7 chiffres -> 269..., Sénégal 9 chiffres -> 221...)
+    if (cleanPhone.startsWith("00")) cleanPhone = cleanPhone.slice(2);
+    if (cleanPhone.length === 7) {
+      cleanPhone = "269" + cleanPhone;
+    } else if (cleanPhone.length === 9 && (cleanPhone.startsWith("7") || cleanPhone.startsWith("3"))) {
+      if (boutique?.pays === "SN" || boutique?.deviseDefaut === "FCFA" || boutique?.pays === "Senegal") {
+        cleanPhone = "221" + cleanPhone;
+      }
+    }
+
+    const boutiqueNom = boutique?.nom || "Notre Boutique";
+    const clientName = req.nomClient ? ` ${req.nomClient.trim()}` : "";
     const totalDevisCalc = Number(req.totalPropose || 0) + Number(req.fraisLivraison || 0);
-    const clientName = req.nomClient ? ` ${req.nomClient}` : "";
-    const text = `Bonjour${clientName},\n\nVoici votre facture #${req.code}.\nTotal : ${fcfa(totalDevisCalc)}`;
+    const hasPrice = totalDevisCalc > 0;
+    const isReady = req.statutAchat === "achete" || req.statut === "valide" || req.statut === "pret";
 
-    const waUrl = cleanPhone
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
-      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    let text = "";
+    if (isReady) {
+      text = `Bonjour${clientName},\n\nBonne nouvelle ! 🎉 Votre commande est prête.\nVeuillez passer à la boutique pour la récupérer.\n\n`;
+      if (hasPrice) {
+        text += `💰 Montant à régler : ${fcfa(totalDevisCalc)}\n(Merci de bien vouloir préparer la somme exacte lors de votre passage)\n\n`;
+      } else {
+        text += `💰 En passant, merci de bien vouloir amener la somme exacte pour le règlement.\n\n`;
+      }
+      text += `Merci de la part de ${boutiqueNom} pour votre confiance !`;
+    } else {
+      text = `Bonjour${clientName},\n\nVoici le point sur votre demande #${req.code}.\n`;
+      if (hasPrice) {
+        text += `💰 Montant du devis : ${fcfa(totalDevisCalc)}\n\n`;
+      } else {
+        text += `Nous traitons actuellement votre demande.\n\n`;
+      }
+      text += `Merci de la part de ${boutiqueNom} pour votre confiance !`;
+    }
 
-    window.location.href = waUrl;
+    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
+    window.open(waUrl, "_blank");
   }
 
   // --- CRÉATION DIRECTE ---
@@ -1550,7 +1584,7 @@ export default function DemandesSpeciales() {
                           <button
                             type="button"
                             onClick={() => sendWhatsAppQuote(req)}
-                            title="Envoyer le devis sur WhatsApp"
+                            title={req.statutAchat === "achete" || req.statut === "valide" || req.statut === "pret" ? "Notifier sur WhatsApp (Commande prête à récupérer)" : "Envoyer les informations sur WhatsApp"}
                             style={{
                               background: "#25D366", border: "none", color: "#fff",
                               padding: "6px 8px", borderRadius: 8, cursor: "pointer",
