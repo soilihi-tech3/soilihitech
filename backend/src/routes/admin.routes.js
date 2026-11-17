@@ -125,10 +125,8 @@ function getProductUnitPriceForCurrency(p, code, primaryDevise = "KMF") {
     if (p.enPromo && promoMap && Number(promoMap.FCFA) > 0) return Number(promoMap.FCFA);
     if (Number(p.prixSenegal) > 0) return Number(p.prixSenegal);
     if (map && Number(map.FCFA) > 0) return Number(map.FCFA);
-    if (primaryDevise === "FCFA") {
-      return (p.enPromo && Number(p.prixPromo) > 0) ? Number(p.prixPromo) : Number(p.prix || 0);
-    }
-    return 0;
+    // Repli sur le prix standard ou promo
+    return (p.enPromo && Number(p.prixPromo) > 0) ? Number(p.prixPromo) : Number(p.prix || 0);
   }
 
   if (cleanCode === "KMF") {
@@ -136,7 +134,7 @@ function getProductUnitPriceForCurrency(p, code, primaryDevise = "KMF") {
     if (p.enPromo && promoMap && Number(promoMap.KMF) > 0) return Number(promoMap.KMF);
     if (Number(p.prix) > 0) return Number(p.prix);
     if (map && Number(map.KMF) > 0) return Number(map.KMF);
-    return 0;
+    return (p.enPromo && Number(p.prixPromo) > 0) ? Number(p.prixPromo) : Number(p.prix || 0);
   }
 
   if (p.enPromo && promoMap && Number(promoMap[cleanCode]) > 0) {
@@ -146,10 +144,7 @@ function getProductUnitPriceForCurrency(p, code, primaryDevise = "KMF") {
     return Number(map[cleanCode]);
   }
 
-  if (cleanCode === primaryDevise) {
-    return (p.enPromo && Number(p.prixPromo) > 0) ? Number(p.prixPromo) : Number(p.prix || 0);
-  }
-  return 0;
+  return (p.enPromo && Number(p.prixPromo) > 0) ? Number(p.prixPromo) : Number(p.prix || 0);
 }
 
 async function computeBoutiqueFinancials(boutiqueId, { excludeSavingId = null, excludeExpenseId = null } = {}) {
@@ -1436,8 +1431,6 @@ router.put("/orders/:id", requireRole("admin", "employe"), async (req, res, next
     const updates = {};
     if (moyenPaiement !== undefined) updates.moyenPaiement = moyenPaiement;
     if (notes !== undefined) updates.notes = notes;
-    if (clientNom !== undefined) updates.clientNom = clientNom;
-    if (clientTelephone !== undefined) updates.clientTelephone = clientTelephone;
     if (adresseLivraison !== undefined) updates.adresseLivraison = adresseLivraison;
     if (statut !== undefined) updates.statut = statut;
     if (devise !== undefined) updates.devise = devise;
@@ -1445,6 +1438,38 @@ router.put("/orders/:id", requireRole("admin", "employe"), async (req, res, next
     if (montantPaye !== undefined) updates.montantPaye = Number(montantPaye) || 0;
     if (montantRestant !== undefined) updates.montantRestant = Number(montantRestant) || 0;
     if (dateEcheance !== undefined) updates.dateEcheance = dateEcheance || null;
+
+    // Mise a jour ou association du client
+    if (clientNom !== undefined || clientTelephone !== undefined) {
+      const cleanNom = clientNom !== undefined ? String(clientNom).trim() : null;
+      const cleanTel = clientTelephone !== undefined ? String(clientTelephone).trim() : null;
+
+      if (order.clientId) {
+        const clientUser = await User.findByPk(order.clientId, { transaction: t });
+        if (clientUser) {
+          if (cleanNom !== null && cleanNom !== "") clientUser.nom = cleanNom;
+          if (cleanTel !== null) clientUser.telephone = cleanTel;
+          await clientUser.save({ transaction: t });
+        }
+      } else if (cleanNom || cleanTel) {
+        const emailGuest = `client_${Date.now()}@marche-vert.local`;
+        const [newClient] = await User.findOrCreate({
+          where: { telephone: cleanTel || "non_renseigne", boutiqueId: req.boutiqueId },
+          defaults: {
+            nom: cleanNom || "Client comptoir",
+            email: emailGuest,
+            motDePasseHash: "guest_cashier",
+            role: "client"
+          },
+          transaction: t
+        });
+        if (cleanNom && newClient.nom !== cleanNom) {
+          newClient.nom = cleanNom;
+          await newClient.save({ transaction: t });
+        }
+        updates.clientId = newClient.id;
+      }
+    }
 
     // Si des items de panier sont fournis pour modification
     if (Array.isArray(items) && items.length > 0) {

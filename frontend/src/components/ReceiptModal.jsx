@@ -164,8 +164,15 @@ export default function ReceiptModal({
 
   const clientName =
     order.client?.nom || order.clientNom || order.nomClient || user?.nom || "Client comptoir";
-  const clientPhone =
+  const rawClientPhone =
     order.client?.telephone || order.clientTelephone || order.telephoneClient || "";
+  const cleanPhoneDigits = String(rawClientPhone || "").replace(/[^0-9]/g, "");
+  const hasValidPhone =
+    cleanPhoneDigits.length >= 4 &&
+    !["non_renseigne", "null", "undefined", "non renseigné", "non renseigne", "aucun", "none", "-", ""].includes(
+      String(rawClientPhone).toLowerCase().trim()
+    );
+  const clientPhone = hasValidPhone ? rawClientPhone.trim() : "";
 
   const isRecharge =
     order.typeVente === "recharge_mobile" ||
@@ -307,7 +314,7 @@ export default function ReceiptModal({
       doc.text(cleanPdfText(clientName), leftX + 13, y);
       y += 4;
 
-      if (clientPhone && clientPhone !== "non_renseigne") {
+      if (clientPhone) {
         doc.setFont("helvetica", "bold");
         doc.text("Tel :", leftX, y);
         doc.setFont("helvetica", "normal");
@@ -872,7 +879,7 @@ export default function ReceiptModal({
                 <div>
                   <strong>Client :</strong> {clientName}
                 </div>
-                {clientPhone && clientPhone !== "non_renseigne" && (
+                {clientPhone && (
                   <div>
                     <strong>Tél :</strong> {clientPhone}
                   </div>

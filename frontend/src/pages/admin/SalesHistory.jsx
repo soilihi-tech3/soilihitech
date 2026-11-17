@@ -44,6 +44,14 @@ export default function SalesHistory() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  function openEditSaleModal(o) {
+    setEditingOrder({
+      ...o,
+      clientNom: o.client?.nom || o.clientNom || o.nomClient || "",
+      clientTelephone: (o.client?.telephone && o.client.telephone !== "non_renseigne") ? o.client.telephone : (o.clientTelephone || o.telephone || "")
+    });
+  }
+
   function handleEditOrderCart(order) {
     try {
       sessionStorage.setItem("pos_edit_order", JSON.stringify(order));
@@ -974,8 +982,8 @@ export default function SalesHistory() {
                       {canEditSale && (
                         <button
                           className="bs-icon-btn"
-                          title="Modifier le panier de cette vente"
-                          onClick={() => handleEditOrderCart(o)}
+                          title="Modifier cette vente (client, téléphone, paiement, dette...)"
+                          onClick={() => openEditSaleModal(o)}
                           style={{ color: "var(--forest-dark)" }}
                         >
                           <Pencil size={15} />
@@ -1177,23 +1185,41 @@ export default function SalesHistory() {
                 />
               </div>
 
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 10 }}>
+              <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  onClick={() => setEditingOrder(null)}
-                  className="bs-btn-secondary"
-                  style={{ padding: "8px 16px", fontSize: 13 }}
+                  onClick={() => {
+                    const toEdit = editingOrder;
+                    setEditingOrder(null);
+                    handleEditOrderCart(toEdit);
+                  }}
+                  style={{
+                    background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1D4ED8",
+                    padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                    cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6
+                  }}
                 >
-                  Annuler
+                  <ShoppingBag size={14} /> Modifier les articles du panier (Caisse)
                 </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="bs-btn-primary"
-                  style={{ padding: "8px 18px", fontSize: 13 }}
-                >
-                  {submitting ? "Enregistrement..." : "Enregistrer les modifications"}
-                </button>
+
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setEditingOrder(null)}
+                    className="bs-btn-secondary"
+                    style={{ padding: "8px 16px", fontSize: 13 }}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="bs-btn-primary"
+                    style={{ padding: "8px 18px", fontSize: 13 }}
+                  >
+                    {submitting ? "Enregistrement..." : "Enregistrer"}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

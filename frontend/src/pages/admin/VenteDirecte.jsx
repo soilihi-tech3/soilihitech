@@ -25,19 +25,65 @@ function parseJsonSafe(raw) {
   }
 }
 
+function resolveVariantPhoto(variantObj, variantName, variantIndex, p, productImages) {
+  if (typeof variantObj === "object" && variantObj) {
+    const direct = variantObj.imageUrl || variantObj.photo || variantObj.photoUrl || variantObj.image;
+    if (direct && typeof direct === "string" && direct.trim()) {
+      return direct.trim();
+    }
+  }
+
+  const cleanNom = String(variantName || "").trim().toLowerCase();
+
+  // Chercher dans la galerie images du produit si disponible
+  if (Array.isArray(productImages) && productImages.length > 0) {
+    // 1. Correspondance par nom dans l'URL ou nom de fichier
+    if (cleanNom.length >= 2) {
+      const match = productImages.find(img => typeof img === "string" && img.toLowerCase().includes(cleanNom));
+      if (match) return match;
+    }
+
+    // 2. Correspondance par mots-clés de couleurs fréquents (or, argent, noir, blanc, etc.)
+    const colorMap = [
+      { key: "or", syns: ["doré", "dore", "gold", "or", "yellow"] },
+      { key: "argent", syns: ["argenté", "argente", "silver", "argent", "grey", "gris"] },
+      { key: "noir", syns: ["noir", "black", "dark"] },
+      { key: "blanc", syns: ["blanc", "white"] },
+      { key: "rose", syns: ["rose", "pink"] },
+      { key: "bleu", syns: ["bleu", "blue", "navy"] },
+      { key: "rouge", syns: ["rouge", "red"] },
+      { key: "vert", syns: ["vert", "green"] }
+    ];
+    for (const cm of colorMap) {
+      if (cm.syns.some(s => cleanNom.includes(s))) {
+        const found = productImages.find(img => typeof img === "string" && cm.syns.some(s => img.toLowerCase().includes(s)));
+        if (found) return found;
+      }
+    }
+
+    // 3. Correspondance par index si image correspondante dans la galerie
+    if (productImages[variantIndex] && typeof productImages[variantIndex] === "string") {
+      return productImages[variantIndex];
+    }
+  }
+
+  return p.imageUrl2 || p.imageUrl || null;
+}
+
 export function getProductVariants(p) {
   if (!p) return [];
   const variants = [];
   const modeles = parseJsonSafe(p.modelesCompatibles);
   const couleurs = parseJsonSafe(p.couleurs);
   const senteurs = parseJsonSafe(p.senteurs);
+  const productImages = parseJsonSafe(p.images) || [];
 
   modeles.forEach((m, idx) => {
     const nom = typeof m === "string" ? m : (m.nomComplet || m.nom || m.modele || `Modèle ${idx + 1}`);
     const stk = typeof m === "object" && (m.quantite !== undefined || m.stock !== undefined)
       ? Number(m.quantite !== undefined ? m.quantite : m.stock)
       : Number(p.stock || 0);
-    const photo = typeof m === "object" ? (m.photo || m.photoUrl || m.image || null) : null;
+    const photo = resolveVariantPhoto(m, nom, idx, p, productImages);
     const prix = typeof m === "object" && m.prix ? Number(m.prix) : null;
     variants.push({
       key: `modele_${idx}_${nom}`,
@@ -55,7 +101,7 @@ export function getProductVariants(p) {
     const stk = typeof c === "object" && (c.quantite !== undefined || c.stock !== undefined)
       ? Number(c.quantite !== undefined ? c.quantite : c.stock)
       : Number(p.stock || 0);
-    const photo = typeof c === "object" ? (c.photo || c.photoUrl || c.image || null) : null;
+    const photo = resolveVariantPhoto(c, nom, idx, p, productImages);
     variants.push({
       key: `couleur_${idx}_${nom}`,
       type: "couleur",
@@ -72,7 +118,7 @@ export function getProductVariants(p) {
     const stk = typeof s === "object" && (s.quantite !== undefined || s.stock !== undefined)
       ? Number(s.quantite !== undefined ? s.quantite : s.stock)
       : Number(p.stock || 0);
-    const photo = typeof s === "object" ? (s.photo || s.photoUrl || s.image || null) : null;
+    const photo = resolveVariantPhoto(s, nom, idx, p, productImages);
     variants.push({
       key: `senteur_${idx}_${nom}`,
       type: "senteur",
